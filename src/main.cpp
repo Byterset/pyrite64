@@ -15,11 +15,19 @@
 
 constinit Context ctx{};
 
+namespace {
+  constinit SDL_GPUSampler *texSamplerRepeat{nullptr};
+}
+
+void ImDrawCallback_ImplSDLGPU3_SetSamplerRepeat(const ImDrawList* parent_list, const ImDrawCmd* cmd) {
+  auto*           state   = static_cast<ImGui_ImplSDLGPU3_RenderState*>(ImGui::GetPlatformIO().Renderer_RenderState);
+  //SDL_GPUSampler* sampler = cmd->UserCallbackData ? static_cast<SDL_GPUSampler*>(cmd->UserCallbackData) : state->SamplerDefault;
+  state->SamplerCurrent   = texSamplerRepeat;//sampler;
+}
+
 // Main code
 int main(int, char**)
 {
-  fflush(stdout);
-
   if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD))
   {
     printf("Error: SDL_Init(): %s\n", SDL_GetError());
@@ -58,22 +66,21 @@ int main(int, char**)
     return -1;
   }
   SDL_SetGPUSwapchainParameters(gpu_device, window, SDL_GPU_SWAPCHAINCOMPOSITION_SDR, SDL_GPU_PRESENTMODE_VSYNC);
-/*
+
   SDL_GPUSamplerCreateInfo samplerInfo{};
   samplerInfo.min_filter = SDL_GPU_FILTER_LINEAR;
   samplerInfo.mag_filter = SDL_GPU_FILTER_LINEAR;
   samplerInfo.mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_LINEAR;
-  samplerInfo.address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
+  samplerInfo.address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_REPEAT;
   samplerInfo.address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
-  samplerInfo.address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
+  samplerInfo.address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_REPEAT;
   samplerInfo.mip_lod_bias = 0.0f;
   samplerInfo.min_lod = -1000.0f;
   samplerInfo.max_lod = 1000.0f;
   samplerInfo.enable_anisotropy = false;
   samplerInfo.max_anisotropy = 1.0f;
   samplerInfo.enable_compare = false;
-  auto texSampler = SDL_CreateGPUSampler(gpu_device, &samplerInfo);
-*/
+  texSamplerRepeat = SDL_CreateGPUSampler(gpu_device, &samplerInfo);
 
   // Setup Dear ImGui context
   IMGUI_CHECKVERSION();
