@@ -15,6 +15,7 @@
 #include "renderer/shader.h"
 #include "renderer/texture.h"
 #include "renderer/vertBuffer.h"
+#include "utils/filePicker.h"
 
 constinit Context ctx{};
 
@@ -227,6 +228,8 @@ int main(int, char**)
         SDL_Delay(10);
         continue;
       }
+
+      Utils::FilePicker::poll();
 
       ImGui_ImplSDLGPU3_NewFrame();
       ImGui_ImplSDL3_NewFrame();

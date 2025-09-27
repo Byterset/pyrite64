@@ -5,6 +5,7 @@
 #pragma once
 #include "imgui.h"
 #include "IconsFontAwesome4.h"
+#include "../../utils/filePicker.h"
 
 namespace ImGui::InpTable
 {
@@ -44,7 +45,11 @@ namespace ImGui::InpTable
 
     auto labelHidden = "##" + name;
     ImGui::PushID(labelHidden.c_str());
-    ImGui::Button(ICON_FA_FOLDER);
+    if (ImGui::Button(ICON_FA_FOLDER)) {
+      Utils::FilePicker::open([&str](const std::string &path) {
+        str = path;
+      }, isDir);
+    }
     ImGui::PopID();
     ImGui::SameLine();
     ImGui::InputText(labelHidden.c_str(), &str);

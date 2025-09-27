@@ -10,6 +10,7 @@
 
 #include "imgui.h"
 #include "../actions.h"
+#include "../../utils/filePicker.h"
 #include "backends/imgui_impl_sdlgpu3.h"
 #include "SDL3/SDL_dialog.h"
 
@@ -19,17 +20,6 @@ namespace
 {
   bool isHoverAdd = false;
   bool isHoverLast = false;
-
-  constinit bool fileSelectIsOpen{false};
-  constinit std::mutex mtxProjectPath{};
-  constinit std::atomic_bool hasProjectPath{false};
-  constinit std::string projectPath{};
-
-  void cbOpenProject(void *userdata, const char * const *filelist, int filter) {
-    std::lock_guard lock{mtxProjectPath};
-    projectPath = (filelist && filelist[0]) ? filelist[0] : "";
-    hasProjectPath = true;
-  }
 }
 
 Editor::Main::Main(SDL_GPUDevice* device)
@@ -122,11 +112,16 @@ void Editor::Main::draw()
   auto btnSizeLast = texBtnOpen.getSize(isHoverLast ? 0.85f : 0.8f);
   ImGui::SetCursorPos(getBtnPos(btnSizeLast, false));
 
-  bool wantsOpen = ImGui::ImageButton("Open Project",
+  if (ImGui::ImageButton("Open Project",
       ImTextureID(texBtnOpen.getGPUTex()),
       btnSizeLast, {0,0}, {1,1}, {0,0,0,0},
       {1,1,1,isHoverLast ? 1 : 0.8f}
-  );
+  )) {
+    Utils::FilePicker::open([](const std::string &path) {
+      if (path.empty()) return;
+      Actions::call(Actions::Type::PROJECT_OPEN, path);
+    }, true);
+  }
 
   isHoverLast = ImGui::IsItemHovered(ImGuiHoveredFlags_RectOnly);
 
@@ -144,16 +139,4 @@ void Editor::Main::draw()
   ImGui::Text(creditsStr);
 
   ImGui::End();
-
-  if (wantsOpen && !fileSelectIsOpen) {
-    SDL_ShowOpenFolderDialog(cbOpenProject, nullptr, SDL_GL_GetCurrentWindow(), nullptr, false);
-    fileSelectIsOpen = true;
-  }
-
-  if (hasProjectPath) {
-    std::lock_guard lock{mtxProjectPath};
-    Actions::call(Actions::Type::PROJECT_OPEN, projectPath);
-    fileSelectIsOpen = false;
-    hasProjectPath = false;
-  }
 }

@@ -52,6 +52,8 @@ add_executable(p64editor src/main.cpp
         src/editor/imgui/theme.cpp
         src/editor/imgui/helper.h
         vendored/IconFontCppHeaders/IconsFontAwesome4.h
+        src/utils/filePicker.h
+        src/utils/filePicker.cpp
 )
 
 target_include_directories(p64editor PRIVATE vendored/imgui vendored/simdjson vendored/IconFontCppHeaders)
