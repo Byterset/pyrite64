@@ -15,6 +15,11 @@ namespace Project
       std::string path;
       std::string pathConfig;
 
+      void deserialize(const simdjson::simdjson_result<simdjson::dom::element> &doc);
+      std::string serialize() const;
+
+
+    public:
       struct
       {
         std::string name{};
@@ -24,11 +29,6 @@ namespace Project
         std::string pathN64Inst{};
       } conf{};
 
-      void deserialize(const simdjson::simdjson_result<simdjson::dom::element> &doc);
-      std::string serialize() const;
-
-
-    public:
       Project(const std::string &path);
 
       void save();

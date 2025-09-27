@@ -28,6 +28,8 @@ add_executable(p64editor src/main.cpp
         vendored/imgui/imgui_draw.cpp
         vendored/imgui/imgui_tables.cpp
         vendored/imgui/imgui_widgets.cpp
+        vendored/imgui/misc/cpp/imgui_stdlib.cpp
+        vendored/imgui/misc/cpp/imgui_stdlib.h
 
         # editor
         src/editor/pages/editorScene.h
@@ -46,9 +48,13 @@ add_executable(p64editor src/main.cpp
         src/editor/actions.h
         src/editor/actions.cpp
         src/utils/json.h
+        src/editor/imgui/theme.h
+        src/editor/imgui/theme.cpp
+        src/editor/imgui/helper.h
+        vendored/IconFontCppHeaders/IconsFontAwesome4.h
 )
 
-target_include_directories(p64editor PRIVATE vendored/imgui vendored/simdjson)
+target_include_directories(p64editor PRIVATE vendored/imgui vendored/simdjson vendored/IconFontCppHeaders)
 
 # Link to the actual SDL3 library.
 target_link_libraries(p64editor PRIVATE SDL3::SDL3 SDL3_image::SDL3_image)

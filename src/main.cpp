@@ -6,8 +6,10 @@
 #include <stdlib.h>
 #include <SDL3/SDL.h>
 #include <SDL3_image/SDL_image.h>
+#include "IconsFontAwesome4.h"
 
 #include "editor/actions.h"
+#include "editor/imgui/theme.h"
 #include "editor/pages/editorMain.h"
 #include "editor/pages/editorScene.h"
 #include "renderer/shader.h"
@@ -38,6 +40,8 @@ int main(int, char**)
   float main_scale = SDL_GetDisplayContentScale(SDL_GetPrimaryDisplay());
   SDL_WindowFlags window_flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIDDEN | SDL_WINDOW_HIGH_PIXEL_DENSITY;
   SDL_Window* window = SDL_CreateWindow("Pyrite64 - Editor", (int)(1280 * main_scale), (int)(800 * main_scale), window_flags);
+  ctx.window = window;
+
   if(window == nullptr)
   {
     printf("Error: SDL_CreateWindow(): %s\n", SDL_GetError());
@@ -91,8 +95,9 @@ int main(int, char**)
   io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
 
   // Setup Dear ImGui style
-  ImGui::StyleColorsDark();
+  //ImGui::StyleColorsDark();
   //ImGui::StyleColorsLight();
+  ImGui::applyTheme();
 
   // Setup scaling
   ImGuiStyle& style = ImGui::GetStyle();
@@ -112,6 +117,15 @@ int main(int, char**)
   style.FontSizeBase = 15.0f;
   ImFont* font = io.Fonts->AddFontFromFileTTF("./data/Altinn-DINExp.ttf");
   IM_ASSERT(font != nullptr);
+
+  static const ImWchar icons_ranges[] = { ICON_MIN_FA, ICON_MAX_16_FA, 0 };
+  ImFontConfig icons_config;
+  icons_config.MergeMode = true;
+  icons_config.PixelSnapH = true;
+  icons_config.GlyphMinAdvanceX = 15.0f;
+  font = io.Fonts->AddFontFromFileTTF("./data/fontawesome-webfont.ttf", 14, &icons_config, icons_ranges);
+  IM_ASSERT(font != nullptr);
+
   {
     Editor::Actions::init();
     Editor::Actions::registerAction(Editor::Actions::Type::PROJECT_OPEN, [](const std::string &path) {
@@ -120,6 +134,12 @@ int main(int, char**)
       ctx.project = new Project::Project(path);
       return true;
     });
+    Editor::Actions::registerAction(Editor::Actions::Type::PROJECT_CLOSE, [](const std::string&) {
+      delete ctx.project;
+      ctx.project = nullptr;
+      return true;
+    });
+
 
     // TEST:
     Editor::Actions::call(Editor::Actions::Type::PROJECT_OPEN, "/home/mbeboek/Documents/projects/pyrite64/n64/examples/hello_world");
