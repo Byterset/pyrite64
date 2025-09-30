@@ -12,8 +12,8 @@ namespace Project
 {
   enum class ComprTypes : int
   {
-    DEFAULT = -1,
-    LEVEL_0 = 0,
+    DEFAULT = 0,
+    LEVEL_0,
     LEVEL_1,
     LEVEL_2,
     LEVEL_3,
@@ -30,17 +30,22 @@ namespace Project
         MODEL_3D,
       };
 
+      struct AssetConf
+      {
+        int format{0};
+        int baseScale{0};
+        bool gltfBVH{0};
+        ComprTypes compression{ComprTypes::DEFAULT};
+      };
+
       struct Entry
       {
         uint64_t uuid{0};
         std::string name{};
         std::string path{};
         FileType type{};
-        // Generic settings
-        ComprTypes compression{ComprTypes::DEFAULT};
-
-        // Preview
         Renderer::Texture *texture{nullptr};
+        AssetConf conf{};
       };
 
     private:
@@ -61,5 +66,7 @@ namespace Project
         }
         return nullptr;
       }
+
+      void save();
   };
 }

@@ -70,7 +70,7 @@ void Editor::AssetsBrowser::draw()
 
     if(ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
     {
-      ImGui::SetTooltip("File: %s\nUUID: %08X-%08X", asset.name.c_str(),
+      ImGui::SetTooltip("File: %s\nUUID: %08lX-%08lX", asset.name.c_str(),
         asset.uuid >> 32, asset.uuid & 0xFFFFFFFF
       );
     }

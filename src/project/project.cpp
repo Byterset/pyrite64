@@ -3,12 +3,10 @@
 * @license MIT
 */
 #include "project.h"
-#include "simdjson.h"
 #include <optional>
 #include "../context.h"
 
 #include "../utils/json.h"
-#include "SDL3/SDL_iostream.h"
 
 using namespace simdjson;
 
@@ -44,4 +42,6 @@ Project::Project::Project(const std::string &path)
 void Project::Project::save() {
   auto json = serialize();
   SDL_SaveFile(pathConfig.c_str(), json.c_str(), json.size());
+
+  assets.save();
 }

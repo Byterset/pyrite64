@@ -72,7 +72,7 @@ void Editor::Scene::draw()
   ImGui::End();
 
   ImGui::Begin("Object");
-    ImGui::Text("Object");
+    ImGui::Text("Objects");
   ImGui::End();
 
   ImGui::Begin("Assets");

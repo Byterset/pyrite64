@@ -29,30 +29,36 @@ void Editor::AssetInspector::draw() {
   }
 
   ImGui::Text("File: %s", asset->name.c_str());
-  //ImGui::Text("Path: %s", asset->path.c_str());
+  if (ImGui::CollapsingHeader("Settings", ImGuiTreeNodeFlags_DefaultOpen)) {
+    ImGui::InpTable::start("Settings");
 
-  ImGui::Separator();
+    if (asset->type == FileType::IMAGE)
+    {
+      ImGui::InpTable::addComboBox("Format", asset->conf.format, Utils::TEX_TYPES, Utils::TEX_TYPE_COUNT);
+    }
+    else if (asset->type == FileType::MODEL_3D)
+    {
+      ImGui::InpTable::addInputInt("Base-Scale", asset->conf.baseScale);
+      ImGui::InpTable::addCheckBox("Create BVH", asset->conf.gltfBVH);
+    }
 
-  ImGui::InpTable::start("Settings");
-  if (asset->type == FileType::IMAGE) {
-    ImGui::InpTable::addComboBox("Format", Selecteditem, Utils::TEX_TYPES, Utils::TEX_TYPE_COUNT);
+    int idxCompr = static_cast<int>(asset->conf.compression);
+    const char* const ComprItems[] = {
+      "Project Default", "None",
+      "Level 1 - Fast",
+      "Level 2 - Good",
+      "Level 3 - High",
+    };
+    ImGui::InpTable::addComboBox("Compression", idxCompr, ComprItems, 5);
+    asset->conf.compression = static_cast<Project::ComprTypes>(idxCompr);
+
+    ImGui::InpTable::end();
   }
 
-  int idxCompr = static_cast<int>(asset->compression) + 1;
-  const char* const ComprItems[] = {
-    "Project Default", "None",
-    "Level 1 - Fast",
-    "Level 2 - Good",
-    "Level 3 - High",
-  };
-  ImGui::InpTable::addComboBox("Compression", idxCompr, ComprItems, 5);
-  asset->compression = static_cast<Project::ComprTypes>(idxCompr - 1);
-
-  ImGui::InpTable::end();
-
-  if (asset->type == FileType::IMAGE && asset->texture) {
-    ImGui::Separator();
-    ImGui::Image(ImTextureRef(asset->texture->getGPUTex()), asset->texture->getSize(4.0f));
-    ImGui::Text("%dx%dpx", asset->texture->getWidth(), asset->texture->getHeight());
+  if (ImGui::CollapsingHeader("Preview", ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (asset->type == FileType::IMAGE && asset->texture) {
+      ImGui::Image(ImTextureRef(asset->texture->getGPUTex()), asset->texture->getSize(4.0f));
+      ImGui::Text("%dx%dpx", asset->texture->getWidth(), asset->texture->getHeight());
+    }
   }
 }

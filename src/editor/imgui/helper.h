@@ -47,6 +47,39 @@ namespace ImGui::InpTable
       ImGui::Combo(labelHidden.c_str(), &itemCurrent, items, itemsCount);
   }
 
+  inline void addCheckBox(const std::string &name, bool &value) {
+    ImGui::TableNextRow();
+      ImGui::TableSetColumnIndex(0);
+      ImGui::AlignTextToFramePadding();
+      ImGui::Text(name.c_str());
+      ImGui::TableSetColumnIndex(1);
+
+      auto labelHidden = "##" + name;
+      ImGui::Checkbox(labelHidden.c_str(), &value);
+  }
+
+  inline void addInputFloat(const std::string &name, float &value) {
+    ImGui::TableNextRow();
+      ImGui::TableSetColumnIndex(0);
+      ImGui::AlignTextToFramePadding();
+      ImGui::Text(name.c_str());
+      ImGui::TableSetColumnIndex(1);
+
+      auto labelHidden = "##" + name;
+      ImGui::InputFloat(labelHidden.c_str(), &value);
+  }
+
+  inline void addInputInt(const std::string &name, int &value) {
+    ImGui::TableNextRow();
+    ImGui::TableSetColumnIndex(0);
+    ImGui::AlignTextToFramePadding();
+    ImGui::Text(name.c_str());
+    ImGui::TableSetColumnIndex(1);
+
+    auto labelHidden = "##" + name;
+    ImGui::InputInt(labelHidden.c_str(), &value);
+  }
+
   inline void addPath(const std::string &name, std::string &str, bool isDir = false) {
 
     ImGui::TableNextRow();

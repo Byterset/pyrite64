@@ -11,6 +11,7 @@
 #include "editor/pages/editorScene.h"
 #include "renderer/scene.h"
 #include "renderer/shader.h"
+#include "SDL3_image/SDL_image.h"
 #include "utils/filePicker.h"
 
 constinit Context ctx{};
@@ -45,6 +46,7 @@ int main(int, char**)
     return -1;
   }
 
+  SDL_SetWindowIcon(window, IMG_Load("data/img/windowIcon.png"));
   SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
   SDL_ShowWindow(window);
 
@@ -140,6 +142,13 @@ int main(int, char**)
         if(event.type == SDL_EVENT_QUIT)done = true;
         if(event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED && event.window.windowID == SDL_GetWindowID(window)) {
           done = true;
+        }
+
+        if (event.type == SDL_EVENT_KEY_DOWN)
+        {
+          if ((event.key.mod & SDL_KMOD_CTRL) && event.key.key == SDLK_S) {
+            if (ctx.project)ctx.project->save();
+          }
         }
         // Check: io.WantCaptureMouse, io.WantCaptureKeyboard
       }
