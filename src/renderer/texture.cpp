@@ -26,7 +26,7 @@ Renderer::Texture::Texture(SDL_GPUDevice* device, const std::string &imgPath, in
   height = img->h;
   char* image_data = (char*)img->pixels;
 
-  printf("Loaded %s: w/h: %dx%d, format: %s\n", imgPath.c_str(), width, height, SDL_GetPixelFormatName(img->format));
+  //printf("Loaded %s: w/h: %dx%d, format: %s\n", imgPath.c_str(), width, height, SDL_GetPixelFormatName(img->format));
 
   // Create texture
   SDL_GPUTextureCreateInfo texture_info = {};

@@ -12,7 +12,8 @@ namespace Editor::Actions
   enum class Type : uint8_t
   {
     PROJECT_OPEN,
-    PROJECT_CLOSE
+    PROJECT_CLOSE,
+    PROJECT_BUILD,
   };
 
   using ActionFn = std::function<bool(const std::string&)>;

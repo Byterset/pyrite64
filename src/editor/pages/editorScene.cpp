@@ -137,6 +137,12 @@ void Editor::Scene::draw()
       ImGui::EndMenu();
     }
 
+    if(ImGui::BeginMenu("Build"))
+    {
+      if(ImGui::MenuItem("Build"))Actions::call(Actions::Type::PROJECT_BUILD);
+      ImGui::EndMenu();
+    }
+
     if(ImGui::BeginMenu("View"))
     {
       if(ImGui::MenuItem("Reset Layout"))dockSpaceInit = false;

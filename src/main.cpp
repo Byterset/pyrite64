@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <SDL3/SDL.h>
 
+#include "build/projectBuilder.h"
 #include "editor/actions.h"
 #include "editor/imgui/theme.h"
 #include "editor/pages/editorMain.h"
@@ -121,6 +122,12 @@ int main(int, char**)
       ctx.project = nullptr;
       return true;
     });
+    Editor::Actions::registerAction(Editor::Actions::Type::PROJECT_BUILD, [](const std::string&) {
+      if (ctx.project) {
+        return Build::buildProject(*ctx.project);
+      }
+      return false;
+    });
 
     // TEST:
     Editor::Actions::call(Editor::Actions::Type::PROJECT_OPEN, "/home/mbeboek/Documents/projects/pyrite64/n64/examples/hello_world");
@@ -129,6 +136,8 @@ int main(int, char**)
     ctx.scene = &scene;
     Editor::Main editorMain{ctx.gpu};
     Editor::Scene editorScene{};
+
+    Editor::Actions::call(Editor::Actions::Type::PROJECT_BUILD);
 
     // Main loop
     bool done = false;
@@ -148,6 +157,10 @@ int main(int, char**)
         {
           if ((event.key.mod & SDL_KMOD_CTRL) && event.key.key == SDLK_S) {
             if (ctx.project)ctx.project->save();
+          }
+
+          if (!(event.key.mod & SDL_KMOD_CTRL) && event.key.key == SDLK_F12) {
+            Editor::Actions::call(Editor::Actions::Type::PROJECT_BUILD);
           }
         }
         // Check: io.WantCaptureMouse, io.WantCaptureKeyboard

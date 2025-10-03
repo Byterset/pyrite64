@@ -79,6 +79,10 @@ add_executable(p64editor src/main.cpp
         src/project/scene/scene.cpp
         src/editor/pages/parts/sceneInspector.cpp
         src/utils/color.h
+        src/build/projectBuilder.h
+        src/build/projectBuilder.cpp
+        src/utils/fs.h
+        src/utils/string.h
 )
 
 target_include_directories(p64editor PRIVATE
