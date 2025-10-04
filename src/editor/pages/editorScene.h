@@ -5,6 +5,7 @@
 #pragma once
 #include "parts/assetInspector.h"
 #include "parts/assetsBrowser.h"
+#include "parts/logWindow.h"
 #include "parts/sceneBrowser.h"
 #include "parts/sceneInspector.h"
 #include "parts/viewport3D.h"
@@ -19,6 +20,7 @@ namespace Editor
       SceneBrowser sceneBrowser{};
       AssetInspector assetInspector{};
       SceneInspector sceneInspector{};
+      LogWindow logWindow{};
 
       bool dockSpaceInit{false};
 

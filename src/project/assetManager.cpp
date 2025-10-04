@@ -7,6 +7,7 @@
 #include <filesystem>
 
 #include "SHA256.h"
+#include "../utils/fs.h"
 #include "../utils/hash.h"
 #include "../utils/json.h"
 
@@ -31,7 +32,7 @@ std::string Project::AssetManager::AssetConf::serialize() const {
 void Project::AssetManager::reload() {
   entries.clear();
 
-  auto assetPath = std::filesystem::path{ctx.project->getPath()} / "assets";
+  auto assetPath = std::filesystem::path{project->getPath()} / "assets";
   if (!std::filesystem::exists(assetPath)) {
     std::filesystem::create_directory(assetPath);
   }
@@ -91,6 +92,6 @@ void Project::AssetManager::save()
 
     auto pathMeta = entry.path + ".conf";
     auto json = entry.conf.serialize();
-    SDL_SaveFile(pathMeta.c_str(), json.c_str(), json.size());
+    Utils::FS::saveTextFile(pathMeta, entry.conf.serialize());
   }
 }

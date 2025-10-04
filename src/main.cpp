@@ -8,6 +8,7 @@
 #include "backends/imgui_impl_sdlgpu3.h"
 #include <stdio.h>
 #include <SDL3/SDL.h>
+#include <future>
 
 #include "build/projectBuilder.h"
 #include "editor/actions.h"
@@ -18,12 +19,22 @@
 #include "renderer/shader.h"
 #include "SDL3_image/SDL_image.h"
 #include "utils/filePicker.h"
+#include "utils/logger.h"
 #include "utils/proc.h"
 
 constinit Context ctx{};
 
 namespace {
   constinit SDL_GPUSampler *texSamplerRepeat{nullptr};
+  constinit std::future<void> futureBuildRun{};
+
+  bool isBuildOrRunning() {
+    if (futureBuildRun.valid()) {
+      auto state = futureBuildRun.wait_for(std::chrono::seconds(0));
+      return state != std::future_status::ready;
+    }
+    return false;
+  }
 }
 
 void ImDrawCallback_ImplSDLGPU3_SetSamplerRepeat(const ImDrawList* parent_list, const ImDrawCmd* cmd) {
@@ -117,7 +128,7 @@ int main(int, char**)
   {
     Editor::Actions::init();
     Editor::Actions::registerAction(Editor::Actions::Type::PROJECT_OPEN, [](const std::string &path) {
-      printf("Action: Open project: %s\n", path.c_str());
+      Utils::Logger::log("Open Project: " + path);
       delete ctx.project;
       ctx.project = new Project::Project(path);
       return true;
@@ -127,20 +138,29 @@ int main(int, char**)
       ctx.project = nullptr;
       return true;
     });
-    Editor::Actions::registerAction(Editor::Actions::Type::PROJECT_BUILD, [](const std::string&) {
-      if (ctx.project) {
-        return Build::buildProject(*ctx.project);
-      }
-      return false;
-    });
-    Editor::Actions::registerAction(Editor::Actions::Type::GAME_RUN, [](const std::string&) {
+    Editor::Actions::registerAction(Editor::Actions::Type::PROJECT_BUILD, [](const std::string& arg) {
+      if (ctx.isBuildOrRunning)return false;
       if (!ctx.project)return false;
-      auto cmd = ctx.project->conf.pathEmu + " " + ctx.project->getPath() + "/" + ctx.project->conf.romName + ".z64";
-      printf("Running command: %s\n", cmd.c_str());
-      auto res = Utils::Proc::runSync(cmd);
-      printf("Run result: %s\n", res.c_str());
+
+      std::string runCmd{};
+      if (arg == "run") {
+        runCmd = ctx.project->conf.pathEmu + " " + ctx.project->getPath()
+          + "/" + ctx.project->conf.romName + ".z64";
+      }
+
+      ctx.isBuildOrRunning = true;
+      futureBuildRun = std::async(std::launch::async, [] (std::string path, std::string runCmd)
+      {
+        Build::buildProject(path);
+        if (!runCmd.empty()) {
+          Utils::Proc::runSyncLogged(runCmd);
+        }
+      }, ctx.project->getPath(), runCmd);
+
       return true;
     });
+
+    Utils::Logger::clear();
 
     // TEST:
     Editor::Actions::call(Editor::Actions::Type::PROJECT_OPEN, "/home/mbeboek/Documents/projects/pyrite64/n64/examples/hello_world");
@@ -150,13 +170,16 @@ int main(int, char**)
     Editor::Main editorMain{ctx.gpu};
     Editor::Scene editorScene{};
 
-    Editor::Actions::call(Editor::Actions::Type::PROJECT_BUILD);
+    ctx.project->getScenes().loadScene(1);
+    //Editor::Actions::call(Editor::Actions::Type::PROJECT_BUILD);
     //Editor::Actions::call(Editor::Actions::Type::GAME_RUN);
 
     // Main loop
     bool done = false;
-    while(!done)
-    {
+    while(!done) {
+
+      ctx.isBuildOrRunning = isBuildOrRunning();
+      printf("Frame Start | Time: %.2fms\n", ImGui::GetIO().DeltaTime * 1000.0f);
       SDL_Event event;
       while (SDL_PollEvent(&event))
       {
@@ -178,8 +201,7 @@ int main(int, char**)
           }
 
           if (!(event.key.mod & SDL_KMOD_CTRL) && event.key.key == SDLK_F12) {
-            Editor::Actions::call(Editor::Actions::Type::PROJECT_BUILD);
-            Editor::Actions::call(Editor::Actions::Type::GAME_RUN);
+            Editor::Actions::call(Editor::Actions::Type::PROJECT_BUILD, "run");
           }
         }
         // Check: io.WantCaptureMouse, io.WantCaptureKeyboard

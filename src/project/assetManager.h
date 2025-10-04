@@ -10,6 +10,8 @@
 
 namespace Project
 {
+  class Project;
+
   enum class ComprTypes : int
   {
     DEFAULT = 0,
@@ -51,9 +53,12 @@ namespace Project
       };
 
     private:
+      Project *project;
       std::vector<Entry> entries{};
 
     public:
+      AssetManager(Project *pr) : project{pr} {}
+
       void reload();
 
       [[nodiscard]] const std::vector<Entry>& getEntries() const {

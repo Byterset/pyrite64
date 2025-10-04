@@ -28,8 +28,8 @@ namespace Project
       std::string path;
       std::string pathConfig;
 
-      AssetManager assets{};
-      SceneManager scenes{};
+      AssetManager assets{this};
+      SceneManager scenes{this};
 
       void deserialize(const simdjson::simdjson_result<simdjson::dom::element> &doc);
 

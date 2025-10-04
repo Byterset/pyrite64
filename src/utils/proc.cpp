@@ -7,6 +7,8 @@
 #include <fstream>
 #include <memory>
 
+#include "logger.h"
+
 namespace
 {
   constexpr uint32_t BUFF_SIZE = 128;
@@ -27,4 +29,18 @@ std::string Utils::Proc::runSync(const std::string &cmd)
     }
   }
   return result;
+}
+
+bool Utils::Proc::runSyncLogged(const std::string&cmd) {
+  FILE* pipe = popen(cmd.c_str(), "r");
+  if(!pipe)return "";
+
+  char buffer[BUFF_SIZE];
+  while(!feof(pipe))
+  {
+    if(fgets(buffer, BUFF_SIZE, pipe) != nullptr) {
+      Logger::logRaw(buffer);
+    }
+  }
+  return pclose(pipe) == 0;
 }

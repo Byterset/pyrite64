@@ -3,6 +3,7 @@
 * @license MIT
 */
 #pragma once
+#include "fs.h"
 #include "simdjson.h"
 #include "SDL3/SDL_iostream.h"
 
@@ -11,15 +12,13 @@ namespace Utils::JSON
   inline simdjson::dom::parser parser{};
 
   inline simdjson::simdjson_result<simdjson::dom::element> loadFile(const std::string &path) {
-    auto jsonData = (char*)SDL_LoadFile(path.c_str(), nullptr);
+    auto jsonData = FS::loadTextFile(path);
 
-    if (!jsonData) {
-      SDL_free(jsonData);
+    if (jsonData.empty()) {
       return {};
     }
 
     auto doc = parser.parse(std::string_view{jsonData});
-    SDL_free(jsonData);
     return doc;
   }
 

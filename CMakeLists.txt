@@ -89,6 +89,10 @@ add_executable(p64editor src/main.cpp
         src/utils/binaryFile.h
         src/build/sceneContext.h
         src/build/stringTable.h
+        src/utils/logger.h
+        src/utils/logger.cpp
+        src/editor/pages/parts/logWindow.cpp
+        src/editor/pages/parts/logWindow.h
 )
 
 target_include_directories(p64editor PRIVATE

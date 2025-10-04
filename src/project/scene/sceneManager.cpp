@@ -3,13 +3,13 @@
 * @license MIT
 */
 #include "./sceneManager.h"
-#include "../../context.h"
+#include "../project.h"
 #include <filesystem>
 
 namespace
 {
-  std::string getScenePath() {
-    auto scenesPath = ctx.project->getPath() + "/data/scenes";
+  std::string getScenePath(Project::Project *project) {
+    auto scenesPath = project->getPath() + "/data/scenes";
     if (!std::filesystem::exists(scenesPath)) {
       std::filesystem::create_directory(scenesPath);
     }
@@ -20,9 +20,8 @@ namespace
 void Project::SceneManager::reload()
 {
   entries.clear();
-  if (!ctx.project)return;
 
-  auto scenesPath = getScenePath();
+  auto scenesPath = getScenePath(project);
 
   // list directories
   for (const auto &entry : std::filesystem::directory_iterator{scenesPath}) {
@@ -40,11 +39,6 @@ void Project::SceneManager::reload()
 
 }
 
-Project::SceneManager::SceneManager()
-{
-  reload();
-}
-
 Project::SceneManager::~SceneManager() {
   delete loadedScene;
 }
@@ -56,7 +50,7 @@ void Project::SceneManager::save() {
 }
 
 void Project::SceneManager::add() {
-  auto scenesPath = getScenePath();
+  auto scenesPath = getScenePath(project);
   int newId = 1;
   for (const auto &entry : entries) {
     if (entry.id >= newId) {

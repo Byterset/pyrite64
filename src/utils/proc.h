@@ -8,4 +8,5 @@
 namespace Utils::Proc
 {
   std::string runSync(const std::string &cmd);
+  bool runSyncLogged(const std::string &cmd);
 }

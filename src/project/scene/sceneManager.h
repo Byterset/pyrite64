@@ -10,6 +10,8 @@
 
 namespace Project
 {
+  class Project;
+
   struct SceneEntry
   {
     int id{};
@@ -20,10 +22,14 @@ namespace Project
   {
     private:
       std::vector<SceneEntry> entries{};
+      Project *project;
       Scene *loadedScene{nullptr};
 
     public:
-      SceneManager();
+      SceneManager(Project *pr) : project{pr} {
+        reload();
+      }
+
       ~SceneManager();
 
       void reload();

@@ -9,5 +9,5 @@
 namespace Build
 {
   void buildScene(Project::Project &project, const Project::SceneEntry &scene, SceneCtx &ctx);
-  bool buildProject(Project::Project &project);
+  bool buildProject(std::string path);
 }

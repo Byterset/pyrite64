@@ -5,7 +5,9 @@
 #include "projectBuilder.h"
 
 #include <filesystem>
+#include <thread>
 #include "../utils/fs.h"
+#include "../utils/logger.h"
 #include "../utils/proc.h"
 #include "../utils/string.h"
 #include "../utils/textureFormats.h"
@@ -88,10 +90,10 @@ namespace
   }
 }
 
-bool Build::buildProject(Project::Project &project) {
-
-  auto path = project.getPath();
-  printf("Building project (%s)...\n", path.c_str());
+bool Build::buildProject(std::string path)
+{
+  Project::Project project{path};
+  Utils::Logger::log("Building project...");
 
   auto enginePath = fs::current_path() / "n64" / "engine";
   enginePath = fs::absolute(enginePath);
@@ -101,7 +103,7 @@ bool Build::buildProject(Project::Project &project) {
     fs::create_directories(fsDataPath);
   }
 
-  SceneCtx sceneCtx{};
+  Build::SceneCtx sceneCtx{};
 
   // Scenes
   project.getScenes().reload();
@@ -122,16 +124,15 @@ bool Build::buildProject(Project::Project &project) {
 
   auto oldMakefile = Utils::FS::loadTextFile(path + "/Makefile");
   if (oldMakefile != makefile) {
-    printf("Makefile changed, clean build\n");
+    Utils::Logger::log("Makefile changed, clean build");
 
     Utils::FS::saveTextFile(path + "/Makefile", makefile);
-    auto res = Utils::Proc::runSync("make -C \"" + path + "\" clean");
-    printf("Make-Clean: %s\n", res.c_str());
+    Utils::Proc::runSyncLogged("make -C \"" + path + "\" clean");
   }
 
   // Build
-  auto res = Utils::Proc::runSync("make -C \"" + path + "\" -j8");
-  printf("Make: %s\n", res.c_str());
+  Utils::Proc::runSyncLogged("make -C \"" + path + "\" -j8");
 
+  Utils::Logger::log("Build done!");
   return true;
 }

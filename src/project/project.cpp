@@ -5,6 +5,7 @@
 #include "project.h"
 #include <optional>
 #include "../context.h"
+#include "../utils/fs.h"
 
 #include "../utils/json.h"
 
@@ -37,17 +38,13 @@ void Project::Project::deserialize(const simdjson_result<dom::element> &doc) {
 Project::Project::Project(const std::string &path)
   : path{path}, pathConfig{path + "/project.json"}
 {
-  assert(ctx.project == nullptr);
-  ctx.project = this;
   deserialize(Utils::JSON::loadFile(pathConfig));
   assets.reload();
   scenes.reload();
 }
 
 void Project::Project::save() {
-  auto json = conf.serialize();
-  SDL_SaveFile(pathConfig.c_str(), json.c_str(), json.size());
-
+  Utils::FS::saveTextFile(pathConfig, conf.serialize());
   assets.save();
   scenes.save();
 }

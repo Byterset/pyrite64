@@ -14,7 +14,6 @@ namespace Editor::Actions
     PROJECT_OPEN,
     PROJECT_CLOSE,
     PROJECT_BUILD,
-    GAME_RUN,
   };
 
   using ActionFn = std::function<bool(const std::string&)>;
