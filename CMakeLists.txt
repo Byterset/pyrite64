@@ -100,6 +100,7 @@ target_include_directories(p64editor PRIVATE
     vendored/simdjson
     vendored/IconFontCppHeaders
     vendored/SHA256/include
+    vendored/ImGuiTextSelect
 )
 
 # Link to the actual SDL3 library.

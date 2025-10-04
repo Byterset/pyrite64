@@ -6,6 +6,11 @@
 #include "imgui.h"
 #include "IconsFontAwesome4.h"
 
+namespace
+{
+  constinit ImFont* fontMono{nullptr};
+}
+
 void ImGui::applyTheme()
 {
   ImGuiStyle &style = ImGui::GetStyle();
@@ -97,4 +102,11 @@ void ImGui::loadFonts(float contentScale) {
   icons_config.GlyphMinAdvanceX = 15.0f;
   font = io.Fonts->AddFontFromFileTTF("./data/fontawesome-webfont.ttf", 14, &icons_config, icons_ranges);
   IM_ASSERT(font != nullptr);
+
+  fontMono = io.Fonts->AddFontFromFileTTF("./data/GoogleSansCode.ttf", 16);
+  IM_ASSERT(fontMono != nullptr);
+}
+
+ImFont* ImGui::getFontMono() {
+  return fontMono;
 }
