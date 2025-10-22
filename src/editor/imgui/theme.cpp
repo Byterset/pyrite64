@@ -5,6 +5,7 @@
 #include "theme.h"
 #include "imgui.h"
 #include "IconsFontAwesome4.h"
+#include "ImGuizmo.h"
 
 namespace
 {
@@ -83,6 +84,23 @@ void ImGui::applyTheme()
   style.FramePadding = ImVec2(6, 4);
   style.ItemSpacing = ImVec2(8, 6);
   style.PopupBorderSize = 0.f;
+
+  // Guizmos
+  auto &gStyle = ImGuizmo::GetStyle();
+  float col1 = 0.9f;
+  float col0 = 0.4f;
+
+  gStyle.Colors[ImGuizmo::COLOR::DIRECTION_X] = {col1,col0,col0,1};
+  gStyle.Colors[ImGuizmo::COLOR::DIRECTION_Y] = {col0,col1,col0, 1.0f};
+  gStyle.Colors[ImGuizmo::COLOR::DIRECTION_Z] = {col0,col0,col1,1};
+  gStyle.Colors[ImGuizmo::COLOR::PLANE_X] = gStyle.Colors[ImGuizmo::COLOR::DIRECTION_X];
+  gStyle.Colors[ImGuizmo::COLOR::PLANE_Y] = gStyle.Colors[ImGuizmo::COLOR::DIRECTION_Y];
+  gStyle.Colors[ImGuizmo::COLOR::PLANE_Z] = gStyle.Colors[ImGuizmo::COLOR::DIRECTION_Z];
+
+  gStyle.TranslationLineThickness = 4;
+  gStyle.TranslationLineArrowSize = 7;
+
+  ImGuizmo::SetGizmoSizeClipSpace(0.14f);
 }
 
 void ImGui::loadFonts(float contentScale) {

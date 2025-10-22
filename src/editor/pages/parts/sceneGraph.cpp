@@ -12,7 +12,7 @@ namespace
 {
   Project::Object* deleteObj{nullptr};
 
-  void drawObjectNode(Project::Scene &scene, Project::Object &obj)
+  void drawObjectNode(Project::Scene &scene, Project::Object &obj, bool keyDelete)
   {
     ImGuiTreeNodeFlags flag = ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_OpenOnArrow
       | ImGuiTreeNodeFlags_OpenOnDoubleClick | ImGuiTreeNodeFlags_DrawLinesFull;
@@ -26,13 +26,13 @@ namespace
       flag |= ImGuiTreeNodeFlags_Selected;
     }
 
+    if (isSelected && obj.parent && keyDelete) {
+      deleteObj = &obj;
+    }
+
     auto nameID = obj.name + "##" + std::to_string(obj.uuid);
     if(ImGui::TreeNodeEx(nameID.c_str(), flag))
     {
-      if (obj.parent && (ImGui::IsKeyPressed(ImGuiKey_Delete) || ImGui::IsKeyPressed(ImGuiKey_Backspace))) {
-        deleteObj = &obj;
-      }
-
       if (ImGui::IsItemClicked(ImGuiMouseButton_Left)) {
         ctx.selObjectUUID = obj.uuid;
         ImGui::SetWindowFocus("Object");
@@ -57,7 +57,7 @@ namespace
       }
 
       for(auto &child : obj.children) {
-        drawObjectNode(scene, *child);
+        drawObjectNode(scene, *child, keyDelete);
       }
 
       ImGui::TreePop();
@@ -69,6 +69,8 @@ void Editor::SceneGraph::draw()
 {
   auto scene = ctx.project->getScenes().getLoadedScene();
   if (!scene)return;
+
+  bool isFocus = ImGui::IsWindowFocused();
 
   // Menu
   if(ImGui::BeginMenuBar())
@@ -85,8 +87,10 @@ void Editor::SceneGraph::draw()
   //style.IndentSpacing
   ImGui::PushStyleVar(ImGuiStyleVar_IndentSpacing, 18.0f);
 
+  bool keyDelete = isFocus && (ImGui::IsKeyPressed(ImGuiKey_Delete) || ImGui::IsKeyPressed(ImGuiKey_Backspace));
+
   auto &root = scene->getRootObject();
-  drawObjectNode(*scene, root);
+  drawObjectNode(*scene, root, keyDelete);
 
   ImGui::PopStyleVar();
 
