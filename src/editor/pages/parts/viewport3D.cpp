@@ -168,7 +168,9 @@ void Editor::Viewport3D::onRenderPass(SDL_GPUCommandBuffer* cmdBuff, Renderer::S
   meshLines->recreate(renderScene);
 
   renderScene.getPipeline("lines").bind(renderPass3D);
-  objGrid.draw(renderPass3D, cmdBuff);
+  if (showGrid) {
+    objGrid.draw(renderPass3D, cmdBuff);
+  }
   objLines.draw(renderPass3D, cmdBuff);
 
   SDL_EndGPURenderPass(renderPass3D);
@@ -273,6 +275,12 @@ void Editor::Viewport3D::draw()
     }
   }
 
+  ImGui::SameLine();
+
+  if(ConnectedToggleButton("Grid", showGrid, true, true, ImVec2(32,24))) {
+    showGrid = !showGrid;
+  }
+
   ImGui::SetCursorPosY(currPos.y + BAR_HEIGHT);
 
   auto dragDelta = mousePos - mousePosStart;
@@ -327,12 +335,6 @@ void Editor::Viewport3D::draw()
       isSnap ? glm::value_ptr(snap) : nullptr
     );
 
-    /*ImGuizmo::DecomposeMatrixToComponents(
-      glm::value_ptr(gizmoMat),
-      glm::value_ptr(obj->pos),
-      glm::value_ptr(dummyRot),
-      glm::value_ptr(obj->scale)
-    );*/
     glm::decompose(
       gizmoMat,
       obj->scale,
@@ -341,13 +343,6 @@ void Editor::Viewport3D::draw()
       skew, persp
     );
   }
-
-  /*ImGuizmo::DrawGrid(
-    glm::value_ptr(uniGlobal.cameraMat),
-    glm::value_ptr(uniGlobal.projMat),
-    glm::value_ptr(unit),
-    10.0f
-  );*/
 
   if (ImViewGuizmo::Rotate(camera.posOffset, camera.rot, gizPos)) {
 

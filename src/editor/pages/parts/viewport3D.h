@@ -37,6 +37,8 @@ namespace Editor
       std::shared_ptr<Renderer::Mesh> meshLines{};
       Renderer::Object objLines{};
 
+      bool showGrid{true};
+
       void onRenderPass(SDL_GPUCommandBuffer* cmdBuff, Renderer::Scene& renderScene);
       void onCopyPass(SDL_GPUCommandBuffer* cmdBuff, SDL_GPUCopyPass *copyPass);
       void onPostRender(Renderer::Scene& renderScene);
