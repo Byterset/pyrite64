@@ -89,16 +89,20 @@ void Renderer::N64Mesh::draw(SDL_GPURenderPass* pass, SDL_GPUCommandBuffer *cmdB
 {
   for (auto &part : parts) {
     uniforms.mat = part.material;
+
+    // @TODO: lighting
+    uniforms.mat.ambientColor = {1.0f, 1.0f, 1.0f, 1.0f};
+    float clip = uniforms.mat.lightDir[0].w;
+    uniforms.mat.lightDir[0] = {-0.5761589407920837, 0.5761589407920837, -0.5797256231307983, clip};
+    uniforms.mat.lightColor[0] = {0.4564082622528076f, 0.3231435716152191f, 0.25415223836898804f, 1.0f};
+    uniforms.mat.lightDir[1] = {0.5773502588272095, -0.5773502588272095, 0.5773502588272095, 0};
+    uniforms.mat.lightColor[1] = {0.006995340343564749f, 0.006995401345193386f, 0.04518621787428856f, 1.0f};
+
     SDL_BindGPUFragmentSamplers(pass, 0, part.texBindings, 2);
     SDL_BindGPUVertexSamplers(pass, 0, part.texBindings, 2); // needed?
 
     SDL_PushGPUVertexUniformData(cmdBuff, 1, &uniforms, sizeof(uniforms));
     SDL_PushGPUFragmentUniformData(cmdBuff, 0, &uniforms, sizeof(uniforms));
-
-    // @TODO: lighting
-    uniforms.mat.ambientColor = {0.2f, 0.2f, 0.2f, 1.0f};
-    uniforms.mat.lightColor[0] = {0,0,0,1};
-    uniforms.mat.lightColor[1] = {0,0,0,1};
 
     mesh.draw(pass, part.indicesOffset, part.indicesCount);
   }

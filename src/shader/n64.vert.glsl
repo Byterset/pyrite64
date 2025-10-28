@@ -1,6 +1,6 @@
 #version 460
 
-layout (location = 0) in ivec3 inPosition;
+layout (location = 0) in ivec4 inPosition;
 //layout (location = 1) in vec2 inNorm;
 layout (location = 1) in vec4 inColor;
 layout (location = 2) in ivec2 inUV;
@@ -31,18 +31,27 @@ layout(set = 2, binding = 1) uniform sampler2D tex1;
 
 #include "./utils.glsl"
 
+vec3 unpackNormals(int packed)
+{
+  // extract bits
+  ivec3 comp = packed.xxx >> ivec3(11, 5, 0);
+  comp &= ivec3(0x1F, 0x3F, 0x1F);
+  // sign extend
+  comp = (comp << ivec3(27, 26, 27)) >> ivec3(27, 26, 27);
+  // normalize to [-1, 1]
+  return vec3(comp) / vec3(15.0, 31.0, 15.0);
+}
+
 void main()
 {
   mat4 matMVP = projMat * cameraMat * material.modelMat;
   // @TODO: do on CPU:
   mat3 matNorm = mat3(transpose(inverse(material.modelMat)));
 
-  //posNorm /= 32768.0;
-
-  vec2 uvPixel = (vec2(inUV) / float(1 << 5)); // @TODO: <-
+  vec2 uvPixel = (vec2(inUV) / float(1 << 5));
   v_objectID = material.objectID;
 
-  vec3 inNormal = vec3(0,1,0); // @TODO: <-
+  vec3 inNormal = unpackNormals(inPosition.w);
 
   // Directional light
   vec3 norm = inNormal;
@@ -50,10 +59,12 @@ void main()
 
   cc_shade = inColor;
 
-  vec4 lightTotal = vec4(linearToGamma(material.ambientColor.rgb), 0.0);
+  //vec4 lightTotal = vec4(linearToGamma(material.ambientColor.rgb), 0.0);
+  vec4 lightTotal = vec4(material.ambientColor.rgb, 0.0);
   for(int i=0; i<2; ++i) {
     float lightStren = max(dot(norm, material.lightDir[i].xyz), 0.0);
-    vec4 colorNorm = vec4(linearToGamma(material.lightColor[i].rgb), 1.0);
+    //vec4 colorNorm = vec4(linearToGamma(material.lightColor[i].rgb), 1.0);
+    vec4 colorNorm = vec4(material.lightColor[i].rgb, 1.0);
     lightTotal += colorNorm * lightStren;
   }
 
@@ -61,8 +72,12 @@ void main()
   lightTotal.a = 1.0;
 
   vec3 shadeWithLight = cc_shade.rgb * lightTotal.rgb;
-  cc_shade.rgb = geoModeSelect(G_LIGHTING, cc_shade.rgb, shadeWithLight);
+
+  // cc_shade.rgb = geoModeSelect(G_LIGHTING, cc_shade.rgb, shadeWithLight);
+  cc_shade.rgb = shadeWithLight;
+
   cc_shade = clamp(cc_shade, 0.0, 1.0);
+  // cc_shade.rgb = norm * 0.5 + 0.5; // TEST
   cc_shade_flat = cc_shade;
 
   vec2 uvGen = geoModeSelect(G_TEX_GEN, uvPixel, normScreen.xy * 0.5 + 0.5);
