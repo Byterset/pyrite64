@@ -182,6 +182,11 @@ void Editor::Viewport3D::onRenderPass(SDL_GPUCommandBuffer* cmdBuff, Renderer::S
         def.funcDraw3D(*child, comp, *this, cmdBuff, renderPass3D);
       }
     }
+
+    if(child->components.empty())
+    {
+      Utils::Mesh::addSprite(*getSprites(), child->pos, child->uuid, 2);
+    }
     //child.draw(renderPass3D, cmdBuff);
   }
 
