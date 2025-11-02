@@ -78,14 +78,14 @@ namespace Utils::JSON
     return (float)(*f);
   }
 
-  inline bool readBool(const simdjson::simdjson_result<simdjson::dom::element> &el, const std::string &key) {
+  inline bool readBool(const simdjson::simdjson_result<simdjson::dom::element> &el, const std::string &key, bool defValue = false) {
     auto val = el[key];
     if (val.error() != simdjson::SUCCESS) {
-      return false;
+      return defValue;
     }
     auto b = val.get_bool();
     if (b.error() != simdjson::SUCCESS) {
-      return false;
+      return defValue;
     }
     return *b;
   }
