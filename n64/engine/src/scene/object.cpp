@@ -5,6 +5,7 @@
 #include "scene/object.h"
 
 #include "scene/componentTable.h"
+#include "scene/sceneManager.h"
 
 P64::Object::~Object()
 {
@@ -14,4 +15,9 @@ P64::Object::~Object()
     char* dataPtr = (char*)this + compRefs[i].offset;
     compDef.initDel(*this, dataPtr, nullptr);
   }
+}
+
+void P64::Object::remove()
+{
+  SceneManager::getCurrent().removeObject(*this);
 }

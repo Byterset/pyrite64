@@ -14,9 +14,6 @@ namespace P64::Script::C54E2E8B498612FE
   void update(Object& obj, Data *data)
   {
     auto pressed = joypad_get_buttons_pressed(JOYPAD_PORT_1);
-    if(pressed.z)
-    {
-      SceneManager::getCurrent().removeObject(obj);
-    }
+    if(pressed.z)obj.remove();
   }
 }
