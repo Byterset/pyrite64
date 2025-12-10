@@ -3,6 +3,9 @@
 * @license MIT
 */
 #include "project.h"
+
+#include <filesystem>
+
 #include "../utils/fs.h"
 
 #include "../utils/json.h"
@@ -29,6 +32,19 @@ void Project::Project::deserialize(const simdjson_result<dom::element> &doc) {
 Project::Project::Project(const std::string &path)
   : path{path}, pathConfig{path + "/project.json"}
 {
+  Utils::FS::ensureDir(path);
+  Utils::FS::ensureDir(path + "/data");
+  Utils::FS::ensureDir(path + "/data/scenes");
+  Utils::FS::ensureDir(path + "/assets");
+  Utils::FS::ensureDir(path + "/assets/p64");
+  Utils::FS::ensureDir(path + "/src");
+  Utils::FS::ensureDir(path + "/src/p64");
+  Utils::FS::ensureDir(path + "/src/user");
+
+  Utils::FS::ensureFile(path + "/.gitignore", "data/build/baseGitignore");
+  Utils::FS::ensureFile(path + "/Makefile.custom", "data/build/baseMakefile.custom");
+  Utils::FS::ensureFile(path + "/assets/p64/font.ia4.png", "data/build/assets/font.ia4.png");
+
   deserialize(Utils::JSON::loadFile(pathConfig));
   assets.reload();
   scenes.reload();

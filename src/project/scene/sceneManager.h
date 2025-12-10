@@ -27,7 +27,6 @@ namespace Project
 
     public:
       SceneManager(Project *pr) : project{pr} {
-        reload();
       }
 
       ~SceneManager();

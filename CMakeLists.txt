@@ -159,6 +159,7 @@ add_executable(p64editor src/main.cpp
         src/editor/imgui/helper.cpp
         src/editor/imgui/helper.cpp
         n64/engine/include/scene/objectFlags.h
+        src/utils/fs.cpp
 )
 
 target_include_directories(p64editor PRIVATE

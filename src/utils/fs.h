@@ -3,6 +3,7 @@
 * @license MIT
 */
 #pragma once
+#include <string>
 
 namespace Utils::FS
 {
@@ -29,4 +30,7 @@ namespace Utils::FS
     fwrite(content.data(), 1, content.size(), file);
     fclose(file);
   }
+
+  void ensureDir(const std::string &path);
+  void ensureFile(const std::string &path, const std::string &pathTemplate);
 }

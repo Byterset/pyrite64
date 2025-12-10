@@ -18,11 +18,6 @@
 #include "scene/componentTable.h"
 #include "script/scriptTable.h"
 
-namespace
-{
-  sprite_t *sprite{nullptr};
-}
-
 P64::Scene::Scene(uint16_t sceneId, Scene** ref)
   : id{sceneId}
 {
@@ -32,8 +27,6 @@ P64::Scene::Scene(uint16_t sceneId, Scene** ref)
 
   state.screenSize[0] = conf.screenWidth;
   state.screenSize[1] = conf.screenHeight;
-
-  sprite = sprite_load("rom:/unit1m.i8.sprite");
 
   tex_format_t fmt = (conf.flags & SceneConf::FLAG_SCR_32BIT) ? FMT_RGBA32 : FMT_RGBA16;
   for(auto &fb : surfFbColor) {
@@ -56,7 +49,6 @@ P64::Scene::Scene(uint16_t sceneId, Scene** ref)
 P64::Scene::~Scene()
 {
   rspq_wait();
-  sprite_free(sprite);
 
   if (dplObjects)rspq_block_free(dplObjects);
 
@@ -179,7 +171,6 @@ void P64::Scene::draw([[maybe_unused]] float deltaTime)
 
   rdpq_sync_load();
   rdpq_sync_tile();
-  rdpq_sprite_blit(sprite, 16, 16, nullptr);
 
   Debug::printStart();
   Debug::printf(16, 16, "FPS: %.2f\n", (double)VI::SwapChain::getFPS());
