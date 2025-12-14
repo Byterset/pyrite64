@@ -109,6 +109,7 @@ void main()
 
   if((DRAW_FLAGS & DRAW_SHADER_COLLISION) != 0) {
     cc_shade_flat.rgb = norm * 0.5 + 0.5;
+    cc_shade_flat.a = 0.75;
     gl_Position.z -= 0.0001;
   }
 }

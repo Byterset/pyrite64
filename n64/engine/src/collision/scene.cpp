@@ -118,20 +118,6 @@ void Coll::Scene::update(float deltaTime)
     // Static/Triangle mesh collision
     bool checkColl = bcsA->maskRead & Mask::TRI_MESH;
 
-    // first check for void-sphere, those cut-out a section of geometry...
-    if(checkColl) {
-      for(uint32_t v=0; v<VOID_SPHERE_COUNT; ++v) {
-        float radSum = voidSpheres[v].getRadius();
-        if(radSum <= 0)continue;
-        auto dist2 = t3d_vec3_distance2(voidSpheres[v].center, bcsA->center);
-        if(dist2 < radSum * radSum) {
-          checkColl = false;
-          bcsA->center += bcsA->velocity * deltaTime;
-          break;
-        }
-      }
-    }
-
     // ...if we are not inside one, check actual mesh data
     if(checkColl) {
       auto res = vsBCS(*bcsA, bcsA->velocity, deltaTime);
@@ -177,8 +163,9 @@ void Coll::Scene::update(float deltaTime)
       }
 
       if(isColl) {
-        if(bcsA->callback && maskMatchA)bcsA->callback(*bcsB);
-        if(bcsB->callback && maskMatchB)bcsB->callback(*bcsA);
+        // @TODO:
+        //if(bcsA->callback && maskMatchA)bcsA->callback(*bcsB);
+        //if(bcsB->callback && maskMatchB)bcsB->callback(*bcsA);
       }
     }
   }
@@ -255,18 +242,6 @@ Coll::RaycastRes Coll::Scene::raycastFloor(const T3DVec3 &pos) {
     }
   }
 
-  if (res.hasResult()) {
-    for(uint32_t v=0; v<VOID_SPHERE_COUNT; ++v) {
-      float radSum = voidSpheres[v].halfExtend.y;
-      if(radSum <= 0)continue;
-      auto dist2 = t3d_vec3_distance2(voidSpheres[v].center, res.hitPos);
-      if(dist2 < radSum * radSum) {
-        res.normal = {0.0f, 0.0f, 0.0f};
-        return res;
-      }
-    }
-  }
-
   return res;
 }
 
@@ -279,9 +254,9 @@ void Coll::Scene::debugDraw(bool showMesh, bool showSpheres)
         int idxA = mesh.indices[t*3];
         int idxB = mesh.indices[t*3+1];
         int idxC = mesh.indices[t*3+2];
-        auto v0 = (mesh.verts[idxA] + meshInst->pos) * 16.0f;
-        auto v1 = (mesh.verts[idxB] + meshInst->pos) * 16.0f;
-        auto v2 = (mesh.verts[idxC] + meshInst->pos) * 16.0f;
+        auto v0 = (mesh.verts[idxA] + meshInst->pos);
+        auto v1 = (mesh.verts[idxB] + meshInst->pos);
+        auto v2 = (mesh.verts[idxC] + meshInst->pos);
 
         if(mesh.normals[t].v[2] < 0)continue;
         auto color = isFloor(mesh.normals[t])
@@ -309,27 +284,10 @@ void Coll::Scene::debugDraw(bool showMesh, bool showSpheres)
       }
 
       if(sphere->flags & BCSFlags::SHAPE_BOX) {
-        Debug::drawAABB(sphere->center * 16.0f, sphere->halfExtend * 16.0f, col);
+        Debug::drawAABB(sphere->center, sphere->halfExtend, col);
       } else {
-        Debug::drawSphere(sphere->center * 16.0f, sphere->halfExtend.y * 16.0f, col);
+        Debug::drawSphere(sphere->center, sphere->halfExtend.y, col);
       }
     }
-
-    for(uint32_t v=0; v<VOID_SPHERE_COUNT; ++v) {
-      if(voidSpheres[v].halfExtend.y <= 0)continue;
-      Debug::drawSphere(voidSpheres[v].center * 16.0f, voidSpheres[v].halfExtend.y * 16.0f, {0x00, 0x00, 0x00, 0xFF});
-    }
   }
-}
-
-bool Coll::Scene::isInVoid(const T3DVec3 &pos) const {
-  for(uint32_t v=0; v<VOID_SPHERE_COUNT; ++v) {
-    float radSum = voidSpheres[v].halfExtend.y;
-    if(radSum <= 0)continue;
-    auto dist2 = t3d_vec3_distance2(voidSpheres[v].center, pos);
-    if(dist2 < radSum * radSum) {
-      return true;
-    }
-  }
-  return false;
 }

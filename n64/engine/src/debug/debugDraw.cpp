@@ -32,7 +32,7 @@ namespace
     int dx = px1 - px0;
     int dy = py1 - py0;
     int steps = abs(dx) > abs(dy) ? abs(dx) : abs(dy);
-    if(steps <= 0)return;
+    if(steps <= 0 || steps > 1000)return;
     float xInc = dx / (float)steps;
     float yInc = dy / (float)steps;
 

@@ -184,8 +184,11 @@ void P64::Scene::draw([[maybe_unused]] float deltaTime)
 
       for (uint32_t i=0; i<obj->compCount; ++i) {
         const auto &compDef = COMP_TABLE[compRefs[i].type];
-        char* dataPtr = (char*)obj + compRefs[i].offset;
-        compDef.draw(*obj, dataPtr, deltaTime);
+        if(compDef.draw)
+        {
+          char* dataPtr = (char*)obj + compRefs[i].offset;
+          compDef.draw(*obj, dataPtr, deltaTime);
+        }
       }
     }
 
@@ -208,6 +211,8 @@ void P64::Scene::draw([[maybe_unused]] float deltaTime)
   Debug::printf(16, 16, "FPS: %.2f\n", (double)VI::SwapChain::getFPS());
 
   GlobalScript::callHooks(GlobalScript::HookType::SCENE_POST_DRAW_2D);
+
+  collScene.debugDraw(true, true);
 }
 
 void P64::Scene::removeObject(Object &obj)

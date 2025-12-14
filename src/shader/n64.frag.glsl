@@ -199,7 +199,7 @@ void shaderCollision()
     discard;
   }
 
-  FragColor = vec4(cc_shade_flat.rgb + 0.25, 0.75);
+  FragColor = vec4(cc_shade_flat.rgb + 0.25, cc_shade_flat.a);
   ObjID = v_objectID;
 }
 

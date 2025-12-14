@@ -17,7 +17,6 @@ namespace Coll
 
       std::set<MeshInstance*> meshes{};
       std::vector<BCS*> collBCS{};
-      BCS voidSpheres[VOID_SPHERE_COUNT]{};
 
       CollInfo vsBCS(BCS &bcs, const T3DVec3 &velocity, float deltaTime);
 
@@ -44,19 +43,11 @@ namespace Coll
         }
       }
 
-      void setVoidSphere(uint32_t idx, const T3DVec3 &pos, float radius) {
-        idx %= VOID_SPHERE_COUNT;
-        voidSpheres[idx].center = pos;
-        voidSpheres[idx].halfExtend = {radius, radius, radius};
-      }
-
       RaycastRes raycastFloor(const T3DVec3 &pos);
 
       [[nodiscard]] const std::vector<BCS*> &getSpheres() const {
         return collBCS;
       }
-
-      bool isInVoid(const T3DVec3 &pos) const;
 
       void update(float deltaTime);
 

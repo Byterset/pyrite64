@@ -65,7 +65,7 @@ namespace Coll
     T3DVec3 center{};
     T3DVec3 halfExtend{};
     T3DVec3 velocity{};
-    std::function<void(BCS&)> callback{};
+    //std::function<void(BCS&)> callback{};
     uint8_t maskRead{0};
     uint8_t maskWrite{0};
     uint8_t flags{0};
