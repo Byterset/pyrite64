@@ -38,6 +38,8 @@ namespace Project
       Scene(int id_, const std::string &projectPath);
 
       int getId() const { return id; }
+      const std::string &getName() const { return conf.name; }
+
       void save();
       Object& getRootObject() { return root; }
       std::unordered_map<uint32_t, std::shared_ptr<Object>> objectsMap{};

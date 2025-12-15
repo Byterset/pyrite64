@@ -5,7 +5,7 @@
 #include "assetsBrowser.h"
 
 #include "imgui.h"
-#include "../../imgui/theme.h"
+#include "../../imgui/helper.h"
 #include "../../../context.h"
 
 using FileType = Project::AssetManager::FileType;
@@ -25,6 +25,13 @@ namespace
     std::vector<FileType> fileTypes{};
     bool showScenes{false};
   };
+
+  const char* getterScene(void* user_data, int idx)
+  {
+    auto &scenes = ctx.project->getScenes().getEntries();
+    if (idx < 0 || idx >= scenes.size())return "<Select Scene>";
+    return scenes[idx].name.c_str();
+  }
 
 }
 
@@ -57,12 +64,33 @@ void Editor::AssetsBrowser::draw() {
   }
   ImGui::EndChild();
 
+  float sceneOptionsWidth = 140;
+
+  if(activeTab == TAB_IDX_SCENES)
+  {
+    // right align
+    ImGui::SameLine();
+    ImGui::BeginChild("END", ImVec2(sceneOptionsWidth, 0), ImGuiChildFlags_Border);
+
+    ImGui::Text("On Boot");
+    ImGui::SetNextItemWidth(-FLT_MIN);
+    ImGui::VectorComboBox("##Boot", scenes, ctx.project->conf.sceneIdOnBoot);
+
+    ImGui::Text("On Reset");
+    ImGui::SetNextItemWidth(-FLT_MIN);
+    ImGui::VectorComboBox("##Reset", scenes, ctx.project->conf.sceneIdOnReset);
+
+    ImGui::EndChild();
+  }
+
   const auto &tab = TABS[activeTab];
+
+  auto availWidth = ImGui::GetContentRegionAvail().x - 4;
+  if(activeTab == TAB_IDX_SCENES)availWidth -= sceneOptionsWidth;
 
   ImGui::SameLine();
   ImGui::BeginChild("RIGHT");
 
-  auto availWidth = ImGui::GetContentRegionAvail().x - 4;
   float imageSize = 48;
   float itemWidth = imageSize + 18;
   float currentWidth = 0.0f;

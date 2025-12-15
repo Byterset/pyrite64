@@ -50,18 +50,8 @@ namespace
             rules += '\n';
             break;
 
-          case AT::MODEL_3D:
+          case AT::MODEL_3D: // @TODO: remove here
             assetList.push_back(entry.outPath);
-            rules += assetList.back() + ": T3DM_ASSET_FLAGS = -c " + comprLevel + "\n";
-            rules += assetList.back() + ": T3DM_FLAGS = ";
-            if (entry.conf.baseScale != 0) {
-              rules += std::string{" --base-scale="} + std::to_string(entry.conf.baseScale);
-            }
-            if (entry.conf.gltfBVH) {
-              rules += std::string{" --bvh"};
-            }
-            rules += '\n';
-            break;
 
           case AT::AUDIO:
             assetList.push_back(entry.outPath);
@@ -92,6 +82,15 @@ bool Build::buildProject(std::string path)
 
   SceneCtx sceneCtx{};
   sceneCtx.project = &project;
+
+  // Global project config
+  sceneCtx.files.push_back("filesystem/p64/conf");
+  {
+    Utils::BinaryFile f{};
+    f.write<uint32_t>(project.conf.sceneIdOnBoot);
+    f.write<uint32_t>(project.conf.sceneIdOnReset);
+    f.writeToFile(fsDataPath / "conf");
+  }
 
   auto mkAssetRules = genAssetRules(project, sceneCtx.files);
 

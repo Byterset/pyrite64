@@ -53,16 +53,22 @@ namespace Utils::JSON
     return (int)(*i);
   }
 
-  inline uint64_t readU64(const simdjson::simdjson_result<simdjson::dom::element> &el, const std::string &key) {
+  inline uint64_t readU64(const simdjson::simdjson_result<simdjson::dom::element> &el, const std::string &key, uint64_t def = 0) {
     auto val = el[key];
     if (val.error() != simdjson::SUCCESS) {
-      return 0;
+      return def;
     }
     auto i = val.get_uint64();
     if (i.error() != simdjson::SUCCESS) {
-      return 0;
+      return def;
     }
     return *i;
+  }
+
+  template<typename T>
+  inline uint32_t readU32(const simdjson::simdjson_result<T> &el, const std::string &key, uint32_t def = 0)
+  {
+    return (uint32_t)readU64(el, key, def);
   }
 
   template<typename T>

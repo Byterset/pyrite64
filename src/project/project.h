@@ -18,6 +18,9 @@ namespace Project
     std::string pathEmu{};
     std::string pathN64Inst{};
 
+    uint32_t sceneIdOnBoot{1};
+    uint32_t sceneIdOnReset{1};
+
     std::string serialize() const;
   };
 

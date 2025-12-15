@@ -4,23 +4,13 @@
 */
 #include <libdragon.h>
 #include <cstdint>
-#include <t3d/t3d.h>
-#include <t3d/t3dmodel.h>
-
+#include <malloc.h>
 #include "scene/scene.h"
-#include "scene/globalState.h"
-
-#include "lib/memory.h"
-#include "lib/logger.h"
-#include "lib/matrixManager.h"
-#include "assets/assetManager.h"
 #include "lib/math.h"
 #include "scene/componentTable.h"
-#include "script/scriptTable.h"
 
 namespace {
-  constexpr uint16_t OBJ_TYPE_OBJECT = 0;
-  constexpr uint16_t OBJ_TYPE_CAMERA = 1;
+  constexpr uint32_t DATA_ALIGN = 8;
 
   struct ObjectEntry {
     uint16_t flags;
@@ -87,25 +77,43 @@ void P64::Scene::loadScene() {
       // pre-scan components to get total allocation size
       uint32_t allocSize = sizeof(Object);
 
+      // some alignment logic below relies on an at a minimum 4-byte size
+      static_assert(sizeof(Object) % 4 == 0);
+      static_assert(sizeof(Object::CompRef) % 4 == 0);
+
       auto ptrIn = objFile + sizeof(ObjectEntry);
       uint32_t compCount = 0;
+      uint32_t compDataSize = 0;
       while(ptrIn[1] != 0) {
         auto compId = ptrIn[0];
         auto argSize = ptrIn[1] * 4;
 
         const auto &compDef = COMP_TABLE[compId];
         assertf(compDef.getAllocSize != nullptr, "Component %d unknown!", compId);
-        allocSize += compDef.getAllocSize(ptrIn + 4);
+        compDataSize += Math::alignUp(compDef.getAllocSize(ptrIn + 4), DATA_ALIGN);
         allocSize += sizeof(Object::CompRef);
 
         ptrIn += argSize;
         ++compCount;
       }
 
-      void* objMem = malloc(allocSize); // @TODO: custom allocator
+      // component data must be 8-byte aligned, GCC tries to be smart
+      // and some structs cuse 64-bit writes to members.
+      // if it is misaligned, add spacing after the comp table
+      uint32_t offsetData = (sizeof(Object::CompRef) * compCount);
+      if(allocSize % 8 != 0) {
+        compDataSize += 4;
+        offsetData += 4;
+      }
+
+      allocSize += compDataSize;
+
+      //debugf("Allocating object %d | comps: %d | size: %lu bytes\n", objEntry->id, compCount, allocSize);
+
+      void* objMem = memalign(DATA_ALIGN, allocSize); // @TODO: custom allocator
 
       auto objCompTablePtr = (Object::CompRef*)((char*)objMem + sizeof(Object));
-      auto objCompDataPtr = (char*)(objCompTablePtr) + (sizeof(Object::CompRef) * compCount);
+      auto objCompDataPtr = (char*)(objCompTablePtr) + offsetData;
 
       Object* obj = new(objMem) Object();
       obj->id = objEntry->id;
@@ -131,7 +139,7 @@ void P64::Scene::loadScene() {
         ++objCompTablePtr;
 
         compDef.initDel(*obj, objCompDataPtr, ptrIn + 4);
-        objCompDataPtr += compDef.getAllocSize(ptrIn + 4);
+        objCompDataPtr += Math::alignUp(compDef.getAllocSize(ptrIn + 4), 8);
         ptrIn += argSize;
       }
 

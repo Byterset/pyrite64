@@ -19,6 +19,8 @@ std::string Project::ProjectConf::serialize() const {
   builder.set("romName", romName);
   builder.set("pathEmu", pathEmu);
   builder.set("pathN64Inst", pathN64Inst);
+  builder.set("sceneIdOnBoot", sceneIdOnBoot);
+  builder.set("sceneIdOnReset", sceneIdOnReset);
   return builder.toString();
 }
 
@@ -27,6 +29,8 @@ void Project::Project::deserialize(const simdjson_result<dom::element> &doc) {
   conf.romName = Utils::JSON::readString(doc, "romName");
   conf.pathEmu = Utils::JSON::readString(doc, "pathEmu");
   conf.pathN64Inst = Utils::JSON::readString(doc, "pathN64Inst");
+  conf.sceneIdOnBoot = Utils::JSON::readU32(doc, "sceneIdOnBoot", 1);
+  conf.sceneIdOnReset = Utils::JSON::readU32(doc, "sceneIdOnReset", 1);
 }
 
 Project::Project::Project(const std::string &path)

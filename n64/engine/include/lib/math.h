@@ -14,6 +14,21 @@ namespace P64::Math
 {
   constexpr float SQRT_2_INV = 0.70710678118f;
 
+  constexpr uint32_t alignUp(uint32_t val, uint32_t alignTo) {
+    return (val + (alignTo - 1)) & ~(alignTo - 1);
+  }
+  static_assert(alignUp(1, 8) == 8);
+  static_assert(alignUp(8, 8) == 8);
+  static_assert(alignUp(9, 8) == 16);
+
+  constexpr uint32_t alignDown(uint32_t val, uint32_t alignTo) {
+    return val & ~(alignTo - 1);
+  }
+  static_assert(alignDown(1, 8) == 0);
+  static_assert(alignDown(8, 0) == 0);
+  static_assert(alignDown(9, 8) == 8);
+
+
   constexpr float s10ToFloat(uint32_t value, float offset, float scale) {
     return (float)value / 1023.0f * scale + offset;
   }

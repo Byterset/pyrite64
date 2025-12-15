@@ -20,6 +20,16 @@ namespace P64::SceneManager {
   void unload();
 }
 
+namespace
+{
+  struct ProjectConf
+  {
+    uint32_t sceneIdOnBoot{};
+    uint32_t sceneIdOnReset{};
+  };
+  constinit ProjectConf projectConf{};
+}
+
 [[noreturn]]
 int main()
 {
@@ -41,6 +51,12 @@ int main()
 
 	P64::Log::info("Starting Game");
 
+	{
+	  auto tmp = (ProjectConf*)asset_load("rom:/p64/conf", nullptr);
+	  projectConf = *tmp;
+    free(tmp);
+	}
+
   // default VI setup, can be overwritten by the scene load later onŝ
   vi_init();
   vi_set_dedither(false);
@@ -54,7 +70,12 @@ int main()
 
   P64::GlobalScript::callHooks(P64::GlobalScript::HookType::GAME_INIT);
 
-  P64::SceneManager::load(1);
+  P64::Log::info("Reset: %d\n", sys_reset_type());
+  P64::SceneManager::load(
+    sys_reset_type() == RESET_COLD
+      ? projectConf.sceneIdOnBoot
+      : projectConf.sceneIdOnReset
+  );
 
   for(;;)
   {

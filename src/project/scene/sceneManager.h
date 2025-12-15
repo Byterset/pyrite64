@@ -16,6 +16,10 @@ namespace Project
   {
     int id{};
     std::string name;
+
+    // for combobox:
+    int getId() const { return id; }
+    const std::string& getName() const { return name; }
   };
 
   class SceneManager

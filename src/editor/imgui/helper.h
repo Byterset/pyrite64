@@ -12,6 +12,19 @@
 #include "glm/gtc/quaternion.hpp"
 #include "glm/gtc/type_ptr.hpp"
 
+namespace TPL
+{
+  template <typename C, typename T>
+  decltype(auto) access(C& cls, T C::*member) {
+    return (cls.*member);
+  }
+
+  template <typename C, typename T, typename... Mems>
+  decltype(auto) access(C& cls, T C::*member, Mems... rest) {
+    return access((cls.*member), rest...);
+  }
+}
+
 namespace ImGui
 {
   bool IconButton(const char* label, const ImVec2 &labelSize, const ImVec4 &color = ImVec4{1,1,1,1});
@@ -27,6 +40,30 @@ namespace ImGui
       return true;
     }
     return false;
+  }
+
+  template<typename T>
+  inline void VectorComboBox(
+    const std::string &name,
+    const std::vector<T> &items,
+    uint32_t &id
+  ) {
+    int idx = 0;
+    for (const auto &item : items) {
+      if (id == item.getId())break;
+      ++idx;
+    }
+    auto getter = [](void* itemsLocal, int idx)
+    {
+      auto &items = *static_cast<std::vector<T>*>(itemsLocal);
+      if (idx >= 0 && idx < items.size()) {
+        return items[idx].getName().c_str();
+      }
+      return "<None>";
+    };
+
+    ImGui::Combo(name.c_str(), &idx, getter, (void*)&items, (int)items.size());
+    id = items[idx].getId();
   }
 }
 
