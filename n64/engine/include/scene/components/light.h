@@ -15,6 +15,8 @@ namespace P64::Comp
 {
   struct Light
   {
+    static constexpr uint32_t ID = 2;
+
     struct InitData
     {
       color_t color;

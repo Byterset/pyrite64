@@ -14,6 +14,8 @@ namespace P64::Comp
 {
   struct CollMesh
   {
+    static constexpr uint32_t ID = 4;
+
     Coll::MeshInstance meshInstance{};
 
     static uint32_t getAllocSize([[maybe_unused]] uint16_t* initData)

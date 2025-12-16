@@ -166,6 +166,7 @@ add_executable(p64editor src/main.cpp
         src/project/assets/collision.cpp
         src/build/t3dmBuilder.cpp
         src/build/collisionBuilder.cpp
+        src/project/component/types/compCollBody.cpp
 )
 
 target_include_directories(p64editor PRIVATE

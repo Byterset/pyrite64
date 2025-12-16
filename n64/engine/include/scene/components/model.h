@@ -14,6 +14,8 @@ namespace P64::Comp
 {
   struct Model
   {
+    static constexpr uint32_t ID = 1;
+
     T3DModel *model{};
     RingMat4FP matFP{};
 

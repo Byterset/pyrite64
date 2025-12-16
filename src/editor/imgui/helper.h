@@ -105,6 +105,12 @@ namespace ImGui::InpTable
     ImGui::Combo(labelHidden.c_str(), &itemCurrent, items, itemsCount);
   }
 
+  inline void addComboBox(const std::string &name, int &itemCurrent, const std::vector<const char*> &items) {
+    add(name);
+    auto labelHidden = "##" + name;
+    ImGui::Combo(labelHidden.c_str(), &itemCurrent, items.data(), (int)items.size());
+  }
+
   inline void addCheckBox(const std::string &name, bool &value) {
     add(name);
     auto labelHidden = "##" + name;

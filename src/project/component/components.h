@@ -70,6 +70,7 @@ namespace Project::Component
   MAKE_COMP(Light)
   MAKE_COMP(Camera)
   MAKE_COMP(CollMesh)
+  MAKE_COMP(CollBody)
 
   constexpr std::array TABLE{
     CompInfo{
@@ -119,7 +120,7 @@ namespace Project::Component
     },
     CompInfo{
       .id = 4,
-      .icon = ICON_MDI_CUBE_SCAN " ",
+      .icon = ICON_MDI_LANDSLIDE_OUTLINE " ",
       .name = "Collision-Mesh",
       .funcInit = CollMesh::init,
       .funcDraw = CollMesh::draw,
@@ -127,6 +128,17 @@ namespace Project::Component
       .funcSerialize = CollMesh::serialize,
       .funcDeserialize = CollMesh::deserialize,
       .funcBuild = CollMesh::build
+    },
+    CompInfo{
+      .id = 5,
+      .icon = ICON_MDI_CYLINDER " ",
+      .name = "Collision-Body",
+      .funcInit = CollBody::init,
+      .funcDraw = CollBody::draw,
+      .funcDrawPost3D = CollBody::draw3D,
+      .funcSerialize = CollBody::serialize,
+      .funcDeserialize = CollBody::deserialize,
+      .funcBuild = CollBody::build
     },
   };
 }

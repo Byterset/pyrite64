@@ -10,6 +10,8 @@ namespace P64::Comp
 {
   struct Code
   {
+    static constexpr uint32_t ID = 0;
+
     // @TODO: only store used functions
     Script::FuncObjData funcInit{};
     Script::FuncObjDataDelta funcUpdate{};

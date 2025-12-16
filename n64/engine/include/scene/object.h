@@ -76,6 +76,24 @@ namespace P64
       }
 
       /**
+       * Returns the first component that matches the given type.
+       * The type given must be component in the 'P64::Comp' namespace.
+       * If no component of the given type is found, nullptr is returned.
+       * @tparam T component type
+       * @return pointer to component or nullptr
+       */
+      template<typename T>
+      [[nodiscard]] T* getComponent() const {
+        auto compRefs = getCompRefs();
+        for (uint32_t i=0; i<compCount; ++i) {
+          if(compRefs[i].type == T::ID) {
+            return (T*)((char*)this + compRefs[i].offset);
+          }
+        }
+        return nullptr;
+      }
+
+      /**
        * Check if the object itself is enabled (not considering parent/group state).
        * @return true if enabled
        */

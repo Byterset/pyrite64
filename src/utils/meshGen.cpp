@@ -76,6 +76,36 @@ void Utils::Mesh::generateGrid(Renderer::Mesh&mesh, int size) {
   mesh.indices.push_back(mesh.vertLines.size() - 1);
 }
 
+void Utils::Mesh::addLineSphere(Renderer::Mesh &mesh, const glm::vec3 &pos, const glm::vec3 &halfExtend,
+  const glm::u8vec4 &color)
+{
+
+  float radius = halfExtend.y;
+  int steps = 16;
+  float step = 2.0f * (float)M_PI / steps;
+  glm::vec3 last = pos + glm::vec3{radius, 0, 0};
+  for(int i=1; i<=steps; ++i) {
+    float angle = i * step;
+    glm::vec3 next = pos + glm::vec3{radius * cosf(angle), 0, radius * sinf(angle)};
+    addLine(mesh, last, next, color);
+    last = next;
+  }
+  last = pos + glm::vec3{0, radius, 0};
+  for(int i=1; i<=steps; ++i) {
+    float angle = i * step;
+    glm::vec3 next = pos + glm::vec3{0, radius * cosf(angle), radius * sinf(angle)};
+    addLine(mesh, last, next, color);
+    last = next;
+  }
+  last = pos + glm::vec3{0, 0, radius};
+  for(int i=1; i<=steps; ++i) {
+    float angle = i * step;
+    glm::vec3 next = pos + glm::vec3{radius * cosf(angle), radius * sinf(angle), 0};
+    addLine(mesh, last, next, color);
+    last = next;
+  }
+}
+
 void Utils::Mesh::addLineBox(
   Renderer::Mesh&mesh, const glm::vec3&pos, const glm::vec3&halfExtend,
   const glm::u8vec4 &color

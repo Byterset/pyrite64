@@ -9,9 +9,10 @@
 #include "scene/components/light.h"
 #include "scene/components/camera.h"
 #include "scene/components/collMesh.h"
+#include "scene/components/collBody.h"
 
 #define SET_COMP(name) \
-  { \
+  [Comp::name::ID] = { \
     .initDel = reinterpret_cast<FuncInitDel>(Comp::name::initDelete), \
     .update = reinterpret_cast<FuncUpdate>(Comp::name::update), \
     .draw   = reinterpret_cast<FuncDraw>(Comp::name::draw), \
@@ -19,14 +20,14 @@
   }
 
 #define SET_COMP_NO_DRAW(name) \
-  { \
+  [Comp::name::ID] = { \
   .initDel = reinterpret_cast<FuncInitDel>(Comp::name::initDelete), \
   .update = reinterpret_cast<FuncUpdate>(Comp::name::update), \
   .getAllocSize = reinterpret_cast<FuncGetAllocSize>(Comp::name::getAllocSize), \
   }
 
 #define SET_EVENT_COMP(name) \
-  { \
+  [Comp::name::ID] = { \
   .initDel = reinterpret_cast<FuncInitDel>(Comp::name::initDelete), \
   .update = reinterpret_cast<FuncUpdate>(Comp::name::update), \
   .draw   = reinterpret_cast<FuncDraw>(Comp::name::draw), \
@@ -42,6 +43,6 @@ namespace P64
     SET_COMP(Light),
     SET_COMP(Camera),
     SET_COMP_NO_DRAW(CollMesh),
-    {}
+    SET_COMP_NO_DRAW(CollBody),
   };
 }

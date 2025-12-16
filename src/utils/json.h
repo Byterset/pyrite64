@@ -128,7 +128,8 @@ namespace Utils::JSON
     };
   }
 
-  inline glm::vec3 readVec3(const simdjson::simdjson_result<simdjson::dom::element> &el, const std::string &key, const glm::vec3 &def = {}) {
+  template<typename T>
+  inline glm::vec3 readVec3(const simdjson::simdjson_result<T> &el, const std::string &key, const glm::vec3 &def = {}) {
     auto val = el[key];
     if (val.error() != simdjson::SUCCESS)return def;
     auto arr = val.get_array();

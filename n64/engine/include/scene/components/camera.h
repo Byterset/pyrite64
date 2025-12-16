@@ -12,6 +12,8 @@ namespace P64::Comp
 {
   struct Camera
   {
+    static constexpr uint32_t ID = 3;
+
     struct InitData
     {
       int vpOffset[2];
