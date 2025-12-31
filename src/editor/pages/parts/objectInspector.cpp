@@ -18,7 +18,6 @@ void Editor::ObjectInspector::draw() {
     return;
   }
 
-  bool isPrefabEdit = false;
   bool isPrefabInst = false;
 
   auto scene = ctx.project->getScenes().getLoadedScene();
@@ -31,9 +30,10 @@ void Editor::ObjectInspector::draw() {
   }
 
   Project::Object* srcObj = obj.get();
+  std::shared_ptr<Project::Prefab> prefab{};
   if(obj->uuidPrefab.value)
   {
-    auto prefab = ctx.project->getAssets().getPrefabByUUID(obj->uuidPrefab.value);
+    prefab = ctx.project->getAssets().getPrefabByUUID(obj->uuidPrefab.value);
     if(prefab)srcObj = &prefab->obj;
     isPrefabInst = true;
   }
@@ -53,7 +53,17 @@ void Editor::ObjectInspector::draw() {
 
       if(isPrefabInst) {
         ImTable::add("Prefab");
-        ImGui::Text("%s", srcObj->name.c_str());
+
+        auto name = std::string{ICON_MDI_PENCIL " "};
+        name += obj->isPrefabEdit ? ("Back to Instance") : ("Edit '" + srcObj->name + "'");
+
+        if(ImGui::Button(name.c_str())) {
+          obj->isPrefabEdit = !obj->isPrefabEdit;
+
+          if(!obj->isPrefabEdit) {
+            prefab->save();
+          }
+        }
       }
 
       ImTable::end();
@@ -107,14 +117,14 @@ void Editor::ObjectInspector::draw() {
   // Debug:
   //ImGui::TextWrapped("%s", obj->serialize().c_str());
 
-  if(isPrefabInst)return;
+  if(isPrefabInst && !obj->isPrefabEdit)return;
 
   if (compCopy) {
-    obj->addComponent(compCopy->id);
-    obj->components.back().name = compCopy->name + " Copy";
+    srcObj->addComponent(compCopy->id);
+    srcObj->components.back().name = compCopy->name + " Copy";
   }
   if (compDelUUID) {
-    obj->removeComponent(compDelUUID);
+    srcObj->removeComponent(compDelUUID);
   }
 
   const char* addLabel = ICON_MDI_PLUS_BOX_OUTLINE " Add Component";
@@ -129,7 +139,7 @@ void Editor::ObjectInspector::draw() {
     for (auto &comp : Project::Component::TABLE) {
       auto name = std::string{comp.icon} + " " + comp.name;
       if(ImGui::MenuItem(name.c_str())) {
-        obj->addComponent(comp.id);
+        srcObj->addComponent(comp.id);
       }
     }
     ImGui::EndPopup();

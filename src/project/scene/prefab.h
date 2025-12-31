@@ -27,5 +27,7 @@ namespace Project
       std::string serialize() const { return serialize(obj); }
 
       void deserialize(const std::string &str);
+
+      void save();
   };
 }

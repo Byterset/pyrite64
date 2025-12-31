@@ -113,7 +113,7 @@ namespace ImTable
   inline int addVecComboBox(const std::string &name, const std::vector<T> &items, auto &id)
   {
     add(name);
-    bool disabled = (obj && obj->uuidPrefab.value);
+    bool disabled  (obj && obj->isPrefabInstance() && !obj->isPrefabEdit);
     if(disabled)ImGui::BeginDisabled();
     int res = ImGui::VectorComboBox(name, items, id);
     if(disabled)ImGui::EndDisabled();
@@ -122,7 +122,7 @@ namespace ImTable
 
   inline void addComboBox(const std::string &name, int &itemCurrent, const char* const items[], int itemsCount) {
     add(name);
-    bool disabled = (obj && obj->uuidPrefab.value);
+    bool disabled  (obj && obj->isPrefabInstance() && !obj->isPrefabEdit);
     auto labelHidden = "##" + name;
     if(disabled)ImGui::BeginDisabled();
     ImGui::Combo(labelHidden.c_str(), &itemCurrent, items, itemsCount);
@@ -131,7 +131,7 @@ namespace ImTable
 
   inline void addComboBox(const std::string &name, int &itemCurrent, const std::vector<const char*> &items) {
     add(name);
-    bool disabled = (obj && obj->uuidPrefab.value);
+    bool disabled  (obj && obj->isPrefabInstance() && !obj->isPrefabEdit);
     if(disabled)ImGui::BeginDisabled();
     auto labelHidden = "##" + name;
     ImGui::Combo(labelHidden.c_str(), &itemCurrent, items.data(), (int)items.size());
@@ -140,7 +140,7 @@ namespace ImTable
 
   inline void addCheckBox(const std::string &name, bool &value) {
     add(name);
-    bool disabled = (obj && obj->uuidPrefab.value);
+    bool disabled  (obj && obj->isPrefabInstance() && !obj->isPrefabEdit);
     if(disabled)ImGui::BeginDisabled();
     auto labelHidden = "##" + name;
     ImGui::Checkbox(labelHidden.c_str(), &value);
@@ -150,7 +150,7 @@ namespace ImTable
   inline void addBitMask8(const std::string &name, uint32_t &value)
   {
     add(name);
-    bool disabled = (obj && obj->uuidPrefab.value);
+    bool disabled  (obj && obj->isPrefabInstance() && !obj->isPrefabEdit);
     if(disabled)ImGui::BeginDisabled();
     auto labelHidden = "##" + name;
     // 8 checkboxes
@@ -197,7 +197,7 @@ namespace ImTable
   bool add(const std::string &name, T &value) {
     add(name);
     bool disabled = false;
-    if(obj && obj->uuidPrefab.value)disabled = true;
+    if(obj && obj->isPrefabInstance() && !obj->isPrefabEdit)disabled = true;
     ImGui::PushID(name.c_str());
     if(disabled)ImGui::BeginDisabled();
     bool res = typedInput<T>(&value);
@@ -230,12 +230,12 @@ namespace ImTable
     bool isOverride{true};
 
     T *val = &prop.value;
-    if(obj->isPrefabInstance()) {
+    if(obj->isPrefabInstance() && !obj->isPrefabEdit) {
       val = &prop.resolve(obj->propOverrides, &isOverride);
     }
     if(!isOverride)ImGui::BeginDisabled();
 
-    if(obj && obj->isPrefabInstance())
+    if(obj && obj->isPrefabInstance() && !obj->isPrefabEdit)
     {
       bool isOverrideLocal = isOverride;
       if(ImGui::IconToggle(
