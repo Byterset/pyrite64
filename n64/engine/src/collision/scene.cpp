@@ -120,18 +120,23 @@ Coll::CollInfo Coll::Scene::vsBCS(BCS &bcs, const fm_vec3_t &velocity, float del
   return res;
 }
 
+void Coll::MeshInstance::update()
+{
+  invScale = fm_vec3_t{
+    1.0f / object->scale.x,
+    1.0f / object->scale.y,
+    1.0f / object->scale.z,
+  };
+  fm_quat_inverse(&invRot, &object->rot);
+}
+
 void Coll::Scene::update(float deltaTime)
 {
   uint64_t ticksStart = get_ticks();
   auto &gameScene = P64::SceneManager::getCurrent();
 
   for(auto &inst : meshes) {
-    inst->invScale = fm_vec3_t{
-      1.0f / inst->object->scale.x,
-      1.0f / inst->object->scale.y,
-      1.0f / inst->object->scale.z,
-    };
-    fm_quat_inverse(&inst->invRot, &inst->object->rot);
+    inst->update();
   }
 
   for(auto sp : collBCS) {
@@ -142,8 +147,10 @@ void Coll::Scene::update(float deltaTime)
     auto &bcsA = collBCS[s];
 
     // Static/Triangle mesh collision
+    bool checkColl = bcsA->isSolid() && !bcsA->isFixed();
+
     // @TODO: use r/w mask
-    bool checkColl = bcsA->isSolid();//bcsA->maskRead & Mask::TRI_MESH;
+    //bcsA->maskRead & Mask::TRI_MESH;
 
     if(checkColl) {
       auto res = vsBCS(*bcsA, bcsA->velocity, deltaTime);

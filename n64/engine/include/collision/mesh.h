@@ -42,5 +42,7 @@ namespace Coll
 
     fm_vec3_t invScale{};
     fm_quat_t invRot{};
+
+    void update();
   };
 }

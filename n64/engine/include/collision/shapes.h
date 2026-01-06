@@ -60,6 +60,10 @@ namespace Coll
       return !isTrigger();
     }
 
+    [[nodiscard]] constexpr bool isFixed() const {
+      return flags & BCSFlags::FIXED_XYZ;
+    }
+
     [[nodiscard]] fm_vec3_t getMinAABB() const {
       return center - halfExtend;
     }

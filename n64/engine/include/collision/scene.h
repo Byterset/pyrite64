@@ -26,6 +26,7 @@ namespace Coll
       uint64_t raycastCount{0};
 
       void registerMesh(MeshInstance *mesh) {
+        mesh->update();
         meshes.insert(mesh);
       }
 
