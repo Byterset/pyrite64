@@ -15,7 +15,11 @@ namespace
 }
 
 Renderer::Camera::Camera() {
-  rot = glm::identity<glm::quat>();
+  rot = glm::rotate(
+    glm::identity<glm::quat>(),
+    glm::radians(-180.0f),
+    glm::vec3(1,0,0)
+  );
   posOffset = {0,220,220};
 }
 
@@ -33,6 +37,7 @@ void Renderer::Camera::apply(UniformGlobal &uniGlobal)
   const glm::vec3 dynamicUp = glm::normalize(rot * WORLD_UP);
   const glm::vec3 target = pos + posOffset + direction;
   uniGlobal.cameraMat = glm::lookAt(pos + posOffset, target, dynamicUp);
+
 
 /*
   uniGlobal.cameraMat = glm::mat4_cast(rot);
