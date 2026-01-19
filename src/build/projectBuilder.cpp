@@ -13,8 +13,25 @@
 #include "../utils/textureFormats.h"
 
 namespace fs = std::filesystem;
-
 using AT = Project::FileType;
+
+namespace
+{
+  struct AssetBuilder
+  {
+    Build::BuildFunc func;
+    const char* name;
+  };
+
+  constexpr auto assetBuilders = std::to_array<AssetBuilder>({
+    {Build::buildT3DMAssets,    "3D Model"},
+    {Build::buildFontAssets,    "Font"},
+    {Build::buildTextureAssets, "Texture"},
+    {Build::buildAudioAssets,   "Audio"},
+    {Build::buildPrefabAssets,  "Prefab"},
+    {Build::buildNodeGraphAssets, "Node Graph"},
+  });
+}
 
 void Build::SceneCtx::addAsset(const Project::AssetManagerEntry &entry)
 {
@@ -80,30 +97,12 @@ bool Build::buildProject(const std::string &path)
     buildScene(project, scene, sceneCtx);
   }
 
-  // Assets
-  if(!buildT3DMAssets(project, sceneCtx)) {
-    Utils::Logger::log("T3DM Asset build failed!", Utils::Logger::LEVEL_ERROR);
-    return false;
-  }
-
-  if(!buildFontAssets(project, sceneCtx)) {
-    Utils::Logger::log("Font Asset build failed!", Utils::Logger::LEVEL_ERROR);
-    return false;
-  }
-
-  if(!buildTextureAssets(project, sceneCtx)) {
-    Utils::Logger::log("Texture Asset build failed!", Utils::Logger::LEVEL_ERROR);
-    return false;
-  }
-
-  if(!buildAudioAssets(project, sceneCtx)) {
-    Utils::Logger::log("Audio Asset build failed!", Utils::Logger::LEVEL_ERROR);
-    return false;
-  }
-
-  if(!buildPrefabAssets(project, sceneCtx)) {
-    Utils::Logger::log("Prefab Asset build failed!", Utils::Logger::LEVEL_ERROR);
-    return false;
+  for(auto &builder : assetBuilders)
+  {
+    if(!builder.func(project, sceneCtx)) {
+      Utils::Logger::log(std::string(builder.name) + " Asset build failed!", Utils::Logger::LEVEL_ERROR);
+      return false;
+    }
   }
 
   auto assetTableCode = Utils::replaceAll(

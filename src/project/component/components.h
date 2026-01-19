@@ -75,6 +75,7 @@ namespace Project::Component
   MAKE_COMP(Audio2D)
   MAKE_COMP(Constraint)
   MAKE_COMP(Culling)
+  MAKE_COMP(NodeGraph)
 
   constexpr std::array TABLE{
     CompInfo{
@@ -179,5 +180,16 @@ namespace Project::Component
       .funcDeserialize = Culling::deserialize,
       .funcBuild = Culling::build
     },
+    CompInfo{
+      .id = 9,
+      .icon = ICON_MDI_GRAPH_OUTLINE " ",
+      .name = "Node Graph",
+      .funcInit = NodeGraph::init,
+      .funcDraw = NodeGraph::draw,
+      .funcDraw3D = NodeGraph::draw3D,
+      .funcSerialize = NodeGraph::serialize,
+      .funcDeserialize = NodeGraph::deserialize,
+      .funcBuild = NodeGraph::build
+    }
   };
 }

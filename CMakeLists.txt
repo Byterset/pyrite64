@@ -189,6 +189,12 @@ add_executable(p64editor src/main.cpp
         src/project/component/shared/material.h
         src/project/component/shared/material.cpp
         src/project/component/shared/meshFilter.cpp
+        src/project/graph/nodes/baseNode.h
+        src/project/graph/nodes/nodeWait.h
+        src/project/graph/graph.h
+        src/project/graph/graph.cpp
+        src/build/nodeGraphBuilder.cpp
+        src/project/component/types/compNodeGraph.cpp
 )
 
 target_include_directories(p64editor PRIVATE

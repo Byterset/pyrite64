@@ -37,6 +37,7 @@ namespace Project
     CODE_OBJ,
     CODE_GLOBAL,
     PREFAB,
+    NODE_GRAPH,
 
     _SIZE
   };

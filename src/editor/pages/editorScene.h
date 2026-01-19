@@ -22,7 +22,7 @@ namespace Editor
       Viewport3D viewport3d{};
 
       // Editors
-      NodeEditor nodeEditor{};
+      std::vector<std::shared_ptr<NodeEditor>> nodeEditors{};
       ProjectSettings projectSettings{};
       AssetsBrowser assetsBrowser{};
       AssetInspector assetInspector{};
@@ -35,6 +35,7 @@ namespace Editor
       bool dockSpaceInit{false};
 
     public:
+      Scene();
       void draw();
   };
 }

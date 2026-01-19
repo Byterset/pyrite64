@@ -22,6 +22,11 @@ namespace
   constinit bool projectSettingsOpen{false};
 }
 
+Editor::Scene::Scene()
+{
+  nodeEditors.push_back(std::make_shared<NodeEditor>());
+}
+
 void Editor::Scene::draw()
 {
   ImViewGuizmo::BeginFrame();
@@ -85,15 +90,17 @@ void Editor::Scene::draw()
     ImGui::DockBuilderFinish(dockSpaceID);
   }
 
+  for(auto &nodeEditor : nodeEditors) {
+    ImGui::Begin("Node-Editor");
+      nodeEditor->draw();
+    ImGui::End();
+  }
+
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(2, 2));
   ImGui::Begin("3D-Viewport");
     viewport3d.draw();
   ImGui::End();
   ImGui::PopStyleVar(1);
-
-  ImGui::Begin("Node-Editor");
-  nodeEditor.draw();
-  ImGui::End();
 
   ImGui::Begin("Object");
     objectInspector.draw();

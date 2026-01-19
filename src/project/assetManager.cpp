@@ -178,6 +178,9 @@ void Project::AssetManager::reload() {
       } else if (ext == ".prefab") {
         type = FileType::PREFAB;
         outPath = changeExt(outPath, ".pf");
+      } else if (ext == ".p64graph") {
+        type = FileType::NODE_GRAPH;
+        outPath = changeExt(outPath, ".pg");
       }
 
       auto romPath = outPath;
