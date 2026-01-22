@@ -13,10 +13,12 @@ namespace Editor
     private:
       Project::AssetManagerEntry *currentAsset{nullptr};
       Project::Graph::Graph graph{};
+      std::string name{};
+      bool isInit{false};
 
     public:
-      NodeEditor();
+      NodeEditor(uint64_t assetUUID);
       ~NodeEditor();
-      void draw();
+      void draw(ImGuiID defDockId);
   };
 }

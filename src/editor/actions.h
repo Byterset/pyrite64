@@ -17,6 +17,8 @@ namespace Editor::Actions
     PROJECT_CLEAN,
     ASSETS_RELOAD,
     COPY, PASTE,
+
+    OPEN_NODE_GRAPH
   };
 
   using ActionFn = std::function<bool(const std::string&)>;

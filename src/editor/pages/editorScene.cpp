@@ -24,7 +24,22 @@ namespace
 
 Editor::Scene::Scene()
 {
-  nodeEditors.push_back(std::make_shared<NodeEditor>());
+  Editor::Actions::registerAction(Editor::Actions::Type::OPEN_NODE_GRAPH, [this](const std::string& asset)
+  {
+    printf("OPEN_NODE_GRAPH action called with asset: %s\n", asset.c_str());
+    if(!ctx.project)return false;
+    auto assetEntry = ctx.project->getAssets().getEntryByUUID(std::stoull(asset));
+    if(assetEntry) {
+      nodeEditors.push_back(std::make_unique<NodeEditor>(assetEntry->uuid));
+      return true;
+    }
+    return false;
+  });
+}
+
+Editor::Scene::~Scene()
+{
+  Editor::Actions::registerAction(Editor::Actions::Type::OPEN_NODE_GRAPH, nullptr);
 }
 
 void Editor::Scene::draw()
@@ -64,13 +79,13 @@ void Editor::Scene::draw()
     ImGui::DockBuilderAddNode(dockSpaceID); // Add empty node
     ImGui::DockBuilderSetNodeSize(dockSpaceID, ImGui::GetMainViewport()->Size);
 
-    auto dockLeftID = ImGui::DockBuilderSplitNode(dockSpaceID, ImGuiDir_Left, 0.15f, nullptr, &dockSpaceID);
-    auto dockRightID = ImGui::DockBuilderSplitNode(dockSpaceID, ImGuiDir_Right, 0.25f, nullptr, &dockSpaceID);
-    auto dockBottomID = ImGui::DockBuilderSplitNode(dockSpaceID, ImGuiDir_Down, 0.25f, nullptr, &dockSpaceID);
+    dockLeftID = ImGui::DockBuilderSplitNode(dockSpaceID, ImGuiDir_Left, 0.15f, nullptr, &dockSpaceID);
+    dockRightID = ImGui::DockBuilderSplitNode(dockSpaceID, ImGuiDir_Right, 0.25f, nullptr, &dockSpaceID);
+    dockBottomID = ImGui::DockBuilderSplitNode(dockSpaceID, ImGuiDir_Down, 0.25f, nullptr, &dockSpaceID);
 
     // Center
     ImGui::DockBuilderDockWindow("3D-Viewport", dockSpaceID);
-    ImGui::DockBuilderDockWindow("Node-Editor", dockSpaceID);
+    // ImGui::DockBuilderDockWindow("Node-Editor", dockSpaceID);
 
     // Left
     //ImGui::DockBuilderDockWindow("Project", dockLeftID);
@@ -86,14 +101,7 @@ void Editor::Scene::draw()
     ImGui::DockBuilderDockWindow("Files", dockBottomID);
     ImGui::DockBuilderDockWindow("Log", dockBottomID);
 
-
     ImGui::DockBuilderFinish(dockSpaceID);
-  }
-
-  for(auto &nodeEditor : nodeEditors) {
-    ImGui::Begin("Node-Editor");
-      nodeEditor->draw();
-    ImGui::End();
   }
 
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(2, 2));
@@ -101,6 +109,10 @@ void Editor::Scene::draw()
     viewport3d.draw();
   ImGui::End();
   ImGui::PopStyleVar(1);
+
+  for(auto &nodeEditor : nodeEditors) {
+    nodeEditor->draw(dockSpaceID);
+  }
 
   ImGui::Begin("Object");
     objectInspector.draw();

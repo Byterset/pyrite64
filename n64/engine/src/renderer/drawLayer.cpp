@@ -12,7 +12,7 @@
 #include "lib/logger.h"
 #include "scene/scene.h"
 
-#define LIBDRAGON_LAYERS 1
+// #define LIBDRAGON_LAYERS 1
 
 namespace
 {

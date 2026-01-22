@@ -10,6 +10,11 @@
 #include "lib/logger.h"
 #include "scene/components/model.h"
 
+namespace P64::NodeGraph
+{
+  void* load(const char* path);
+}
+
 namespace
 {
   struct AssetEntry
@@ -67,7 +72,7 @@ namespace
     [AssetType::CODE_OBJ]    = {nullptr,                  nullptr                 },
     [AssetType::CODE_GLOBAL] = {nullptr,                  nullptr                 },
     [AssetType::PREFAB]      = {(LoadFunc)assetLoad,      (FreeFunc)free          },
-    [AssetType::NODE_GRAPH]  = {(LoadFunc)assetLoad,      (FreeFunc)free          },
+    [AssetType::NODE_GRAPH]  = {P64::NodeGraph::load,     (FreeFunc)free          },
   };
 
   constinit AssetTable* assetTable{nullptr};
@@ -124,7 +129,6 @@ void* P64::AssetManager::getByIndex(uint32_t idx) {
   }
 
   return res;
-
 }
 
 /*void* P64::AssetManager::getByFilePath(const std::string &path)

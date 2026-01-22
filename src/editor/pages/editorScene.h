@@ -33,9 +33,13 @@ namespace Editor
       SceneGraph sceneGraph{};
 
       bool dockSpaceInit{false};
+      ImGuiID dockLeftID;
+      ImGuiID dockRightID;
+      ImGuiID dockBottomID;
 
     public:
       Scene();
+      ~Scene();
       void draw();
   };
 }

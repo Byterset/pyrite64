@@ -10,6 +10,7 @@
 #include "../../../utils/binaryFile.h"
 #include "../../../utils/logger.h"
 #include "../../assetManager.h"
+#include "../../../editor/actions.h"
 #include "../../../editor/pages/parts/viewport3D.h"
 #include "../../../renderer/scene.h"
 #include "../../../utils/meshGen.h"
@@ -62,6 +63,12 @@ namespace Project::Component::NodeGraph
       ImTable::add("Name", entry.name);
       auto &assetList = ctx.project->getAssets().getTypeEntries(FileType::NODE_GRAPH);
       ImTable::addVecComboBox("File", assetList, data.asset.value);
+
+      ImTable::add("Edit");
+      if(ImGui::Button(ICON_MDI_PENCIL " Edit")) {
+        Editor::Actions::call(Editor::Actions::Type::OPEN_NODE_GRAPH, std::to_string(data.asset.resolve(obj)));
+      }
+
 
       ImTable::end();
     }

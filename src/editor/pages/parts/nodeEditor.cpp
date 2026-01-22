@@ -19,7 +19,7 @@ namespace
 
 }
 
-Editor::NodeEditor::NodeEditor()
+Editor::NodeEditor::NodeEditor(uint64_t assetUUID)
 {
   auto &stylePin = *Project::Graph::Node::PIN_STYLE_LOGIC;
   stylePin = ImFlow::PinStyle{
@@ -39,11 +39,13 @@ Editor::NodeEditor::NodeEditor()
   };
   stylePinVal.extra.padding.y = 16;
 
-  currentAsset = ctx.project->getAssets().getByName("test.p64graph");
+  currentAsset = ctx.project->getAssets().getEntryByUUID(assetUUID);
   graph.deserialize(currentAsset
     ? Utils::FS::loadTextFile(currentAsset->path)
     : "{}"
   );
+  //name = "Node-Editor - ";
+  name = currentAsset ? currentAsset->name : "*New Graph*";
 
   graph.graph.droppedLinkPopUpContent([&](ImFlow::Pin* dragged)
   {
@@ -85,13 +87,21 @@ Editor::NodeEditor::~NodeEditor()
 {
 }
 
-void Editor::NodeEditor::draw()
+void Editor::NodeEditor::draw(ImGuiID defDockId)
 {
   if(!currentAsset)
   {
-    ImGui::Text("No Asset loaded");
     return;
   }
+
+  if(!isInit)
+  {
+    isInit = true;
+    //ImGui::SetNextWindowDockID(defDockId, ImGuiCond_Once);
+    ImGui::SetNextWindowSize({800,600}, ImGuiCond_Once);
+  }
+
+  ImGui::Begin(name.c_str());
 
   auto size = ImGui::GetContentRegionAvail();
   size.y -= 32;
@@ -105,4 +115,6 @@ void Editor::NodeEditor::draw()
   {
     Utils::FS::saveTextFile(currentAsset->path, graph.serialize());
   }
+
+  ImGui::End();
 }

@@ -4,6 +4,8 @@
 */
 #include "script/nodeGraph.h"
 
+#include <unordered_set>
+
 #include "scene/object.h"
 #include "scene/scene.h"
 
@@ -20,6 +22,11 @@ namespace
   };
 
   std::unordered_map<uint32_t, P64::NodeGraph::UserFunc> userFunctionMap{};
+
+  void dummyFunction(uint32_t arg0)
+  {
+    debugf("Graph called undefined function, argument: 0x%08lX\n", arg0);
+  }
 }
 
 namespace P64::NodeGraph
@@ -47,31 +54,50 @@ namespace P64::NodeGraph
     NodeDef start;
   };
 
-  void printNode(NodeDef* node, int level)
+  inline void iterateNodes(NodeDef* node, int level, std::function<bool(NodeDef*, int)> fn)
   {
-    if(level > 5)return;
-    debugf("%*s", level * 2, "");
-    debugf("%p Type:%s, outputs: %d ", node, NODE_TYPE_NAMES[(uint8_t)node->type], node->outCount);
-    for (uint16_t i = 0; i < node->outCount; i++) {
-      debugf("%d ", node->outOffsets[i]);
-    }
-
-    uint16_t *nodeData = (uint16_t*)&node->outOffsets[node->outCount];
-    debugf(", data: %04X\n", *nodeData);
-
     for (uint16_t i = 0; i < node->outCount; i++) {
       auto nextNode = (NodeDef*)((uint8_t*)node + node->outOffsets[i]);
-      //printNode(nextNode, level + 1);
+      if(!fn(nextNode, level))continue;
+      iterateNodes(nextNode, level + 1, fn);
     }
   };
 
+  void* load(const char* path)
+  {
+    auto data = asset_load(path, nullptr);
+
+    std::unordered_set<NodeDef*> visitedNodes{};
+    iterateNodes(&((GraphDef*)data)->start, 0, [&](NodeDef* node, int level)
+    {
+      if(visitedNodes.find(node) != visitedNodes.end())return false;
+      visitedNodes.insert(node);
+
+      if(node->type == NodeType::FUNC)
+      {
+        u_uint32_t* nodeData = (u_uint32_t*)&node->outOffsets[node->outCount];
+        uint32_t funcHash = *nodeData;
+        auto it = userFunctionMap.find(funcHash);
+        if(it == userFunctionMap.end()) {
+          *nodeData = (uint32_t)dummyFunction;
+        } else {
+          *nodeData = (uint32_t)it->second;
+        }
+      }
+      return true;
+    });
+
+    return data;
+  }
 }
 
 void P64::NodeGraph::Instance::update(float deltaTime) {
   if(!currNode)return;
 
-  uint16_t *data = currNode->getDataPtr();
-  uint8_t *dataU8 = (uint8_t*)data;
+  const uint16_t *data = currNode->getDataPtr();
+  const uint8_t *dataU8 = (uint8_t*)data;
+  const u_uint32_t *dataU32 = (u_uint32_t*)data;
+
   uint32_t outputIndex = 0;
 
   //printNode(currNode, 0);
@@ -111,13 +137,13 @@ void P64::NodeGraph::Instance::update(float deltaTime) {
       }
     }break;
 
-    case NodeType::FUNC: {
-      uint32_t hash = ((uint32_t)data[0] << 16) | data[1];
-      uint32_t arg0 = ((uint32_t)data[2] << 16) | data[3];
-      auto it = userFunctionMap.find(hash);
-      assert(it != userFunctionMap.end());
-      it->second(arg0);
-    } break;
+    case NodeType::FUNC:
+      if(!result) {
+        result = &((UserFunc)dataU32[0])(dataU32[1]);
+      }
+      if(!result->tryGetResult(reg))return;
+      result = nullptr;
+    break;
 
     default:
       debugf("Unhandled node type: %d\n", (uint8_t)currNode->type);
