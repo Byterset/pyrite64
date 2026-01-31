@@ -76,6 +76,15 @@ Editor::NodeEditor::NodeEditor(uint64_t assetUUID)
   graph.graph.rightClickPopUpContent([&](ImFlow::BaseNode* node)
   {
     if(node) {
+      if(ImGui::Selectable(ICON_MDI_CONTENT_COPY " Duplicate")) {
+        auto nodeP64 = (Project::Graph::Node::Base*)(node);
+        auto newPos = node->getPos() + ImVec2{node->getSize().x, 20};
+        nlohmann::json jNode;
+        nodeP64->serialize(jNode);
+        auto newNode = graph.addNode(nodeP64->type, newPos);
+        newNode->deserialize(jNode);
+        ImGui::CloseCurrentPopup();
+      }
       if(ImGui::Selectable(ICON_MDI_TRASH_CAN_OUTLINE " Remove")) {
         node->destroy();
         ImGui::CloseCurrentPopup();
