@@ -111,7 +111,9 @@ P64::Scene::~Scene()
 void P64::Scene::update(float deltaTime)
 {
   joypad_poll();
-  if(joypad_get_buttons_pressed(JOYPAD_PORT_1).l) {
+  auto pressed = joypad_get_buttons_pressed(JOYPAD_PORT_1);
+  auto held = joypad_get_buttons_held(JOYPAD_PORT_1);
+  if(held.l && pressed.d_up) {
     Debug::Overlay::toggle();
   }
 

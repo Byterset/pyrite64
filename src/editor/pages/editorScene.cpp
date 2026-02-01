@@ -110,8 +110,16 @@ void Editor::Scene::draw()
   ImGui::End();
   ImGui::PopStyleVar(1);
 
-  for(auto &nodeEditor : nodeEditors) {
-    nodeEditor->draw(dockSpaceID);
+  std::vector<uint32_t> delIndices{};
+  for(uint32_t i = 0; i < nodeEditors.size(); ++i) {
+    auto &nodeEditor = nodeEditors[i];
+    if (!nodeEditor->draw(dockSpaceID)) {
+      delIndices.push_back(i);
+    }
+  }
+  // Remove closed editors
+  for(int32_t i = (int32_t)delIndices.size() - 1; i >= 0; --i) {
+    nodeEditors.erase(nodeEditors.begin() + delIndices[i]);
   }
 
   ImGui::Begin("Object");

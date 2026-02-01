@@ -1,10 +1,15 @@
 # Pyrite64
 
 <p align="center">
-<img src="./data/img/titleLogo.png" width="430">
+<img src="./data/img/titleLogo.png" width="400">
 </p>
 
 An N64 game-engine and editor using libdragon and tiny3d.<br>
+
+<p align="center">
+<img src="./docs/img/editor00.png" width="500">
+</p>
+
 
 ## WARNING:
 **This Project is still not ready for general use!**
@@ -16,7 +21,7 @@ Documentation is also missing.
 Once that is done, a proper release will be made.<br>
 Sorry!
 
-Below are basic build instructions for now:
+Below are basic build instructions for now.
 
 ## Build
 

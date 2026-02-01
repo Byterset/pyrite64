@@ -119,3 +119,10 @@ void P64::Audio::Handle::setSpeed(float speed)
   float freq = entry->audio->wave.frequency * speed;
   mixer_ch_set_freq(slot, freq);
 }
+
+bool P64::Audio::Handle::isDone() {
+  auto entry = &slots[slot];
+  if(entry->uuid != uuid)return true;
+  if (entry->audio == nullptr) return true;
+  return !mixer_ch_playing(slot);
+}

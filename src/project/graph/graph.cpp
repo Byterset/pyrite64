@@ -220,6 +220,13 @@ namespace Project::Graph
           uint32_t leftIndex = getIndexLeft(leftPin);
           uint32_t rightIndex = getIndexRight(rightPin);
 
+          /*printf("Link: %016llX @ %d %s:%s -> %016llX @ %d %s:%s\n",
+            leftNode->uuid, leftIndex,
+            leftNode->getName().c_str(), leftPin->getName().c_str(),
+            rightNode->uuid, rightIndex,
+            rightNode->getName().c_str(), rightPin->getName().c_str()
+          );*/
+
           auto &e = nodeOutgoingMap[leftNode->uuid];
           if(leftIndex >= e.size()) {
             e.resize(leftIndex + 1, 0);
@@ -289,7 +296,6 @@ namespace Project::Graph
     {
       nodeCtx.outUUIDs = &nodeOutgoingMap[node->uuid];
       nodeCtx.inValUUIDs = &nodeIngoingValMap[node->uuid];
-
 
       nodeCtx.source += "  " + nodeLabel(node->uuid) + ": // " + node->getName() + "\n";
       nodeCtx.source += "  {\n";

@@ -100,11 +100,11 @@ Editor::NodeEditor::~NodeEditor()
 {
 }
 
-void Editor::NodeEditor::draw(ImGuiID defDockId)
+bool Editor::NodeEditor::draw(ImGuiID defDockId)
 {
   if(!currentAsset)
   {
-    return;
+    return false;
   }
 
   if(!isInit)
@@ -114,10 +114,13 @@ void Editor::NodeEditor::draw(ImGuiID defDockId)
     ImGui::SetNextWindowSize({800,600}, ImGuiCond_Once);
   }
 
-  ImGui::Begin(name.c_str());
+  bool isOpen = true;
+  ImGui::Begin(name.c_str(), &isOpen, ImGuiWindowFlags_NoCollapse);
   graph.graph.setSize(ImGui::GetContentRegionAvail());
   graph.graph.update();
   ImGui::End();
+
+  return isOpen;
 }
 
 void Editor::NodeEditor::save()

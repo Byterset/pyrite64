@@ -19,7 +19,7 @@ namespace Editor
     public:
       NodeEditor(uint64_t assetUUID);
       ~NodeEditor();
-      void draw(ImGuiID defDockId);
+      bool draw(ImGuiID defDockId);
       void save();
   };
 }

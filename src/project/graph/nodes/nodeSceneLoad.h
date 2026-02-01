@@ -16,6 +16,10 @@ namespace Project::Graph::Node
     private:
       uint32_t sceneId{};
 
+      bool usOwnValue() {
+        return getIns()[1].get()->getLinks().empty();
+      }
+
     public:
       constexpr static const char* NAME = ICON_MDI_EARTH_BOX " Load Scene";
 
@@ -26,13 +30,19 @@ namespace Project::Graph::Node
         setStyle(std::make_shared<ImFlow::NodeStyle>(IM_COL32(90,191,93,255), ImColor(0,0,0,255), 3.5f));
 
         addIN<TypeLogic>("", ImFlow::ConnectionFilter::SameType(), PIN_STYLE_LOGIC);
+        addIN<TypeValue>("", ImFlow::ConnectionFilter::SameType(), PIN_STYLE_VALUE);
         addOUT<TypeLogic>("", PIN_STYLE_LOGIC);
+
+        valInputTypes.push_back(0);
+        valInputTypes.push_back(1);
       }
 
       void draw() override {
         ImGui::SetNextItemWidth(110.f);
-        ImGui::VectorComboBox("##Scene", ctx.project->getScenes().getEntries(), sceneId);
-        //showIN("", 0, ImFlow::ConnectionFilter::SameType(), PIN_STYLE_LOGIC);
+
+        if (usOwnValue()) {
+          ImGui::VectorComboBox("##Scene", ctx.project->getScenes().getEntries(), sceneId);
+        }
       }
 
       void serialize(nlohmann::json &j) override {
@@ -45,9 +55,14 @@ namespace Project::Graph::Node
 
       void build(BuildCtx &ctx) override
       {
-        ctx.localConst("uint16_t", "sceneId", std::to_string(sceneId))
-          .line("P64::SceneManager::load(sceneId);")
-        ;
+        if(ctx.inValUUIDs->empty()) {
+          ctx.localConst("uint16_t", "sceneId", 0);
+        } else {
+          auto idStr = Utils::toHex64(ctx.inValUUIDs->at(0));
+          ctx.localVar("uint16_t", "sceneId", "res_" + idStr);
+        }
+
+        ctx.line("P64::SceneManager::load(sceneId);");
       }
   };
 }

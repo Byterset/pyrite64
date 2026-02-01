@@ -37,6 +37,7 @@ namespace P64::Audio
       void stop();
       void setVolume(float volume);
       void setSpeed(float speed);
+      bool isDone();
   };
 }
 
