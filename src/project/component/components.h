@@ -76,6 +76,7 @@ namespace Project::Component
   MAKE_COMP(Constraint)
   MAKE_COMP(Culling)
   MAKE_COMP(NodeGraph)
+  MAKE_COMP(AnimModel)
 
   constexpr std::array TABLE{
     CompInfo{
@@ -91,7 +92,7 @@ namespace Project::Component
     CompInfo{
       .id = 1,
       .icon = ICON_MDI_CUBE_OUTLINE " ",
-      .name = "Model",
+      .name = "Model (Static)",
       .funcInit = Model::init,
       .funcDraw = Model::draw,
       .funcDraw3D = Model::draw3D,
@@ -190,6 +191,17 @@ namespace Project::Component
       .funcSerialize = NodeGraph::serialize,
       .funcDeserialize = NodeGraph::deserialize,
       .funcBuild = NodeGraph::build
+    },
+    CompInfo{
+      .id = 10,
+      .icon = ICON_MDI_HUMAN " ",
+      .name = "Model (Animated)",
+      .funcInit = AnimModel::init,
+      .funcDraw = AnimModel::draw,
+      .funcDraw3D = AnimModel::draw3D,
+      .funcSerialize = AnimModel::serialize,
+      .funcDeserialize = AnimModel::deserialize,
+      .funcBuild = AnimModel::build
     }
   };
 }

@@ -72,39 +72,57 @@ bool Build::buildT3DMAssets(Project::Project &project, SceneCtx &sceneCtx)
 
     sceneCtx.files.push_back(model.outPath);
 
-    if(!assetBuildNeeded(model, t3dmPath))continue;
-    Utils::FS::ensureDir(t3dmDir);
+    if(assetBuildNeeded(model, t3dmPath)) {
+      Utils::FS::ensureDir(t3dmDir);
 
-    T3DM::config = {
-      .globalScale = (float)model.conf.baseScale,
-      .animSampleRate = 60,
-      //.ignoreMaterials = args.checkArg("--ignore-materials"),
-      //.ignoreTransforms = args.checkArg("--ignore-transforms"),
-      .createBVH = model.conf.gltfBVH,
-      .verbose = false,
-      .assetPath = "assets/",
-      .assetPathFull = fs::absolute(project.getPath() + "/assets").string(),
-    };
+      T3DM::config = {
+        .globalScale = (float)model.conf.baseScale,
+        .animSampleRate = 60,
+        //.ignoreMaterials = args.checkArg("--ignore-materials"),
+        //.ignoreTransforms = args.checkArg("--ignore-transforms"),
+        .createBVH = model.conf.gltfBVH,
+        .verbose = false,
+        .assetPath = "assets/",
+        .assetPathFull = fs::absolute(project.getPath() + "/assets").string(),
+      };
 
-    auto t3dm = T3DM::parseGLTF(model.path.c_str());
+      auto t3dm = T3DM::parseGLTF(model.path.c_str());
 
-    std::vector<T3DM::CustomChunk> customChunks{};
+      std::vector<T3DM::CustomChunk> customChunks{};
 
-    if(model.conf.gltfCollision.value) {
-      customChunks.emplace_back('0', buildCollision(model.path, T3DM::config.globalScale).getData());
+      if(model.conf.gltfCollision.value) {
+        customChunks.emplace_back('0', buildCollision(model.path, T3DM::config.globalScale).getData());
+      }
+
+      T3DM::writeT3DM(t3dm, t3dmPath.c_str(), projectPath, customChunks);
+
+      int compr = (int)model.conf.compression - 1;
+      if(compr < 0)compr = 1; // @TODO: pull default compression level
+
+      std::string cmd = mkAsset.string() + " -c " + std::to_string(compr);
+      cmd += " -o " + t3dmDir.string();
+      cmd += " " + t3dmPath.string();
+
+      if(!Utils::Proc::runSyncLogged(cmd)) {
+        return false;
+      }
     }
 
-    T3DM::writeT3DM(t3dm, t3dmPath.c_str(), projectPath, customChunks);
+    // search for all files containing *.sdata
+    for (const auto &entry : fs::directory_iterator{t3dmDir}) {
+      if (entry.is_regular_file()) {
+        auto path = entry.path();
+        auto name = entry.path().filename();
 
-    int compr = (int)model.conf.compression - 1;
-    if(compr < 0)compr = 1; // @TODO: pull default compression level
-
-    std::string cmd = mkAsset.string() + " -c " + std::to_string(compr);
-    cmd += " -o " + t3dmDir.string();
-    cmd += " " + t3dmPath.string();
-
-    if(!Utils::Proc::runSyncLogged(cmd)) {
-      return false;
+        if (path.extension() == ".sdata") {
+          auto fileName = t3dmPath.stem().string();
+          if (name.string().starts_with(fileName)) {
+            // path relative to project
+            auto relPath = fs::relative(path, projectPath).string();
+            sceneCtx.files.push_back(relPath);
+          }
+        }
+      }
     }
   }
   return true;

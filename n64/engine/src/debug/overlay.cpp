@@ -240,7 +240,7 @@ void Debug::Overlay::draw(P64::Scene &scene, surface_t* surf)
   posX = surf->width - 64;
   //posX = Debug::printf(posX, posY, "A:%d/%d", scene.activeActorCount, scene.drawActorCount) + 8;
   // posX = Debug::printf(posX, posY, "T:%d", triCount) + 8;
-  Debug::printf(posX, posY, "H:%dkb", heap_stats.used / 1024);
+  Debug::printf(posX-32, posY, "H:%dkb", heap_stats.used);
   Debug::printf(posX, posY+8, "O:%d\n", scene.getObjectCount());
 
   posX = 24;
