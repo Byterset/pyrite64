@@ -79,8 +79,12 @@ int main(int argc, char** argv)
   SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
   SDL_ShowWindow(window);
 
-  // Ensure text input events are enabled (WSL can otherwise miss SDL_EVENT_TEXT_INPUT).
-  SDL_StartTextInput(window);
+  // Ensure text input events are enabled
+  bool useTextInputFallback = false;
+  if (!SDL_StartTextInput(window)) {
+    useTextInputFallback = true;
+    fprintf(stderr, "Warning: SDL_StartTextInput failed: %s\n", SDL_GetError());
+  }
 
   // Create GPU Device
   ctx.gpu = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_SPIRV | SDL_GPU_SHADERFORMAT_DXIL | SDL_GPU_SHADERFORMAT_METALLIB,true,nullptr);
@@ -214,7 +218,7 @@ int main(int argc, char** argv)
           }
 
           // Fallback for environments that don't emit SDL_EVENT_TEXT_INPUT (e.g., some WSL setups).
-          /*if (ImGui::GetIO().WantTextInput) {
+          if (useTextInputFallback && ImGui::GetIO().WantTextInput) {
             SDL_Keymod modstate = (SDL_Keymod)SDL_GetModState();
             const bool hasTextModifiers = (modstate & (SDL_KMOD_CTRL | SDL_KMOD_ALT | SDL_KMOD_GUI)) != 0;
             if (!hasTextModifiers) {
@@ -223,7 +227,7 @@ int main(int argc, char** argv)
                 ImGui::GetIO().AddInputCharacter((unsigned int)keycode);
               }
             }
-          }*/
+          }
         }
         // Check: io.WantCaptureMouse, io.WantCaptureKeyboard
       }
