@@ -55,7 +55,7 @@ namespace Project::Component::Audio3D
     return data;
   }
 
-  void build(Object&, Entry &entry, Build::SceneCtx &ctx)
+  void build(Object& obj, Entry &entry, Build::SceneCtx &ctx)
   {
     Data &data = *static_cast<Data*>(entry.data.get());
 
@@ -68,20 +68,20 @@ namespace Project::Component::Audio3D
     }
 
     uint8_t flags = 0;
-    if(data.loop.value)flags |= 1 << 0;
-    if(data.autoPlay.value)flags |= 1 << 1;
+    if(data.loop.resolve(obj))flags |= 1 << 0;
+    if(data.autoPlay.resolve(obj))flags |= 1 << 1;
 
     // Resolve listener object
-    auto obj = ctx.scene->getObjectByUUID(data.listenerUUID.value);
-    uint16_t listenerId = obj ? obj->id : 0;
+    auto listenerObj = ctx.scene ? ctx.scene->getObjectByUUID(data.listenerUUID.value) : nullptr;
+    uint16_t listenerId = listenerObj ? listenerObj->id : 0;
 
     // Must match InitDataPacked in runtime audio3d.cpp
     ctx.fileObj.write<uint16_t>(id);
-    ctx.fileObj.write<uint16_t>((uint16_t)(data.volume.value * 0xFFFF));
+    ctx.fileObj.write<uint16_t>((uint16_t)(data.volume.resolve(obj) * 0xFFFF));
     ctx.fileObj.write<uint16_t>(listenerId);
     ctx.fileObj.write<uint8_t>(flags);
     ctx.fileObj.write<uint8_t>(0); // padding
-    ctx.fileObj.write<float>(data.radius.value);
+    ctx.fileObj.write<float>(data.radius.resolve(obj));
   }
 
   void draw(Object &obj, Entry &entry)
@@ -92,11 +92,11 @@ namespace Project::Component::Audio3D
       ImTable::add("Name", entry.name);
 
       auto &audioList = ctx.project->getAssets().getTypeEntries(FileType::AUDIO);
-      ImTable::addVecComboBox("Audio", audioList, data.audioUUID.value);
-      ImTable::addProp("Volume", data.volume);
-      ImTable::addProp("Loop", data.loop);
-      ImTable::addProp("Auto-Play", data.autoPlay);
-      ImTable::addProp("Radius", data.radius);
+      ImTable::addVecComboBox("Audio", audioList, data.audioUUID.resolve(obj));
+      ImTable::addObjProp("Volume", data.volume);
+      ImTable::addObjProp("Loop", data.loop);
+      ImTable::addObjProp("Auto-Play", data.autoPlay);
+      ImTable::addObjProp("Radius", data.radius);
 
       // Listener Selector
       auto &map = ctx.project->getScenes().getLoadedScene()->objectsMap;
@@ -110,7 +110,12 @@ namespace Project::Component::Audio3D
           .name = object->name,
         });
       }
-      ImTable::addVecComboBox("Listener", objList, data.listenerUUID.value);
+      
+      // Use addObjProp with custom edit function to support prefab overrides
+      ImTable::addObjProp<uint64_t>("Listener", data.listenerUUID, [&objList](uint64_t *val) -> bool {
+        ImGui::VectorComboBox("Listener", objList, *val);
+        return false;
+      }, nullptr);
 
       ImTable::end();
     }
@@ -118,9 +123,6 @@ namespace Project::Component::Audio3D
 
   void draw3D(Object& obj, Entry &entry, Editor::Viewport3D &vp, SDL_GPUCommandBuffer* cmdBuff, SDL_GPURenderPass* pass)
   {
-    Data &data = *static_cast<Data*>(entry.data.get());
-    // 6 is sprite index for Audio? Audio2D used 4. Let's reuse 4 or pick another if available.
-    // Index 4 is likely a speaker icon.
-    Utils::Mesh::addSprite(*vp.getSprites(), obj.pos.resolve(obj.propOverrides), obj.uuid, 4);
+    Utils::Mesh::addSprite(*vp.getSprites(), obj.pos.resolve(obj), obj.uuid, 4);
   }
 }
