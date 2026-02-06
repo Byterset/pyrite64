@@ -62,7 +62,6 @@ namespace P64::Comp
     auto listener = sc.getObjectById(data->listenerObjId);
     
     if(!listener) {
-        debugf("Audio3D: Listener object NOT FOUND!\n");
         return;
     }
     
@@ -71,15 +70,14 @@ namespace P64::Comp
     float dz = obj.pos.z - listener->pos.z;
     float dist = sqrtf(dx*dx + dy*dy + dz*dz);
     
-    debugf("Audio3D: Distance = %f, Radius = %f\n", (double)dist, (double)data->radius);
-    
+    //scale volume with distance, simple linear falloff
+    //TODO: coult add curve option or make it depend on listener orientation for directional audio
     float volScale = 0.0f;
     if (dist < data->radius) {
         volScale = 1.0f - (dist / data->radius);
         if (volScale < 0.0f) volScale = 0.0f;
     }
     
-    debugf("Audio3D: Setting volume to %f (scale=%f)\n", (double)(data->volume * volScale), (double)volScale);
     data->handle.setVolume(data->volume * volScale);
   }
 }
