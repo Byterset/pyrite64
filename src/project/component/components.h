@@ -206,7 +206,7 @@ namespace Project::Component
     },
     CompInfo{
       .id = 11,
-      .icon = ICON_MDI_MUSIC " ",
+      .icon = ICON_MDI_MUSIC ICON_MDI_VIDEO_3D " ",
       .name = "Audio (3D)",
       .funcInit = Audio3D::init,
       .funcDraw = Audio3D::draw,
