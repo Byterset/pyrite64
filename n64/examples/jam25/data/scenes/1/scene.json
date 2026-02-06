@@ -105,101 +105,66 @@
   "graph": {
     "children": [
       {
-        "children": [
+        "children": [],
+        "components": [
           {
-            "children": [],
-            "components": [
-              {
-                "data": {
-                  "color": [
-                    0.7983871102333069,
-                    0.6985887289047241,
-                    0.6985887289047241,
-                    0.9843137264251709
-                  ],
-                  "index": 0,
-                  "type": 0
-                },
-                "id": 2,
-                "name": "Light",
-                "uuid": 16497944062403456447
-              }
-            ],
-            "enabled": true,
-            "id": 4,
-            "name": "Ambient",
-            "pos": [
-              18.34891128540039,
-              187.38719177246094,
-              -187.8899688720703
-            ],
-            "propOverrides": {},
-            "rot": [
-              0.0,
-              0.0,
-              0.0,
-              1.0
-            ],
-            "scale": [
-              1.0000001192092896,
-              1.0,
-              1.0
-            ],
-            "selectable": true,
-            "uuid": 3825197670,
-            "uuidPrefab": 0
+            "data": {
+              "culling": false,
+              "layerIdx": 0,
+              "material": {
+                "depth": 0,
+                "env": [
+                  0.08891963958740234,
+                  0.13289906084537506,
+                  0.4627451002597809,
+                  1.0
+                ],
+                "fresnel": 0,
+                "fresnelColor": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "lighting": false,
+                "prim": [
+                  0.04038446396589279,
+                  0.4649147391319275,
+                  0.7921568751335144,
+                  1.0
+                ],
+                "setDepth": true,
+                "setEnv": true,
+                "setFresnel": false,
+                "setLighting": false,
+                "setPrim": true
+              },
+              "meshFilter": "",
+              "model": 7363787437567682035
+            },
+            "id": 1,
+            "name": "Model (Static)",
+            "uuid": 1492031168050613979
           },
           {
-            "children": [],
-            "components": [
-              {
-                "data": {
-                  "color": [
-                    0.7298387289047241,
-                    0.7298387289047241,
-                    0.7298387289047241,
-                    0.886274516582489
-                  ],
-                  "index": 0,
-                  "type": 1
-                },
-                "id": 2,
-                "name": "Light",
-                "uuid": 605723811929282716
-              }
-            ],
-            "enabled": true,
-            "id": 5,
-            "name": "Dir Light",
-            "pos": [
-              -39.96976089477539,
-              204.848388671875,
-              -188.9423828125
-            ],
-            "propOverrides": {},
-            "rot": [
-              0.5248215198516846,
-              0.011167474091053009,
-              -0.24909578263759613,
-              0.8138728141784668
-            ],
-            "scale": [
-              0.999997615814209,
-              0.9999942779541016,
-              1.059838891029358
-            ],
-            "selectable": true,
-            "uuid": 1228635129,
-            "uuidPrefab": 0
+            "data": {
+              "objectUUID": 0,
+              "type": 2,
+              "usePos": true,
+              "useRot": false,
+              "useScale": false
+            },
+            "id": 7,
+            "name": "Constraint",
+            "uuid": 15611361954703087596
           }
         ],
-        "components": [],
         "enabled": true,
-        "id": 3,
-        "name": "Light",
+        "id": 11,
+        "name": "Skybox",
         "pos": [
-          0.0,
-          0.0,
+          -609.4421997070313,
+          397.9005432128906,
           0.0
         ],
         "propOverrides": {},
@@ -215,7 +180,7 @@
           1.0
         ],
         "selectable": true,
-        "uuid": 593857752,
+        "uuid": 3835080413,
         "uuidPrefab": 0
       },
       {
@@ -495,6 +460,19 @@
             "id": 10,
             "name": "Model (Animated)",
             "uuid": 11190020261542761224
+          },
+          {
+            "data": {
+              "audioUUID": 10606553944411072392,
+              "autoPlay": true,
+              "listenerUUID": 2566546752,
+              "loop": true,
+              "radius": 250.0,
+              "volume": 0.30000001192092896
+            },
+            "id": 11,
+            "name": "Audio (3D)",
+            "uuid": 10702568332236826326
           }
         ],
         "enabled": true,
@@ -525,7 +503,7 @@
         "children": [],
         "components": [],
         "enabled": true,
-        "id": 50,
+        "id": 120,
         "name": "Player",
         "pos": [
           0.0,
@@ -552,6 +530,120 @@
         "selectable": true,
         "uuid": 2566546752,
         "uuidPrefab": 3372488998
+      },
+      {
+        "children": [
+          {
+            "children": [],
+            "components": [
+              {
+                "data": {
+                  "color": [
+                    0.7983871102333069,
+                    0.6985887289047241,
+                    0.6985887289047241,
+                    0.9843137264251709
+                  ],
+                  "index": 0,
+                  "type": 0
+                },
+                "id": 2,
+                "name": "Light",
+                "uuid": 16497944062403456447
+              }
+            ],
+            "enabled": true,
+            "id": 4,
+            "name": "Ambient",
+            "pos": [
+              18.34891128540039,
+              187.38719177246094,
+              -187.8899688720703
+            ],
+            "propOverrides": {},
+            "rot": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "scale": [
+              1.0000001192092896,
+              1.0,
+              1.0
+            ],
+            "selectable": true,
+            "uuid": 3825197670,
+            "uuidPrefab": 0
+          },
+          {
+            "children": [],
+            "components": [
+              {
+                "data": {
+                  "color": [
+                    0.7298387289047241,
+                    0.7298387289047241,
+                    0.7298387289047241,
+                    0.886274516582489
+                  ],
+                  "index": 0,
+                  "type": 1
+                },
+                "id": 2,
+                "name": "Light",
+                "uuid": 605723811929282716
+              }
+            ],
+            "enabled": true,
+            "id": 5,
+            "name": "Dir Light",
+            "pos": [
+              -39.96976089477539,
+              204.848388671875,
+              -188.9423828125
+            ],
+            "propOverrides": {},
+            "rot": [
+              0.5248215198516846,
+              0.011167474091053009,
+              -0.24909578263759613,
+              0.8138728141784668
+            ],
+            "scale": [
+              0.999997615814209,
+              0.9999942779541016,
+              1.059838891029358
+            ],
+            "selectable": true,
+            "uuid": 1228635129,
+            "uuidPrefab": 0
+          }
+        ],
+        "components": [],
+        "enabled": true,
+        "id": 3,
+        "name": "Light",
+        "pos": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "propOverrides": {},
+        "rot": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "selectable": true,
+        "uuid": 593857752,
+        "uuidPrefab": 0
       },
       {
         "children": [

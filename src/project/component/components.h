@@ -77,6 +77,7 @@ namespace Project::Component
   MAKE_COMP(Culling)
   MAKE_COMP(NodeGraph)
   MAKE_COMP(AnimModel)
+  MAKE_COMP(Audio3D)
 
   constexpr std::array TABLE{
     CompInfo{
@@ -202,6 +203,17 @@ namespace Project::Component
       .funcSerialize = AnimModel::serialize,
       .funcDeserialize = AnimModel::deserialize,
       .funcBuild = AnimModel::build
+    },
+    CompInfo{
+      .id = 11,
+      .icon = ICON_MDI_MUSIC " ",
+      .name = "Audio (3D)",
+      .funcInit = Audio3D::init,
+      .funcDraw = Audio3D::draw,
+      .funcDrawPost3D = Audio3D::draw3D,
+      .funcSerialize = Audio3D::serialize,
+      .funcDeserialize = Audio3D::deserialize,
+      .funcBuild = Audio3D::build
     }
   };
 }
