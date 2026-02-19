@@ -169,10 +169,12 @@ void P64::Scene::update(float deltaTime)
 
   ticksActorUpdate = get_ticks() - ticksActorUpdate;
 
+  // Legacy collision scene - now only handles static mesh colliders (CollMesh)
+  // Dynamic rigidbodies are handled by the new physics system below
   collScene.update(deltaTime);
   
-  // Update new physics system (iterative constraint solver)
-  // This is separate from legacy collision and only runs for bodies using new physics
+  // Physics simulation with iterative constraint solver
+  // Handles all dynamic Rigidbody components
   physicsScene.step(deltaTime);
 
   for(auto &obj : pendingObjDelete)

@@ -1,48 +1,45 @@
-# Multi-Shape Collider API Usage
+# Multi-Shape Rigidbody API Usage
 
 ## Overview
 
-The new physics system supports multiple collision shapes per object with iterative constraint solving.
+The physics system provides rigidbody simulation with iterative constraint solving, supporting multiple collision shapes per object.
+
+**Important**: Only ONE Rigidbody component per object is allowed. Multiple shapes can be added to a single rigidbody.
 
 ## Basic Usage
 
-### Converting Existing CollBody to New Physics
+### Adding a Rigidbody Component
+
+Rigidbodies are added via the editor or programmatically. Each object can have exactly one rigidbody.
 
 ```cpp
-#include "physics/collBodyBuilder.h"
-#include "scene/components/collBody.h"
-
-// Get existing CollBody component
-auto* collBody = object->getComponent<Comp::CollBody>();
-
-// Enable new physics system
-Physics::CollBodyShapeBuilder::enableNewPhysics(collBody);
-
-// Clear default shape and add custom shapes
-Physics::CollBodyShapeBuilder::clearShapes(collBody);
+// Get the Rigidbody component (added in editor or during object creation)
+auto* rigidbody = object->getComponent<Comp::CollBody>();
 ```
 
 ### Adding Multiple Shapes
 
+A single rigidbody can have multiple collision shapes:
+
 ```cpp
+// Clear default shape and add custom shapes
+rigidbody->clearShapes();
+
 // Add a capsule for the body
-Physics::CollBodyShapeBuilder::addCapsule(
-    collBody, 
+rigidbody->addCapsule(
     0.5f,  // radius
     1.0f,  // inner half height
     {0, 1.0f, 0}  // offset up by 1 unit
 );
 
 // Add a sphere for the head
-Physics::CollBodyShapeBuilder::addSphere(
-    collBody,
+rigidbody->addSphere(
     0.4f,  // radius
     {0, 2.5f, 0}  // offset up by 2.5 units
 );
 
 // Add a box for equipment
-Physics::CollBodyShapeBuilder::addBox(
-    collBody,
+rigidbody->addBox(
     {0.3f, 0.2f, 0.3f},  // half extents
     {0.5f, 1.0f, 0}  // offset to the side
 );
@@ -52,39 +49,39 @@ Physics::CollBodyShapeBuilder::addBox(
 
 ```cpp
 // Set mass (affects inertia)
-Physics::CollBodyShapeBuilder::setMass(collBody, 70.0f);
+rigidbody->setMass(70.0f);
 
 // Set friction (0-1, higher = more friction)
-Physics::CollBodyShapeBuilder::setFriction(collBody, 0.5f);
+rigidbody->setFriction(0.5f);
 
 // Set bounce/restitution (0-1, higher = more bouncy)
-Physics::CollBodyShapeBuilder::setBounce(collBody, 0.2f);
+rigidbody->setBounce(0.2f);
 
 // Make kinematic (won't respond to physics)
-Physics::CollBodyShapeBuilder::setKinematic(collBody, false);
+rigidbody->setKinematic(false);
 ```
 
 ## Supported Shapes
 
 ### Sphere
 ```cpp
-Physics::CollBodyShapeBuilder::addSphere(body, radius, localOffset);
+rigidbody->addSphere(radius, localOffset);
 ```
 
 ### Box
 ```cpp
-Physics::CollBodyShapeBuilder::addBox(body, halfExtents, localOffset);
+rigidbody->addBox(halfExtents, localOffset);
 // halfExtents: {width/2, height/2, depth/2}
 ```
 
 ### Cylinder (Y-axis aligned)
 ```cpp
-Physics::CollBodyShapeBuilder::addCylinder(body, radius, halfHeight, localOffset);
+rigidbody->addCylinder(radius, halfHeight, localOffset);
 ```
 
 ### Capsule (Y-axis aligned)
 ```cpp
-Physics::CollBodyShapeBuilder::addCapsule(body, radius, innerHalfHeight, localOffset);
+rigidbody->addCapsule(radius, innerHalfHeight, localOffset);
 // innerHalfHeight: height of cylindrical part (not including end caps)
 ```
 
@@ -94,22 +91,43 @@ Physics::CollBodyShapeBuilder::addCapsule(body, radius, innerHalfHeight, localOf
 - Local offsets are applied in the object's local space
 - The object's scale is applied to all shapes
 
-## Backward Compatibility
+## Single Rigidbody Constraint
 
-By default, CollBody uses the legacy collision system. The new physics must be explicitly enabled:
+**Each object can have only ONE Rigidbody component.**
 
-```cpp
-Physics::CollBodyShapeBuilder::enableNewPhysics(collBody);
+If you try to add a second rigidbody, an error will be logged:
+```
+Error: Object X already has a Rigidbody component! Only one Rigidbody per object is allowed.
 ```
 
-Legacy single-shape colliders will continue to work without modification.
+To create complex objects with multiple collision shapes, add them to the single rigidbody:
+```cpp
+// CORRECT: One rigidbody, multiple shapes
+auto* rb = object->getComponent<Comp::CollBody>();
+rb->addBox({1, 1, 1}, {0, 0, 0});
+rb->addSphere(0.5f, {0, 2, 0});
+
+// WRONG: Do not try to add multiple rigidbodies!
+// object->addComponent<Comp::CollBody>(); // ERROR!
+```
+
+## Physics System Features
+
+The rigidbody system includes:
+
+1. **GJK/EPA Collision Detection** - Accurate narrow-phase for arbitrary convex shapes
+2. **Iterative Constraint Solver** - 7 velocity + 4 position iterations
+3. **Contact Caching** - Warm-starting for stable stacking
+4. **Semi-Implicit Euler** - Stable velocity and position integration
+5. **Friction & Restitution** - Realistic material properties
+6. **Linear & Angular Dynamics** - Full 6-DOF simulation
 
 ## Integration with PhysicsScene
 
-The PhysicsScene must be integrated into the main game loop:
+The PhysicsScene runs automatically in the game loop:
 
 ```cpp
-// In Scene update:
+// In Scene::update() - happens automatically
 physicsScene.step(deltaTime);
 ```
 
@@ -121,6 +139,14 @@ This runs the complete physics pipeline:
 5. Integrate positions
 6. Solve position constraints (4 iterations)
 
-## Contact Caching
+## Static Mesh Colliders
 
-The system automatically caches contact constraints between frames for warm-starting, improving solver convergence and stability.
+For static level geometry, use `CollMesh` components instead of rigidbodies. These provide efficient collision without physics simulation.
+
+## Performance Notes
+
+- Designed for N64 hardware constraints
+- Fixed 256-contact cache (~75KB)
+- ~200 bytes per rigidbody + shapes
+- Suitable for 10-50 dynamic objects per scene
+

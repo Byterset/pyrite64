@@ -1,147 +1,128 @@
 /**
- * Example: Using Multi-Shape Physics System
+ * Example: Using Multi-Shape Rigidbody System
  * 
- * This example demonstrates how to enable the new physics system
- * and create a character with multiple collision shapes.
+ * This example demonstrates how to use rigidbodies with multiple collision shapes.
+ * Note: Only ONE rigidbody per object is allowed!
  */
 
 #include "scene/components/collBody.h"
-#include "physics/collBodyBuilder.h"
 
 // Example: Creating a character with capsule body + sphere head
 void setupPlayerPhysics(P64::Object* playerObject) 
 {
-    // Get existing CollBody component (assumes it was added in editor or at init)
-    auto* collBody = playerObject->getComponent<P64::Comp::CollBody>();
-    if (!collBody) return;
-    
-    // Enable new physics system (disables legacy BCS)
-    P64::Physics::CollBodyShapeBuilder::enableNewPhysics(collBody);
+    // Get the Rigidbody component (must be added in editor or during creation)
+    auto* rigidbody = playerObject->getComponent<P64::Comp::CollBody>();
+    if (!rigidbody) return;
     
     // Clear default shape
-    P64::Physics::CollBodyShapeBuilder::clearShapes(collBody);
+    rigidbody->clearShapes();
     
     // Add capsule for main body (1 unit radius, 2 units tall)
-    P64::Physics::CollBodyShapeBuilder::addCapsule(
-        collBody,
+    rigidbody->addCapsule(
         1.0f,  // radius
         1.0f,  // inner half height (cylinder part)
         {0, 1.5f, 0}  // offset upward
     );
     
     // Add sphere for head (0.8 unit radius)
-    P64::Physics::CollBodyShapeBuilder::addSphere(
-        collBody,
+    rigidbody->addSphere(
         0.8f,  // radius
         {0, 3.5f, 0}  // offset above body
     );
     
     // Set physics properties
-    P64::Physics::CollBodyShapeBuilder::setMass(collBody, 70.0f);
-    P64::Physics::CollBodyShapeBuilder::setFriction(collBody, 0.5f);
-    P64::Physics::CollBodyShapeBuilder::setBounce(collBody, 0.0f);
+    rigidbody->setMass(70.0f);
+    rigidbody->setFriction(0.5f);
+    rigidbody->setBounce(0.0f);
 }
 
-// Example: Creating a vehicle with box body + cylinder wheels
+// Example: Creating a vehicle with box body + wheel approximations
 void setupVehiclePhysics(P64::Object* vehicleObject)
 {
-    auto* collBody = vehicleObject->getComponent<P64::Comp::CollBody>();
-    if (!collBody) return;
+    auto* rigidbody = vehicleObject->getComponent<P64::Comp::CollBody>();
+    if (!rigidbody) return;
     
-    P64::Physics::CollBodyShapeBuilder::enableNewPhysics(collBody);
-    P64::Physics::CollBodyShapeBuilder::clearShapes(collBody);
+    rigidbody->clearShapes();
     
     // Main body (box)
-    P64::Physics::CollBodyShapeBuilder::addBox(
-        collBody,
+    rigidbody->addBox(
         {2.0f, 1.0f, 4.0f},  // half extents (width, height, length)
         {0, 1.0f, 0}  // centered, elevated
     );
     
-    // Front wheels (cylinders, X-axis aligned would require rotation support)
-    // For now, using small boxes as wheel approximations
-    P64::Physics::CollBodyShapeBuilder::addBox(
-        collBody,
+    // Front wheels (using small boxes as wheel approximations)
+    rigidbody->addBox(
         {0.3f, 0.5f, 0.5f},  // wheel size
         {-1.8f, 0.5f, 2.0f}  // front-left
     );
     
-    P64::Physics::CollBodyShapeBuilder::addBox(
-        collBody,
+    rigidbody->addBox(
         {0.3f, 0.5f, 0.5f},
         {1.8f, 0.5f, 2.0f}  // front-right
     );
     
     // Rear wheels
-    P64::Physics::CollBodyShapeBuilder::addBox(
-        collBody,
+    rigidbody->addBox(
         {0.3f, 0.5f, 0.5f},
         {-1.8f, 0.5f, -2.0f}  // rear-left
     );
     
-    P64::Physics::CollBodyShapeBuilder::addBox(
-        collBody,
+    rigidbody->addBox(
         {0.3f, 0.5f, 0.5f},
         {1.8f, 0.5f, -2.0f}  // rear-right
     );
     
-    P64::Physics::CollBodyShapeBuilder::setMass(collBody, 1000.0f);
-    P64::Physics::CollBodyShapeBuilder::setFriction(collBody, 0.7f);
+    rigidbody->setMass(1000.0f);
+    rigidbody->setFriction(0.7f);
 }
 
 // Example: Creating a crate with just a box (simpler case)
 void setupCratePhysics(P64::Object* crateObject)
 {
-    auto* collBody = crateObject->getComponent<P64::Comp::CollBody>();
-    if (!collBody) return;
+    auto* rigidbody = crateObject->getComponent<P64::Comp::CollBody>();
+    if (!rigidbody) return;
     
-    P64::Physics::CollBodyShapeBuilder::enableNewPhysics(collBody);
-    P64::Physics::CollBodyShapeBuilder::clearShapes(collBody);
+    rigidbody->clearShapes();
     
     // Single box shape
-    P64::Physics::CollBodyShapeBuilder::addBox(
-        collBody,
+    rigidbody->addBox(
         {1.0f, 1.0f, 1.0f},  // 2x2x2 cube
         {0, 0, 0}  // centered
     );
     
-    P64::Physics::CollBodyShapeBuilder::setMass(collBody, 50.0f);
-    P64::Physics::CollBodyShapeBuilder::setFriction(collBody, 0.6f);
-    P64::Physics::CollBodyShapeBuilder::setBounce(collBody, 0.1f);
+    rigidbody->setMass(50.0f);
+    rigidbody->setFriction(0.6f);
+    rigidbody->setBounce(0.1f);
 }
 
 // Example: Making an object kinematic (doesn't respond to physics)
 void setupStaticPlatform(P64::Object* platformObject)
 {
-    auto* collBody = platformObject->getComponent<P64::Comp::CollBody>();
-    if (!collBody) return;
+    auto* rigidbody = platformObject->getComponent<P64::Comp::CollBody>();
+    if (!rigidbody) return;
     
-    P64::Physics::CollBodyShapeBuilder::enableNewPhysics(collBody);
-    P64::Physics::CollBodyShapeBuilder::clearShapes(collBody);
+    rigidbody->clearShapes();
     
     // Large platform
-    P64::Physics::CollBodyShapeBuilder::addBox(
-        collBody,
+    rigidbody->addBox(
         {10.0f, 0.5f, 10.0f},
         {0, 0, 0}
     );
     
     // Make it kinematic so it doesn't fall or move
-    P64::Physics::CollBodyShapeBuilder::setKinematic(collBody, true);
+    rigidbody->setKinematic(true);
 }
 
 // Example: Trigger volume (doesn't resolve collisions, just detects)
 void setupTriggerZone(P64::Object* triggerObject)
 {
-    auto* collBody = triggerObject->getComponent<P64::Comp::CollBody>();
-    if (!collBody) return;
+    auto* rigidbody = triggerObject->getComponent<P64::Comp::CollBody>();
+    if (!rigidbody) return;
     
-    P64::Physics::CollBodyShapeBuilder::enableNewPhysics(collBody);
-    P64::Physics::CollBodyShapeBuilder::clearShapes(collBody);
+    rigidbody->clearShapes();
     
     // Large trigger box
-    P64::Physics::CollBodyShapeBuilder::addBox(
-        collBody,
+    rigidbody->addBox(
         {5.0f, 3.0f, 5.0f},
         {0, 0, 0}
     );
@@ -150,12 +131,18 @@ void setupTriggerZone(P64::Object* triggerObject)
     // This is controlled via the isTrigger flag set during init
 }
 
-// Note: Legacy collision system usage (unchanged)
-void legacyExample(P64::Object* object)
+// IMPORTANT: Only one rigidbody per object!
+void incorrectUsage(P64::Object* object)
 {
-    // Objects without enableNewPhysics() continue using legacy BCS system
-    auto* collBody = object->getComponent<P64::Comp::CollBody>();
+    // WRONG - DO NOT DO THIS!
+    // Trying to add a second rigidbody will cause an error
+    // auto* rb1 = object->addComponent<Comp::CollBody>();  // First one - OK
+    // auto* rb2 = object->addComponent<Comp::CollBody>();  // ERROR: Duplicate!
     
-    // This still works exactly as before - no changes needed
-    // Legacy system is the default for backward compatibility
+    // CORRECT - Add multiple shapes to ONE rigidbody
+    auto* rb = object->getComponent<P64::Comp::CollBody>();
+    rb->addBox({1, 1, 1}, {0, 0, 0});
+    rb->addSphere(0.5f, {0, 2, 0});
+    // This is how you create compound colliders!
 }
+
