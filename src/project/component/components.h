@@ -137,8 +137,8 @@ namespace Project::Component
     },
     CompInfo{
       .id = 5,
-      .icon = ICON_MDI_CYLINDER " ",
-      .name = "Collision-Body",
+      .icon = ICON_MDI_AXIS_ARROW " ",
+      .name = "Rigidbody",
       .funcInit = CollBody::init,
       .funcDraw = CollBody::draw,
       .funcDrawPost3D = CollBody::draw3D,
