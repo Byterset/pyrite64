@@ -182,8 +182,8 @@ namespace Project::Component::CollBody
         glm::vec3 p1Bottom = bottomCenter + glm::vec3(cosf(angle1) * radius, 0, sinf(angle1) * radius);
         glm::vec3 p2Bottom = bottomCenter + glm::vec3(cosf(angle2) * radius, 0, sinf(angle2) * radius);
         
-        vp.getLines()->add(p1Top, p2Top, shapeColor);
-        vp.getLines()->add(p1Bottom, p2Bottom, shapeColor);
+        Utils::Mesh::addLine(*vp.getLines(), p1Top, p2Top, shapeColor);
+        Utils::Mesh::addLine(*vp.getLines(), p1Bottom, p2Bottom, shapeColor);
       }
       
       // Vertical lines connecting top and bottom
@@ -191,7 +191,7 @@ namespace Project::Component::CollBody
         float angle = (float)i / 4.0f * 2.0f * 3.14159f;
         glm::vec3 pTop = topCenter + glm::vec3(cosf(angle) * radius, 0, sinf(angle) * radius);
         glm::vec3 pBottom = bottomCenter + glm::vec3(cosf(angle) * radius, 0, sinf(angle) * radius);
-        vp.getLines()->add(pTop, pBottom, shapeColor);
+        Utils::Mesh::addLine(*vp.getLines(), pTop, pBottom, shapeColor);
       }
     } else if(type == TYPE_CAPSULE) {
       // Draw capsule as cylinder with hemispheres at top and bottom
@@ -212,8 +212,8 @@ namespace Project::Component::CollBody
         glm::vec3 p1Bottom = bottomCenter + glm::vec3(cosf(angle1) * radius, 0, sinf(angle1) * radius);
         glm::vec3 p2Bottom = bottomCenter + glm::vec3(cosf(angle2) * radius, 0, sinf(angle2) * radius);
         
-        vp.getLines()->add(p1Top, p2Top, shapeColor);
-        vp.getLines()->add(p1Bottom, p2Bottom, shapeColor);
+        Utils::Mesh::addLine(*vp.getLines(), p1Top, p2Top, shapeColor);
+        Utils::Mesh::addLine(*vp.getLines(), p1Bottom, p2Bottom, shapeColor);
       }
       
       // Vertical lines
@@ -221,7 +221,7 @@ namespace Project::Component::CollBody
         float angle = (float)i / 4.0f * 2.0f * 3.14159f;
         glm::vec3 pTop = topCenter + glm::vec3(cosf(angle) * radius, 0, sinf(angle) * radius);
         glm::vec3 pBottom = bottomCenter + glm::vec3(cosf(angle) * radius, 0, sinf(angle) * radius);
-        vp.getLines()->add(pTop, pBottom, shapeColor);
+        Utils::Mesh::addLine(*vp.getLines(), pTop, pBottom, shapeColor);
       }
       
       // Draw hemisphere arcs at top and bottom
@@ -244,7 +244,7 @@ namespace Project::Component::CollBody
             radius * sinf(arcAngle2),
             sinf(angle) * radius * cosf(arcAngle2)
           );
-          vp.getLines()->add(p1Top, p2Top, shapeColor);
+          Utils::Mesh::addLine(*vp.getLines(), p1Top, p2Top, shapeColor);
           
           // Bottom hemisphere
           glm::vec3 p1Bottom = bottomCenter - glm::vec3(
@@ -257,7 +257,7 @@ namespace Project::Component::CollBody
             radius * sinf(arcAngle2),
             sinf(angle) * radius * cosf(arcAngle2)
           );
-          vp.getLines()->add(p1Bottom, p2Bottom, shapeColor);
+          Utils::Mesh::addLine(*vp.getLines(), p1Bottom, p2Bottom, shapeColor);
         }
       }
     }
