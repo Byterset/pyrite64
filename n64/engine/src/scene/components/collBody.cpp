@@ -17,6 +17,8 @@ namespace
     fm_vec3_t halfExtend{};
     fm_vec3_t offset{};
     uint8_t flags{};
+    float friction{};
+    float bounce{};
     uint8_t maskRead{};
     uint8_t maskWrite{};
   };
@@ -39,28 +41,16 @@ namespace P64::Comp
       return;
     }
 
-    // Check for duplicate Rigidbody on this object
-    auto compRefs = obj.getCompRefs();
-    int rigidbodyCount = 0;
-    for (uint32_t i = 0; i < obj.compCount; ++i) {
-      if (compRefs[i].type == CollBody::ID) {
-        rigidbodyCount++;
-      }
-    }
-    
-    if (rigidbodyCount > 1) {
-      Log::error("Object %d already has a Rigidbody component! Only one Rigidbody per object is allowed.", obj.id);
-      // Still initialize but log error
-    }
-
     new(data) CollBody();
 
-    // Initialize physics body
+    // Initialize physics body with default mass (will be overridden by Rigidbody component if present)
     data->physicsBody = new Physics::PhysicsBody();
     data->physicsBody->init(&obj, 1.0f);
     data->physicsBody->maskRead = initData->maskRead;
     data->physicsBody->maskWrite = initData->maskWrite;
     data->physicsBody->isTrigger = (initData->flags & Coll::BCSFlags::TRIGGER);
+    data->physicsBody->friction = initData->friction;
+    data->physicsBody->restitution = initData->bounce;
     
     // Add default shape based on flags
     Physics::ColliderShape shape;
@@ -173,12 +163,6 @@ namespace P64::Comp
     }
   }
   
-  void CollBody::setMass(float mass) {
-    if (!physicsBody) return;
-    physicsBody->mass = mass;
-    physicsBody->invMass = (mass > 0.0f) ? (1.0f / mass) : 0.0f;
-  }
-  
   void CollBody::setFriction(float friction) {
     if (physicsBody) {
       physicsBody->friction = friction;
@@ -187,13 +171,7 @@ namespace P64::Comp
   
   void CollBody::setBounce(float bounce) {
     if (physicsBody) {
-      physicsBody->bounce = bounce;
-    }
-  }
-  
-  void CollBody::setKinematic(bool isKinematic) {
-    if (physicsBody) {
-      physicsBody->isKinematic = isKinematic;
+      physicsBody->restitution = bounce;
     }
   }
 }

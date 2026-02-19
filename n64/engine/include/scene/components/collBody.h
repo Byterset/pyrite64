@@ -13,11 +13,11 @@
 namespace P64::Comp
 {
   /**
-   * Rigidbody component - represents a physics-simulated object
+   * Collider component - defines collision shape and properties
    * 
-   * Only ONE rigidbody per object is allowed.
-   * Uses iterative constraint solver with GJK/EPA collision detection.
-   * Supports multiple collision shapes per rigidbody (compound colliders).
+   * Can exist without Rigidbody for static collision.
+   * When used with Rigidbody, enables physics simulation.
+   * Matches physics_object_collision_data from libdragon_tiny3d_test.
    */
   struct CollBody
   {
@@ -44,9 +44,7 @@ namespace P64::Comp
     void clearShapes();
     
     // Property setters
-    void setMass(float mass);
     void setFriction(float friction);
     void setBounce(float bounce);
-    void setKinematic(bool isKinematic);
   };
 }
