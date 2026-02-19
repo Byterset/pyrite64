@@ -117,20 +117,16 @@ namespace Project::Component::Rigidbody
 
       ImTable::addObjProp("Mass", data.mass);
       
-      ImTable::addSeparator();
       ImTable::addObjProp("Use Gravity", data.useGravity);
       if(data.useGravity.resolve(obj.propOverrides)) {
         ImTable::addObjProp("Gravity Scale", data.gravityScale);
       }
       
-      ImTable::addSeparator();
       ImTable::addObjProp("Is Kinematic", data.isKinematic);
       
-      ImTable::addSeparator();
       ImTable::addObjProp("Angular Damping", data.angularDamping);
       
-      ImTable::addSeparator();
-      ImTable::addLabel("Constraints");
+      ImTable::add("Constraints");
       ImTable::addObjProp("Freeze Position X", data.freezePosX);
       ImTable::addObjProp("Freeze Position Y", data.freezePosY);
       ImTable::addObjProp("Freeze Position Z", data.freezePosZ);

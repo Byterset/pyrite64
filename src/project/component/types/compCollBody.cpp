@@ -140,10 +140,8 @@ namespace Project::Component::CollBody
       }
       
       ImTable::addObjProp("Offset", data.offset);
-      ImTable::addSeparator();
       ImTable::addObjProp("Friction", data.friction);
       ImTable::addObjProp("Bounce", data.bounce);
-      ImTable::addSeparator();
       ImTable::addObjProp("Is Trigger", data.isTrigger);
       ImTable::addBitMask8("Mask Read", data.maskRead.resolve(obj.propOverrides));
       ImTable::addBitMask8("Mask Write", data.maskWrite.resolve(obj.propOverrides));
