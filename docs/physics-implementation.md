@@ -95,7 +95,9 @@ n64/engine/src/physics/
 
 ## Editor Support ✅
 
-The Collision-Body component in the editor has been updated to fully support the new physics system:
+The Rigidbody component in the editor has been updated to fully support the new physics system:
+
+**Component Name**: Rigidbody (formerly "Collision-Body")
 
 **Shape Types**:
 - ✅ Sphere (radius parameter)
@@ -113,6 +115,8 @@ The Collision-Body component in the editor has been updated to fully support the
 - Encodes shape type in flags (bits 0-1)
 - Engine correctly reads and initializes all shape types
 - Backward compatible flag encoding
+
+**Icon**: Axis arrow (representing 3D physics motion)
 
 ## Backward Compatibility
 

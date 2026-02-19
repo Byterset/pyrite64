@@ -2,7 +2,19 @@
 
 ## Overview
 
-The editor Collision-Body component has been fully updated to support the new physics system with all 4 shape types.
+The editor Rigidbody component has been fully updated to support the new physics system with all 4 shape types.
+
+## Component Naming
+
+**Editor Display Name**: "Rigidbody"
+- Previously: "Collision-Body" (misleading)
+- Now: "Rigidbody" (accurate representation)
+- Icon: Axis arrow (physics/motion icon)
+
+**Internal Structure**:
+- Engine struct: `CollBody` (ID 5) - unchanged for compatibility
+- Editor namespace: `CollBody` - unchanged for compatibility
+- Only display name and icon changed
 
 ## Issues Resolved
 

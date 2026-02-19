@@ -2,7 +2,7 @@
 
 ## Overview
 
-Both the physics system AND editor have been fully implemented and integrated.
+Both the physics system AND editor have been fully implemented and integrated. The component is now properly named "Rigidbody" in the editor to reflect its physics simulation purpose.
 
 ## Implementation Summary
 
@@ -19,9 +19,11 @@ Both the physics system AND editor have been fully implemented and integrated.
   - Contact caching and warm-starting
   - Single rigidbody per object (enforced)
 
-### Editor Components ✅
+### Editor Component ✅
 - **Status**: Complete
+- **Display Name**: "Rigidbody" (formerly "Collision-Body")
 - **Location**: `src/project/component/types/compCollBody.cpp`
+- **Icon**: Axis arrow (physics/motion icon)
 - **Features**:
   - All 4 shape types in dropdown
   - Appropriate parameters for each shape
