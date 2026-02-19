@@ -66,12 +66,32 @@ namespace P64::Comp
     Physics::ColliderShape shape;
     shape.localOffset = initData->offset;
     
-    if (initData->flags & Coll::BCSFlags::SHAPE_BOX) {
-      shape.type = Physics::ShapeType::BOX;
-      shape.data.box.halfSize = initData->halfExtend;
-    } else {
-      shape.type = Physics::ShapeType::SPHERE;
-      shape.data.sphere.radius = initData->halfExtend.y;
+    // Extract shape type from flags (bits 0-1)
+    uint8_t shapeType = initData->flags & Coll::BCSFlags::SHAPE_MASK;
+    
+    switch (shapeType) {
+      case Coll::BCSFlags::SHAPE_BOX:
+        shape.type = Physics::ShapeType::BOX;
+        shape.data.box.halfSize = initData->halfExtend;
+        break;
+        
+      case Coll::BCSFlags::SHAPE_CYLINDER:
+        shape.type = Physics::ShapeType::CYLINDER;
+        shape.data.cylinder.radius = initData->halfExtend.x;
+        shape.data.cylinder.halfHeight = initData->halfExtend.y;
+        break;
+        
+      case Coll::BCSFlags::SHAPE_CAPSULE:
+        shape.type = Physics::ShapeType::CAPSULE;
+        shape.data.capsule.radius = initData->halfExtend.x;
+        shape.data.capsule.innerHalfHeight = initData->halfExtend.y;
+        break;
+        
+      case Coll::BCSFlags::SHAPE_SPHERE:
+      default:
+        shape.type = Physics::ShapeType::SPHERE;
+        shape.data.sphere.radius = initData->halfExtend.y;
+        break;
     }
     
     data->physicsBody->addShape(shape);

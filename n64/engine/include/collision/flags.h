@@ -15,8 +15,12 @@ namespace P64::Coll
   }
 
   namespace BCSFlags {
-    constexpr uint8_t SHAPE_BOX      = 1 << 0;
-    constexpr uint8_t SHAPE_CYLINDER = 1 << 1; // @TODO
+    // Shape type flags (bits 0-1 for 4 shape types)
+    constexpr uint8_t SHAPE_MASK     = 0x03;  // Mask for shape type bits
+    constexpr uint8_t SHAPE_SPHERE   = 0x00;  // Default/no flags
+    constexpr uint8_t SHAPE_BOX      = 0x01;
+    constexpr uint8_t SHAPE_CYLINDER = 0x02;
+    constexpr uint8_t SHAPE_CAPSULE  = 0x03;
 
     constexpr uint8_t TRIGGER   = 1 << 2;
     constexpr uint8_t BOUNCY    = 1 << 3;
