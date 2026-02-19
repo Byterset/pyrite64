@@ -30,14 +30,17 @@ namespace Project::Component::CollBody
     PROP_VEC3(halfExtend);
     PROP_VEC3(offset);
     PROP_S32(type);
+    PROP_FLOAT(friction);
+    PROP_FLOAT(bounce);
     PROP_BOOL(isTrigger);
-    PROP_BOOL(isFixed);
     PROP_U32(maskRead);
     PROP_U32(maskWrite);
   };
 
   std::shared_ptr<void> init(Object &obj) {
     auto data = std::make_shared<Data>();
+    data->friction.value = 0.5f;
+    data->bounce.value = 0.0f;
     return data;
   }
 
@@ -47,8 +50,9 @@ namespace Project::Component::CollBody
       .set(data.halfExtend)
       .set(data.offset)
       .set(data.type)
+      .set(data.friction)
+      .set(data.bounce)
       .set(data.isTrigger)
-      .set(data.isFixed)
       .set(data.maskRead)
       .set(data.maskWrite)
       .doc;
@@ -59,8 +63,9 @@ namespace Project::Component::CollBody
     Utils::JSON::readProp(doc, data->halfExtend, glm::vec3{1.0f, 1.0f, 1.0f});
     Utils::JSON::readProp(doc, data->offset);
     Utils::JSON::readProp(doc, data->type);
+    Utils::JSON::readProp(doc, data->friction, 0.5f);
+    Utils::JSON::readProp(doc, data->bounce, 0.0f);
     Utils::JSON::readProp(doc, data->isTrigger, false);
-    Utils::JSON::readProp(doc, data->isFixed, false);
     Utils::JSON::readProp(doc, data->maskRead, 0xFFu);
     Utils::JSON::readProp(doc, data->maskWrite, 0xFFu);
     return data;
@@ -97,11 +102,10 @@ namespace Project::Component::CollBody
     if(data.isTrigger.resolve(obj.propOverrides)) {
       flags |= P64::Coll::BCSFlags::TRIGGER;
     }
-    if(data.isFixed.resolve(obj.propOverrides)) {
-      flags |= P64::Coll::BCSFlags::FIXED_XYZ;
-    }
 
     ctx.fileObj.write<uint8_t>(flags);
+    ctx.fileObj.write(data.friction.resolve(obj.propOverrides));
+    ctx.fileObj.write(data.bounce.resolve(obj.propOverrides));
     ctx.fileObj.write<uint8_t>(data.maskRead.resolve(obj.propOverrides));
     ctx.fileObj.write<uint8_t>(data.maskWrite.resolve(obj.propOverrides));
   }
@@ -136,8 +140,11 @@ namespace Project::Component::CollBody
       }
       
       ImTable::addObjProp("Offset", data.offset);
-      ImTable::addObjProp("Trigger", data.isTrigger);
-      ImTable::addObjProp("Fixed-Pos", data.isFixed);
+      ImTable::addSeparator();
+      ImTable::addObjProp("Friction", data.friction);
+      ImTable::addObjProp("Bounce", data.bounce);
+      ImTable::addSeparator();
+      ImTable::addObjProp("Is Trigger", data.isTrigger);
       ImTable::addBitMask8("Mask Read", data.maskRead.resolve(obj.propOverrides));
       ImTable::addBitMask8("Mask Write", data.maskWrite.resolve(obj.propOverrides));
 

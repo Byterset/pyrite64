@@ -72,6 +72,7 @@ namespace Project::Component
   MAKE_COMP(Camera)
   MAKE_COMP(CollMesh)
   MAKE_COMP(CollBody)
+  MAKE_COMP(Rigidbody)
   MAKE_COMP(Audio2D)
   MAKE_COMP(Constraint)
   MAKE_COMP(Culling)
@@ -137,14 +138,25 @@ namespace Project::Component
     },
     CompInfo{
       .id = 5,
-      .icon = ICON_MDI_AXIS_ARROW " ",
-      .name = "Rigidbody",
+      .icon = ICON_MDI_CUBE_OUTLINE " ",
+      .name = "Collider",
       .funcInit = CollBody::init,
       .funcDraw = CollBody::draw,
       .funcDrawPost3D = CollBody::draw3D,
       .funcSerialize = CollBody::serialize,
       .funcDeserialize = CollBody::deserialize,
       .funcBuild = CollBody::build
+    },
+    CompInfo{
+      .id = 11,
+      .icon = ICON_MDI_AXIS_ARROW " ",
+      .name = "Rigidbody",
+      .funcInit = Rigidbody::init,
+      .funcDraw = Rigidbody::draw,
+      .funcDrawPost3D = Rigidbody::draw3D,
+      .funcSerialize = Rigidbody::serialize,
+      .funcDeserialize = Rigidbody::deserialize,
+      .funcBuild = Rigidbody::build
     },
     CompInfo{
       .id = 6,
