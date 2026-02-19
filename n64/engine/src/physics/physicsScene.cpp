@@ -249,13 +249,23 @@ namespace P64::Physics
   }
   
   void PhysicsScene::preSolveContacts() {
+    constexpr float EPSILON = 0.0001f;
+    
     // Calculate effective masses and prepare constraints
     for (int i = 0; i < cachedConstraintCount; i++) {
       auto& constraint = cachedConstraints[i];
       if (!constraint.isActive || constraint.isTrigger) continue;
       
-      // Get physics bodies (placeholder - would need lookup)
-      // This would require storing PhysicsBody* in Object or component
+      // Find physics bodies from objects
+      PhysicsBody* bodyA = nullptr;
+      PhysicsBody* bodyB = nullptr;
+      
+      for (auto* body : bodies) {
+        if (body->object == constraint.objectA) bodyA = body;
+        if (body->object == constraint.objectB) bodyB = body;
+      }
+      
+      if (!bodyA && !bodyB) continue;
       
       // Calculate tangent vectors
       fm_vec3_t tangentU, tangentV;
@@ -276,26 +286,310 @@ namespace P64::Physics
         auto& point = constraint.points[p];
         if (!point.active) continue;
         
-        // Simplified effective mass calculation
-        // Full implementation would include inertia tensor
-        point.normalMass = 1.0f;  // Placeholder
-        point.tangentMassU = 1.0f;
-        point.tangentMassV = 1.0f;
-        point.velocityBias = 0.0f;  // Would calculate from relative velocity
+        // Update contact point positions relative to centers of mass
+        if (bodyA) {
+          point.aToContact = point.contactA - bodyA->object->pos;
+        }
+        if (bodyB) {
+          point.bToContact = point.contactB - bodyB->object->pos;
+        }
+        
+        float invMassA = (bodyA && !bodyA->isKinematic) ? bodyA->invMass : 0.0f;
+        float invMassB = (bodyB && !bodyB->isKinematic) ? bodyB->invMass : 0.0f;
+        
+        // Effective mass for normal direction
+        float denominator = invMassA + invMassB;
+        
+        // Add rotational inertia contribution (simplified - using unit inertia)
+        if (bodyA && !bodyA->isKinematic) {
+          fm_vec3_t rCrossN;
+          t3d_vec3_cross(&rCrossN, &point.aToContact, &constraint.normal);
+          denominator += t3d_vec3_dot(rCrossN, rCrossN);  // Simplified inertia
+        }
+        if (bodyB && !bodyB->isKinematic) {
+          fm_vec3_t rCrossN;
+          t3d_vec3_cross(&rCrossN, &point.bToContact, &constraint.normal);
+          denominator += t3d_vec3_dot(rCrossN, rCrossN);
+        }
+        
+        point.normalMass = (denominator > EPSILON) ? (1.0f / denominator) : 0.0f;
+        
+        // Effective mass for tangent U
+        float denomU = invMassA + invMassB;
+        if (bodyA && !bodyA->isKinematic) {
+          fm_vec3_t rCrossT;
+          t3d_vec3_cross(&rCrossT, &point.aToContact, &tangentU);
+          denomU += t3d_vec3_dot(rCrossT, rCrossT);
+        }
+        if (bodyB && !bodyB->isKinematic) {
+          fm_vec3_t rCrossT;
+          t3d_vec3_cross(&rCrossT, &point.bToContact, &tangentU);
+          denomU += t3d_vec3_dot(rCrossT, rCrossT);
+        }
+        point.tangentMassU = (denomU > EPSILON) ? (1.0f / denomU) : 0.0f;
+        
+        // Effective mass for tangent V
+        float denomV = invMassA + invMassB;
+        if (bodyA && !bodyA->isKinematic) {
+          fm_vec3_t rCrossT;
+          t3d_vec3_cross(&rCrossT, &point.aToContact, &tangentV);
+          denomV += t3d_vec3_dot(rCrossT, rCrossT);
+        }
+        if (bodyB && !bodyB->isKinematic) {
+          fm_vec3_t rCrossT;
+          t3d_vec3_cross(&rCrossT, &point.bToContact, &tangentV);
+          denomV += t3d_vec3_dot(rCrossT, rCrossT);
+        }
+        point.tangentMassV = (denomV > EPSILON) ? (1.0f / denomV) : 0.0f;
+        
+        // Calculate velocity bias for restitution
+        fm_vec3_t relVel{0, 0, 0};
+        if (bodyA && !bodyA->isKinematic) {
+          relVel = bodyA->velocity;
+          fm_vec3_t angularContrib;
+          t3d_vec3_cross(&angularContrib, &bodyA->angularVelocity, &point.aToContact);
+          relVel = relVel + angularContrib;
+        }
+        if (bodyB && !bodyB->isKinematic) {
+          fm_vec3_t velB = bodyB->velocity;
+          fm_vec3_t angularContrib;
+          t3d_vec3_cross(&angularContrib, &bodyB->angularVelocity, &point.bToContact);
+          velB = velB + angularContrib;
+          relVel = relVel - velB;
+        }
+        
+        float normalVel = t3d_vec3_dot(relVel, constraint.normal);
+        point.velocityBias = 0.0f;
+        
+        // Apply restitution if separating
+        if (normalVel < -1.0f) {  // Threshold for bouncing
+          point.velocityBias = -constraint.combinedBounce * normalVel;
+        }
       }
     }
   }
   
   void PhysicsScene::warmStart() {
     // Apply cached impulses from previous frame
-    // This helps convergence by starting with last frame's solution
-    // Implementation would multiply accumulated impulses by a warm-start factor
+    constexpr float WARM_START_FACTOR = 1.0f;  // Could reduce for more stability
+    
+    for (int i = 0; i < cachedConstraintCount; i++) {
+      auto& constraint = cachedConstraints[i];
+      if (!constraint.isActive || constraint.isTrigger) continue;
+      
+      // Find physics bodies
+      PhysicsBody* bodyA = nullptr;
+      PhysicsBody* bodyB = nullptr;
+      
+      for (auto* body : bodies) {
+        if (body->object == constraint.objectA) bodyA = body;
+        if (body->object == constraint.objectB) bodyB = body;
+      }
+      
+      if (!bodyA && !bodyB) continue;
+      
+      for (int p = 0; p < constraint.pointCount; p++) {
+        auto& point = constraint.points[p];
+        if (!point.active) continue;
+        
+        // Apply cached normal impulse
+        fm_vec3_t impulse = constraint.normal * (point.accumulatedNormalImpulse * WARM_START_FACTOR);
+        
+        if (bodyA && !bodyA->isKinematic) {
+          bodyA->velocity = bodyA->velocity + impulse * bodyA->invMass;
+          fm_vec3_t angImp;
+          t3d_vec3_cross(&angImp, &point.aToContact, &impulse);
+          bodyA->angularVelocity = bodyA->angularVelocity + angImp;
+        }
+        
+        if (bodyB && !bodyB->isKinematic) {
+          bodyB->velocity = bodyB->velocity - impulse * bodyB->invMass;
+          fm_vec3_t angImp;
+          t3d_vec3_cross(&angImp, &point.bToContact, &impulse);
+          bodyB->angularVelocity = bodyB->angularVelocity - angImp;
+        }
+        
+        // Apply cached tangent impulses
+        fm_vec3_t tangentImpulseU = constraint.tangentU * (point.accumulatedTangentImpulseU * WARM_START_FACTOR);
+        fm_vec3_t tangentImpulseV = constraint.tangentV * (point.accumulatedTangentImpulseV * WARM_START_FACTOR);
+        
+        if (bodyA && !bodyA->isKinematic) {
+          bodyA->velocity = bodyA->velocity + (tangentImpulseU + tangentImpulseV) * bodyA->invMass;
+        }
+        
+        if (bodyB && !bodyB->isKinematic) {
+          bodyB->velocity = bodyB->velocity - (tangentImpulseU + tangentImpulseV) * bodyB->invMass;
+        }
+      }
+    }
   }
   
   void PhysicsScene::solveVelocityConstraints() {
-    // Iteratively solve velocity constraints
-    // This would apply impulses to correct relative velocities at contact points
-    // Full implementation requires access to PhysicsBody from Object
+    constexpr float EPSILON = 0.0001f;
+    
+    for (int i = 0; i < cachedConstraintCount; i++) {
+      auto& constraint = cachedConstraints[i];
+      if (!constraint.isActive || constraint.isTrigger) continue;
+      
+      // Find physics bodies
+      PhysicsBody* bodyA = nullptr;
+      PhysicsBody* bodyB = nullptr;
+      
+      for (auto* body : bodies) {
+        if (body->object == constraint.objectA) bodyA = body;
+        if (body->object == constraint.objectB) bodyB = body;
+      }
+      
+      if (!bodyA && !bodyB) continue;
+      
+      // Process each contact point
+      for (int p = 0; p < constraint.pointCount; p++) {
+        auto& point = constraint.points[p];
+        if (!point.active) continue;
+        
+        // Calculate contact velocities
+        fm_vec3_t contactVelA{0, 0, 0};
+        fm_vec3_t contactVelB{0, 0, 0};
+        
+        if (bodyA && !bodyA->isKinematic) {
+          contactVelA = bodyA->velocity;
+          fm_vec3_t angularContrib;
+          t3d_vec3_cross(&angularContrib, &bodyA->angularVelocity, &point.aToContact);
+          contactVelA = contactVelA + angularContrib;
+        }
+        
+        if (bodyB && !bodyB->isKinematic) {
+          contactVelB = bodyB->velocity;
+          fm_vec3_t angularContrib;
+          t3d_vec3_cross(&angularContrib, &bodyB->angularVelocity, &point.bToContact);
+          contactVelB = contactVelB + angularContrib;
+        }
+        
+        // Calculate relative velocity
+        fm_vec3_t relVel = contactVelA - contactVelB;
+        float normalVelocity = t3d_vec3_dot(relVel, constraint.normal);
+        
+        // Calculate lambda (impulse change)
+        float lambda = -(normalVelocity + point.velocityBias) * point.normalMass;
+        
+        // Clamp accumulated impulse (non-penetration constraint)
+        float oldImpulse = point.accumulatedNormalImpulse;
+        point.accumulatedNormalImpulse = fmaxf(oldImpulse + lambda, 0.0f);
+        lambda = point.accumulatedNormalImpulse - oldImpulse;
+        
+        if (fabsf(lambda) < EPSILON) continue;
+        
+        // Apply impulse
+        fm_vec3_t impulse = constraint.normal * lambda;
+        
+        // Apply to object A
+        if (bodyA && !bodyA->isKinematic) {
+          bodyA->velocity = bodyA->velocity + impulse * bodyA->invMass;
+          
+          fm_vec3_t angularImpulse;
+          t3d_vec3_cross(&angularImpulse, &point.aToContact, &impulse);
+          bodyA->angularVelocity = bodyA->angularVelocity + angularImpulse;  // Simplified
+        }
+        
+        // Apply to object B
+        if (bodyB && !bodyB->isKinematic) {
+          bodyB->velocity = bodyB->velocity - impulse * bodyB->invMass;
+          
+          fm_vec3_t angularImpulse;
+          t3d_vec3_cross(&angularImpulse, &point.bToContact, &impulse);
+          bodyB->angularVelocity = bodyB->angularVelocity - angularImpulse;  // Simplified
+        }
+        
+        // Handle friction
+        if (constraint.combinedFriction > 0.0f) {
+          // Recalculate relative velocity after normal impulse
+          contactVelA = fm_vec3_t{0, 0, 0};
+          contactVelB = fm_vec3_t{0, 0, 0};
+          
+          if (bodyA && !bodyA->isKinematic) {
+            contactVelA = bodyA->velocity;
+            fm_vec3_t angularContrib;
+            t3d_vec3_cross(&angularContrib, &bodyA->angularVelocity, &point.aToContact);
+            contactVelA = contactVelA + angularContrib;
+          }
+          
+          if (bodyB && !bodyB->isKinematic) {
+            contactVelB = bodyB->velocity;
+            fm_vec3_t angularContrib;
+            t3d_vec3_cross(&angularContrib, &bodyB->angularVelocity, &point.bToContact);
+            contactVelB = contactVelB + angularContrib;
+          }
+          
+          relVel = contactVelA - contactVelB;
+          
+          // Calculate tangential velocities
+          float vTangentU = t3d_vec3_dot(relVel, constraint.tangentU);
+          float vTangentV = t3d_vec3_dot(relVel, constraint.tangentV);
+          
+          // Calculate friction impulse changes
+          float lambdaU = -vTangentU * point.tangentMassU;
+          float lambdaV = -vTangentV * point.tangentMassV;
+          
+          // Calculate new accumulated tangent impulses
+          float newAccumU = point.accumulatedTangentImpulseU + lambdaU;
+          float newAccumV = point.accumulatedTangentImpulseV + lambdaV;
+          
+          // Clamp to friction cone
+          float maxFriction = constraint.combinedFriction * point.accumulatedNormalImpulse;
+          float tangentMagnitude = sqrtf(newAccumU * newAccumU + newAccumV * newAccumV);
+          
+          if (tangentMagnitude > maxFriction) {
+            float scale = maxFriction / tangentMagnitude;
+            newAccumU *= scale;
+            newAccumV *= scale;
+          }
+          
+          // Calculate actual impulse deltas
+          lambdaU = newAccumU - point.accumulatedTangentImpulseU;
+          lambdaV = newAccumV - point.accumulatedTangentImpulseV;
+          
+          point.accumulatedTangentImpulseU = newAccumU;
+          point.accumulatedTangentImpulseV = newAccumV;
+          
+          // Apply tangent impulses
+          if (fabsf(lambdaU) > EPSILON) {
+            fm_vec3_t tangentImpulse = constraint.tangentU * lambdaU;
+            
+            if (bodyA && !bodyA->isKinematic) {
+              bodyA->velocity = bodyA->velocity + tangentImpulse * bodyA->invMass;
+              fm_vec3_t angImp;
+              t3d_vec3_cross(&angImp, &point.aToContact, &tangentImpulse);
+              bodyA->angularVelocity = bodyA->angularVelocity + angImp;
+            }
+            
+            if (bodyB && !bodyB->isKinematic) {
+              bodyB->velocity = bodyB->velocity - tangentImpulse * bodyB->invMass;
+              fm_vec3_t angImp;
+              t3d_vec3_cross(&angImp, &point.bToContact, &tangentImpulse);
+              bodyB->angularVelocity = bodyB->angularVelocity - angImp;
+            }
+          }
+          
+          if (fabsf(lambdaV) > EPSILON) {
+            fm_vec3_t tangentImpulse = constraint.tangentV * lambdaV;
+            
+            if (bodyA && !bodyA->isKinematic) {
+              bodyA->velocity = bodyA->velocity + tangentImpulse * bodyA->invMass;
+              fm_vec3_t angImp;
+              t3d_vec3_cross(&angImp, &point.aToContact, &tangentImpulse);
+              bodyA->angularVelocity = bodyA->angularVelocity + angImp;
+            }
+            
+            if (bodyB && !bodyB->isKinematic) {
+              bodyB->velocity = bodyB->velocity - tangentImpulse * bodyB->invMass;
+              fm_vec3_t angImp;
+              t3d_vec3_cross(&angImp, &point.bToContact, &tangentImpulse);
+              bodyB->angularVelocity = bodyB->angularVelocity - angImp;
+            }
+          }
+        }
+      }
+    }
   }
   
   void PhysicsScene::integratePositions(float deltaTime) {
@@ -305,14 +599,106 @@ namespace P64::Physics
   }
   
   void PhysicsScene::solvePositionConstraints() {
+    constexpr float SLOP = 0.01f;  // Allow small penetration
+    constexpr float BAUMGARTE = 0.2f;  // Position correction factor
+    constexpr float EPSILON = 0.0001f;
+    
     // Iteratively solve position constraints
-    // This directly adjusts positions to resolve penetration
     for (int i = 0; i < cachedConstraintCount; i++) {
       auto& constraint = cachedConstraints[i];
       if (!constraint.isActive || constraint.isTrigger) continue;
       
-      // Would apply position corrections here
-      // Similar to velocity solver but modifies positions directly
+      // Find physics bodies
+      PhysicsBody* bodyA = nullptr;
+      PhysicsBody* bodyB = nullptr;
+      
+      for (auto* body : bodies) {
+        if (body->object == constraint.objectA) bodyA = body;
+        if (body->object == constraint.objectB) bodyB = body;
+      }
+      
+      if (!bodyA && !bodyB) continue;
+      
+      for (int p = 0; p < constraint.pointCount; p++) {
+        auto& point = constraint.points[p];
+        if (!point.active) continue;
+        
+        // Update contact positions
+        if (bodyA) {
+          point.aToContact = point.contactA - bodyA->object->pos;
+        }
+        if (bodyB) {
+          point.bToContact = point.contactB - bodyB->object->pos;
+        }
+        
+        // Calculate penetration
+        float penetration = point.penetration;
+        if (penetration <= SLOP) continue;
+        
+        // Calculate correction
+        float correction = -(penetration - SLOP) * BAUMGARTE;
+        
+        // Calculate effective mass
+        float invMassA = (bodyA && !bodyA->isKinematic) ? bodyA->invMass : 0.0f;
+        float invMassB = (bodyB && !bodyB->isKinematic) ? bodyB->invMass : 0.0f;
+        
+        float invMassSum = invMassA + invMassB;
+        
+        // Add rotational inertia (simplified)
+        if (bodyA && !bodyA->isKinematic) {
+          fm_vec3_t rCrossN;
+          t3d_vec3_cross(&rCrossN, &point.aToContact, &constraint.normal);
+          invMassSum += t3d_vec3_dot(rCrossN, rCrossN);
+        }
+        if (bodyB && !bodyB->isKinematic) {
+          fm_vec3_t rCrossN;
+          t3d_vec3_cross(&rCrossN, &point.bToContact, &constraint.normal);
+          invMassSum += t3d_vec3_dot(rCrossN, rCrossN);
+        }
+        
+        if (invMassSum < EPSILON) continue;
+        
+        float correctionMag = correction / invMassSum;
+        fm_vec3_t correctionImpulse = constraint.normal * correctionMag;
+        
+        // Apply position correction
+        if (bodyA && !bodyA->isKinematic) {
+          bodyA->object->pos = bodyA->object->pos + correctionImpulse * invMassA;
+          
+          // Apply angular correction (simplified)
+          fm_vec3_t angularImpulse;
+          t3d_vec3_cross(&angularImpulse, &point.aToContact, &correctionImpulse);
+          
+          float angle = fm_vec3_len(&angularImpulse) * invMassA;
+          if (angle > EPSILON) {
+            fm_vec3_t axis = angularImpulse / fm_vec3_len(&angularImpulse);
+            fm_quat_t deltaRot;
+            fm_quat_from_axis_angle(&deltaRot, &axis, angle);
+            fm_quat_mul(&bodyA->object->rot, &deltaRot, &bodyA->object->rot);
+            fm_quat_norm(&bodyA->object->rot);
+          }
+        }
+        
+        if (bodyB && !bodyB->isKinematic) {
+          bodyB->object->pos = bodyB->object->pos - correctionImpulse * invMassB;
+          
+          // Apply angular correction (simplified)
+          fm_vec3_t angularImpulse;
+          t3d_vec3_cross(&angularImpulse, &point.bToContact, &correctionImpulse);
+          
+          float angle = fm_vec3_len(&angularImpulse) * invMassB;
+          if (angle > EPSILON) {
+            fm_vec3_t axis = angularImpulse / fm_vec3_len(&angularImpulse);
+            fm_quat_t deltaRot;
+            fm_quat_from_axis_angle(&deltaRot, &axis, -angle);
+            fm_quat_mul(&bodyB->object->rot, &deltaRot, &bodyB->object->rot);
+            fm_quat_norm(&bodyB->object->rot);
+          }
+        }
+        
+        // Reduce penetration
+        point.penetration -= fabsf(correction);
+      }
     }
   }
   
