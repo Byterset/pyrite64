@@ -170,6 +170,10 @@ void P64::Scene::update(float deltaTime)
   ticksActorUpdate = get_ticks() - ticksActorUpdate;
 
   collScene.update(deltaTime);
+  
+  // Update new physics system (iterative constraint solver)
+  // This is separate from legacy collision and only runs for bodies using new physics
+  physicsScene.step(deltaTime);
 
   for(auto &obj : pendingObjDelete)
   {

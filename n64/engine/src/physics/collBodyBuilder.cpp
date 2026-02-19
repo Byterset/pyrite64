@@ -10,6 +10,10 @@ namespace P64::Physics
   void CollBodyShapeBuilder::enableNewPhysics(Comp::CollBody* body) {
     if (!body || body->useNewPhysics) return;
     
+    // Unregister from old collision system
+    auto& scene = body->bcs.obj->getScene();
+    scene.getCollision().unregisterBCS(&body->bcs);
+    
     body->useNewPhysics = true;
     
     if (!body->physicsBody) {
@@ -18,6 +22,9 @@ namespace P64::Physics
       body->physicsBody->maskRead = body->bcs.maskRead;
       body->physicsBody->maskWrite = body->bcs.maskWrite;
       body->physicsBody->isTrigger = body->bcs.isTrigger();
+      
+      // Register with new physics system
+      scene.getPhysics().registerBody(body->physicsBody);
     }
   }
   

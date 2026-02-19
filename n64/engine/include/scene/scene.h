@@ -10,6 +10,7 @@
 #include "lighting.h"
 #include "object.h"
 #include "collision/scene.h"
+#include "physics/physicsScene.h"
 #include "lib/types.h"
 #include "renderer/drawLayer.h"
 #include "renderer/pipeline.h"
@@ -85,6 +86,7 @@ namespace P64
       std::array<Object*, 128> idLookup{};
 
       Coll::Scene collScene{};
+      Physics::PhysicsScene physicsScene{};
       std::vector<Object*> pendingObjDelete{};
 
       uint32_t eventQueueIdx{0};
@@ -119,6 +121,7 @@ namespace P64
       [[nodiscard]] Camera* getCamera(uint32_t index = 0) { return cameras[index]; }
       [[nodiscard]] Camera& getActiveCamera() { return *camMain; }
       Coll::Scene &getCollision() { return collScene; }
+      Physics::PhysicsScene &getPhysics() { return physicsScene; }
 
       void onObjectCollision(const Coll::CollEvent &event);
 

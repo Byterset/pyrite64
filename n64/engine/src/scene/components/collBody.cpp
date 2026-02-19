@@ -30,7 +30,8 @@ namespace P64::Comp
     if (initData == nullptr) {
       // Cleanup
       if (data->useNewPhysics && data->physicsBody) {
-        // Would unregister from PhysicsScene here
+        // Unregister from PhysicsScene
+        SceneManager::getCurrent().getPhysics().unregisterBody(data->physicsBody);
         delete data->physicsBody;
         data->physicsBody = nullptr;
       } else {
@@ -69,8 +70,8 @@ namespace P64::Comp
       
       data->physicsBody->addShape(shape);
       
-      // Would register with PhysicsScene here
-      // SceneManager::getCurrent().getPhysics().registerBody(data->physicsBody);
+      // Register with PhysicsScene
+      SceneManager::getCurrent().getPhysics().registerBody(data->physicsBody);
     } else {
       // Legacy BCS initialization
       data->bcs = {
@@ -91,10 +92,10 @@ namespace P64::Comp
     if (data->useNewPhysics) {
       // Handle enable/disable for new physics
       if(event.type == EVENT_TYPE_DISABLE) {
-        // Would unregister from PhysicsScene
+        obj.getScene().getPhysics().unregisterBody(data->physicsBody);
       }
       if(event.type == EVENT_TYPE_ENABLE) {
-        // Would register with PhysicsScene
+        obj.getScene().getPhysics().registerBody(data->physicsBody);
       }
     } else {
       // Legacy BCS handling
