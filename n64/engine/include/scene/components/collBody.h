@@ -9,6 +9,7 @@
 #include <t3d/t3dmodel.h>
 
 #include "collision/mesh.h"
+#include "physics/physicsBody.h"
 
 namespace P64::Comp
 {
@@ -16,8 +17,13 @@ namespace P64::Comp
   {
     static constexpr uint32_t ID = 5;
 
+    // Legacy BCS for backward compatibility with existing collision system
     Coll::BCS bcs{};
     fm_vec3_t orgScale{};
+    
+    // New physics body for iterative constraint solver
+    Physics::PhysicsBody* physicsBody{nullptr};
+    bool useNewPhysics{false};  // Flag to enable new physics system
 
     static uint32_t getAllocSize([[maybe_unused]] uint16_t* initData)
     {
