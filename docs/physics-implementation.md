@@ -93,6 +93,27 @@ n64/engine/src/physics/
 3. **Makefile** (`n64/engine/Makefile`)
    - Added `src/physics/*.cpp` to build
 
+## Editor Support ✅
+
+The Collision-Body component in the editor has been updated to fully support the new physics system:
+
+**Shape Types**:
+- ✅ Sphere (radius parameter)
+- ✅ Box (half-size X, Y, Z parameters)
+- ✅ Cylinder (radius + half-height parameters)
+- ✅ Capsule (radius + inner half-height parameters)
+
+**Features**:
+- Shape type dropdown with all 4 options
+- Appropriate parameters shown based on selected shape
+- 3D visualization in viewport (cyan wireframes)
+- Proper serialization and build output
+
+**Build System**:
+- Encodes shape type in flags (bits 0-1)
+- Engine correctly reads and initializes all shape types
+- Backward compatible flag encoding
+
 ## Backward Compatibility
 
 **BREAKING CHANGE**: The new physics system **completely replaces** the old collision system for dynamic objects. There is **no backward compatibility**.

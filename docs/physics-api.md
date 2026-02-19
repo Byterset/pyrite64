@@ -6,7 +6,24 @@ The physics system provides rigidbody simulation with iterative constraint solvi
 
 **Important**: Only ONE Rigidbody component per object is allowed. Multiple shapes can be added to a single rigidbody.
 
-## Basic Usage
+## Editor Support
+
+The Collision-Body component in the editor now supports all 4 shape types:
+- **Sphere** - Defined by radius
+- **Box** - Defined by half-size (width/2, height/2, depth/2)
+- **Cylinder** - Defined by radius and half-height (Y-axis aligned)
+- **Capsule** - Defined by radius and inner half-height (Y-axis aligned)
+
+### Shape Parameters in Editor
+
+- **Sphere**: Only radius parameter shown
+- **Box**: Half Size (X, Y, Z) parameters
+- **Cylinder**: Radius and Half Height parameters
+- **Capsule**: Radius and Inner Half Height parameters
+
+All shapes are visualized in the 3D viewport with cyan wireframes.
+
+## Runtime API (For Code Components)
 
 ### Adding a Rigidbody Component
 
