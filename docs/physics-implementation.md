@@ -95,19 +95,29 @@ n64/engine/src/physics/
 
 ## Backward Compatibility
 
-**Important**: The new physics system is opt-in. All existing code continues to use the legacy collision system by default.
+**BREAKING CHANGE**: The new physics system **completely replaces** the old collision system for dynamic objects. There is **no backward compatibility**.
 
-### Migration Path
+### What Changed
 
+1. **CollBody is now Rigidbody-only** - Always uses new physics, no opt-in flag
+2. **One rigidbody per object** - Strictly enforced with error logging
+3. **Direct API** - Shape methods on component (no builder class)
+4. **Static geometry separate** - CollMesh still uses legacy system (intentional)
+
+### Migration Required
+
+**Old code (will NOT work)**:
 ```cpp
-// Existing code continues to work unchanged:
-auto* collBody = object->getComponent<Comp::CollBody>();
-// Uses legacy BCS system automatically
-
-// Opt-in to new physics:
 Physics::CollBodyShapeBuilder::enableNewPhysics(collBody);
-// Now uses new constraint solver
 ```
+
+**New code**:
+```cpp
+auto* rb = object->getComponent<Comp::CollBody>();
+rb->addBox(halfSize, offset);  // Direct methods
+```
+
+See `docs/PHYSICS-REPLACEMENT.md` for complete migration guide.
 
 ## Key Algorithms Ported
 
