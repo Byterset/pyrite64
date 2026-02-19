@@ -28,7 +28,7 @@ namespace P64::Comp
     auto &coll = SceneManager::getCurrent().getCollision();
 
     if (initData == nullptr) {
-      // Cleanup
+      // Clean up
       if (data->useNewPhysics && data->physicsBody) {
         // Unregister from PhysicsScene
         SceneManager::getCurrent().getPhysics().unregisterBody(data->physicsBody);

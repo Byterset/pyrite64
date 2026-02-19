@@ -7,6 +7,9 @@
 
 namespace P64::Physics
 {
+  constexpr float EPSILON = 0.0001f;
+  constexpr float PERPENDICULAR_THRESHOLD = 0.9f;
+  
   namespace {
     // Helper: compute triple product (A × B) × C
     fm_vec3_t tripleProduct(const fm_vec3_t& a, const fm_vec3_t& b, const fm_vec3_t& c) {
@@ -18,7 +21,7 @@ namespace P64::Physics
     
     // Helper: get perpendicular vector
     fm_vec3_t getPerpendicular(const fm_vec3_t& v) {
-      if (fabsf(v.x) < 0.9f) {
+      if (fabsf(v.x) < PERPENDICULAR_THRESHOLD) {
         return fm_vec3_t{1.0f, 0.0f, 0.0f};
       }
       return fm_vec3_t{0.0f, 1.0f, 0.0f};
@@ -37,7 +40,7 @@ namespace P64::Physics
       direction = tripleProduct(ab, ao, ab);
       
       // If direction is too small, use perpendicular
-      if (fm_vec3_len2(&direction) < 0.0001f) {
+      if (fm_vec3_len2(&direction) < EPSILON) {
         fm_vec3_t perp = getPerpendicular(ab);
         direction = tripleProduct(ab, perp, ab);
       }
@@ -177,7 +180,7 @@ namespace P64::Physics
     
     // Normalize initial direction
     float len = fm_vec3_len(&direction);
-    if (len < 0.0001f) {
+    if (len < EPSILON) {
       direction = fm_vec3_t{1, 0, 0};
     } else {
       direction = direction / len;
@@ -195,7 +198,7 @@ namespace P64::Physics
     for (int i = 0; i < GJK_MAX_ITERATIONS; i++) {
       // Normalize direction
       len = fm_vec3_len(&direction);
-      if (len < 0.0001f) {
+      if (len < EPSILON) {
         break;
       }
       direction = direction / len;

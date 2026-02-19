@@ -8,6 +8,8 @@
 
 namespace P64::Physics
 {
+  constexpr float EPSILON = 0.0001f;
+  
   namespace {
     struct EpaPolytope {
       fm_vec3_t vertices[EPA_MAX_FACES];
@@ -40,7 +42,7 @@ namespace P64::Physics
         t3d_vec3_cross(&face.normal, &ab, &ac);
         
         float len = fm_vec3_len(&face.normal);
-        if (len > 0.0001f) {
+        if (len > EPSILON) {
           face.normal = face.normal / len;
         }
         

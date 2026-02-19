@@ -11,6 +11,9 @@
 
 namespace P64::Physics
 {
+  constexpr float EPSILON = 0.0001f;
+  constexpr float TANGENT_PERPENDICULAR_THRESHOLD = 0.9f;
+  
   PhysicsScene::PhysicsScene() {
     cachedConstraintCount = 0;
     std::memset(cachedConstraints, 0, sizeof(cachedConstraints));
@@ -249,7 +252,7 @@ namespace P64::Physics
   }
   
   void PhysicsScene::preSolveContacts() {
-    constexpr float EPSILON = 0.0001f;
+    constexpr float RESTITUTION_VELOCITY_THRESHOLD = 1.0f;
     
     // Calculate effective masses and prepare constraints
     for (int i = 0; i < cachedConstraintCount; i++) {
@@ -269,7 +272,7 @@ namespace P64::Physics
       
       // Calculate tangent vectors
       fm_vec3_t tangentU, tangentV;
-      if (fabsf(constraint.normal.x) < 0.9f) {
+      if (fabsf(constraint.normal.x) < TANGENT_PERPENDICULAR_THRESHOLD) {
         tangentU = fm_vec3_t{1, 0, 0};
       } else {
         tangentU = fm_vec3_t{0, 1, 0};
@@ -361,8 +364,8 @@ namespace P64::Physics
         float normalVel = t3d_vec3_dot(relVel, constraint.normal);
         point.velocityBias = 0.0f;
         
-        // Apply restitution if separating
-        if (normalVel < -1.0f) {  // Threshold for bouncing
+        // Apply restitution if separating velocity exceeds threshold
+        if (normalVel < -RESTITUTION_VELOCITY_THRESHOLD) {
           point.velocityBias = -constraint.combinedBounce * normalVel;
         }
       }
@@ -425,7 +428,6 @@ namespace P64::Physics
   }
   
   void PhysicsScene::solveVelocityConstraints() {
-    constexpr float EPSILON = 0.0001f;
     
     for (int i = 0; i < cachedConstraintCount; i++) {
       auto& constraint = cachedConstraints[i];
@@ -601,7 +603,6 @@ namespace P64::Physics
   void PhysicsScene::solvePositionConstraints() {
     constexpr float SLOP = 0.01f;  // Allow small penetration
     constexpr float BAUMGARTE = 0.2f;  // Position correction factor
-    constexpr float EPSILON = 0.0001f;
     
     // Iteratively solve position constraints
     for (int i = 0; i < cachedConstraintCount; i++) {
