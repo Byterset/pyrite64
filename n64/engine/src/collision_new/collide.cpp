@@ -184,8 +184,9 @@ namespace P64::CollNew {
     float combinedFriction, float combinedBounce, bool isTrigger) {
 
     CollisionScene *scene = collisionSceneGetInstance();
-    uint16_t idB = objectB ? objectB->entityId : 0xFFFF;
-    ContactPairId pid = makeContactPairId(objectA->entityId, idB);
+    uint16_t idA = objectA ? objectA->entityId : 0;
+    uint16_t idB = objectB ? objectB->entityId : 0;
+    ContactPairId pid = makeContactPairId(idA, idB);
 
     // Search for existing constraint with matching PID and similar normal
     ContactConstraint *existing = nullptr;
@@ -214,7 +215,7 @@ namespace P64::CollNew {
         cp.active = true;
 
         // Compute local points for warm starting persistence
-        if(objectA->rotation) {
+        if(objectA && objectA->rotation) {
           fm_vec3_t relA = vec3Sub(cp.contactA, objectA->worldCenterOfMass);
           cp.localPointA = quatRotateVec(quatConjugate(*objectA->rotation), relA);
         }
@@ -252,7 +253,7 @@ namespace P64::CollNew {
     cp.penetration = result.penetration;
     cp.active = true;
 
-    if(objectA->rotation) {
+    if(objectA && objectA->rotation) {
       fm_vec3_t relA = vec3Sub(cp.contactA, objectA->worldCenterOfMass);
       cp.localPointA = quatRotateVec(quatConjugate(*objectA->rotation), relA);
     }
@@ -262,7 +263,9 @@ namespace P64::CollNew {
     }
 
     // Link contacts to objects
-    collideAddContact(objectA, cc, objectB);
+    if(objectA) {
+      collideAddContact(objectA, cc, objectB);
+    }
     if(objectB) {
       collideAddContact(objectB, cc, objectA);
     }
