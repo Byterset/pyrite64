@@ -11,18 +11,28 @@ namespace P64::CollNew {
 
   constexpr int MAX_CONTACT_POINTS_PER_PAIR = 4;
 
+  struct PhysicsObject; // forward declare
+
+  using ContactPairId = uint32_t;
+
+  /// Linked-list node for tracking contacts on a physics object
+  struct Contact {
+    Contact *next{nullptr};
+    struct ContactConstraint *constraint{nullptr};
+    PhysicsObject *otherObject{nullptr};
+  };
+
   /// Single contact point within a contact constraint
   struct ContactPoint {
-    fm_vec3_t point{};            ///< 3D world-space contact position
-    fm_vec3_t contactA{};         ///< Contact point on surface A (world space)
-    fm_vec3_t contactB{};         ///< Contact point on surface B (world space)
-    fm_vec3_t localPointA{};      ///< Contact point on A (local space)
-    fm_vec3_t localPointB{};      ///< Contact point on B (local space)
-    fm_vec3_t aToContact{};       ///< Contact relative to A's center of mass
-    fm_vec3_t bToContact{};       ///< Contact relative to B's center of mass
-    float penetration{0.0f};      ///< Depth of penetration for this point
+    fm_vec3_t point{};
+    fm_vec3_t contactA{};
+    fm_vec3_t contactB{};
+    fm_vec3_t localPointA{};
+    fm_vec3_t localPointB{};
+    fm_vec3_t aToContact{};
+    fm_vec3_t bToContact{};
+    float penetration{0.0f};
 
-    // Cached solver data for warm starting and iterative solving
     float accumulatedNormalImpulse{0.0f};
     float accumulatedTangentImpulseU{0.0f};
     float accumulatedTangentImpulseV{0.0f};
@@ -36,17 +46,17 @@ namespace P64::CollNew {
 
   /// Contact constraint representing a pair of colliding objects
   struct ContactConstraint {
-    void *objectA{nullptr};
-    void *objectB{nullptr};
+    PhysicsObject *objectA{nullptr};
+    PhysicsObject *objectB{nullptr};
 
-    fm_vec3_t normal{};     ///< Collision normal (B toward A)
-    fm_vec3_t tangentU{};   ///< First tangent direction for friction
-    fm_vec3_t tangentV{};   ///< Second tangent direction for friction
+    fm_vec3_t normal{};
+    fm_vec3_t tangentU{};
+    fm_vec3_t tangentV{};
 
     float combinedFriction{0.0f};
     float combinedBounce{0.0f};
 
-    uint32_t pairId{0};
+    ContactPairId pid{0};
     int nextSamePidIndex{-1};
     int pointCount{0};
 
@@ -55,5 +65,10 @@ namespace P64::CollNew {
 
     ContactPoint points[MAX_CONTACT_POINTS_PER_PAIR]{};
   };
+
+  inline ContactPairId makeContactPairId(uint16_t a, uint16_t b) {
+    if(a < b) return (static_cast<uint32_t>(a) << 16) | b;
+    return (static_cast<uint32_t>(b) << 16) | a;
+  }
 
 } // namespace P64::CollNew

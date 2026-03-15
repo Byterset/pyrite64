@@ -197,4 +197,69 @@ namespace P64::CollNew {
     return true;
   }
 
+  // ----- Additional vector utilities -----
+
+  inline fm_vec3_t vec3Project(const fm_vec3_t &v, const fm_vec3_t &onto) {
+    float d = vec3Dot(v, onto);
+    float m = vec3MagSqrd(onto);
+    if(m < EPSILON) return vec3Zero();
+    return vec3Scale(onto, d / m);
+  }
+
+  inline fm_vec3_t vec3ClampMag(const fm_vec3_t &v, float maxMag) {
+    float magSq = vec3MagSqrd(v);
+    if(magSq > maxMag * maxMag) {
+      return vec3Scale(v, maxMag / sqrtf(magSq));
+    }
+    return v;
+  }
+
+  inline void vec3CalculateTangents(const fm_vec3_t &normal, fm_vec3_t &tangentU, fm_vec3_t &tangentV) {
+    if(fabsf(normal.x) > fabsf(normal.z)) {
+      float invLen = 1.0f / sqrtf(normal.x * normal.x + normal.y * normal.y);
+      tangentU = vec3(-normal.y * invLen, normal.x * invLen, 0.0f);
+    } else {
+      float invLen = 1.0f / sqrtf(normal.y * normal.y + normal.z * normal.z);
+      tangentU = vec3(0.0f, -normal.z * invLen, normal.y * invLen);
+    }
+    tangentV = vec3Cross(normal, tangentU);
+  }
+
+  // ----- Quaternion utilities -----
+
+  inline fm_quat_t quatConjugate(const fm_quat_t &q) {
+    return {-q.x, -q.y, -q.z, q.w};
+  }
+
+  inline fm_vec3_t quatRotateVec(const fm_quat_t &q, const fm_vec3_t &v) {
+    float qx = q.x, qy = q.y, qz = q.z, qw = q.w;
+    float tx = 2.0f * (qy * v.z - qz * v.y);
+    float ty = 2.0f * (qz * v.x - qx * v.z);
+    float tz = 2.0f * (qx * v.y - qy * v.x);
+    return vec3(v.x + qw * tx + (qy * tz - qz * ty),
+                v.y + qw * ty + (qz * tx - qx * tz),
+                v.z + qw * tz + (qx * ty - qy * tx));
+  }
+
+  inline float quatDot(const fm_quat_t &a, const fm_quat_t &b) {
+    return a.x*b.x + a.y*b.y + a.z*b.z + a.w*b.w;
+  }
+
+  inline fm_quat_t quatNormalize(const fm_quat_t &q) {
+    float mag = sqrtf(q.x*q.x + q.y*q.y + q.z*q.z + q.w*q.w);
+    if(mag < EPSILON) return {0, 0, 0, 1};
+    float inv = 1.0f / mag;
+    return {q.x*inv, q.y*inv, q.z*inv, q.w*inv};
+  }
+
+  inline fm_quat_t quatApplyAngularVelocity(const fm_quat_t &q, const fm_vec3_t &omega, float dt) {
+    float hdt = 0.5f * dt;
+    fm_quat_t dq;
+    dq.x = hdt * (omega.x * q.w + omega.y * q.z - omega.z * q.y);
+    dq.y = hdt * (omega.y * q.w + omega.z * q.x - omega.x * q.z);
+    dq.z = hdt * (omega.z * q.w + omega.x * q.y - omega.y * q.x);
+    dq.w = hdt * (-omega.x * q.x - omega.y * q.y - omega.z * q.z);
+    return quatNormalize({q.x + dq.x, q.y + dq.y, q.z + dq.z, q.w + dq.w});
+  }
+
 } // namespace P64::CollNew
