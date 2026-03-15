@@ -308,23 +308,26 @@ fm_vec3_t PyramidShape::inertiaTensor(float mass) const {
 // ── Sweep ───────────────────────────────────────────────────────────
 
 fm_vec3_t SweepShape::support(const fm_vec3_t &dir) const {
+  // Project direction onto XZ plane for 2D sweep support
   float dirX = dir.x;
   float dirZ = dir.z;
-  float distance = 0.0f;
+  float bestDot = 0.0f;
   float resX = 0.0f;
   float resZ = 0.0f;
 
+  // Test arm endpoint: (±rangeX, rangeY) in the XZ plane
   float armX = copysignf(rangeX, dir.x);
-  float armZ = rangeY;
-  float test = dirX * armX + dirZ * armZ;
+  float armY = rangeY;  // rangeY maps to the Z component in 3D
+  float test = dirX * armX + dirZ * armY;
 
-  if(test > distance) {
-    distance = test;
+  if(test > bestDot) {
+    bestDot = test;
     resX = armX;
-    resZ = armZ;
+    resZ = armY;
   }
 
-  if(dirZ > distance) {
+  // Test forward direction: dot((0,1), (dirX,dirZ)) = dirZ
+  if(dirZ > bestDot) {
     resX = 0.0f;
     resZ = 1.0f;
   }
