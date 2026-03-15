@@ -24,6 +24,11 @@ namespace {
   constexpr int EPA_MAX_SIMPLEX_TRIANGLES = 4 + EPA_MAX_ITERATIONS * 2;
   constexpr int MAX_SWEPT_ITERATIONS = 15;
 
+  constexpr float EPA_CONVERGENCE_TOLERANCE = 0.001f;
+  constexpr float SWEPT_DISTANCE_TOLERANCE = -0.001f;
+  constexpr float SWEPT_OFFSET_MARGIN = 0.1f;
+  constexpr float SWEPT_CONTACT_EPSILON = 0.001f;
+
   constexpr unsigned char NEXT_FACE_LUT[3] = {1, 2, 0};
 
   inline unsigned char nextFace(unsigned char index) {
@@ -412,7 +417,7 @@ bool P64::CollNew::epaSolve(
     es.points[nextIdx] = vec3Sub(aPoint, bPoint);
     projection = vec3Dot(es.points[nextIdx], closest->normal);
 
-    if((projection - closest->distanceToOrigin) < 0.001f) break;
+    if((projection - closest->distanceToOrigin) < EPA_CONVERGENCE_TOLERANCE) break;
 
     ++es.pointCount;
     expandPolytope(es, nextIdx, es.triangleHeap[0]);
@@ -461,7 +466,7 @@ bool P64::CollNew::epaSolveSwept(
     projection = vec3Dot(es.points[nextIdx], closest->normal);
     closest->distanceToOrigin = vec3Dot(es.points[closest->indexData.indices[0]], closest->normal);
 
-    if((projection - closest->distanceToOrigin) < 0.001f) break;
+    if((projection - closest->distanceToOrigin) < EPA_CONVERGENCE_TOLERANCE) break;
 
     ++es.pointCount;
     expandPolytope(es, nextIdx, currentTriangle);
@@ -477,7 +482,7 @@ bool P64::CollNew::epaSolveSwept(
     float moveOffset = vec3DistSqrd(bStart, bEnd);
     bool hasIntersection = planeRayIntersection(facePlane, vec3Zero(), raycastDir, distance);
 
-    if(!hasIntersection || distance < -0.001f || distance * distance >= moveOffset + 0.1f) {
+    if(!hasIntersection || distance < SWEPT_DISTANCE_TOLERANCE || distance * distance >= moveOffset + SWEPT_OFFSET_MARGIN) {
       result.penetration = 0.0f;
       bEnd = bStart;
 
@@ -486,7 +491,7 @@ bool P64::CollNew::epaSolveSwept(
       return true;
     }
 
-    distance += 0.001f;
+    distance += SWEPT_CONTACT_EPSILON;
     result.penetration = 0.0f;
 
     auto planePos = vec3Scale(raycastDir, distance);
