@@ -13,6 +13,8 @@ namespace P64
   class Object;
 }
 
+namespace P64::CollNew { struct MeshCollider; }
+
 namespace P64::Coll
 {
   struct MeshInstance;
@@ -124,7 +126,7 @@ namespace P64::Coll
     BCS* selfBCS{};
     BCS* otherBCS{};
 
-    MeshInstance* selfMesh{};
-    MeshInstance* otherMesh{};
+    CollNew::MeshCollider* selfMesh{};
+    CollNew::MeshCollider* otherMesh{};
   };
 }

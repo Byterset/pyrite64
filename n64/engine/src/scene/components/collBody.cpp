@@ -7,6 +7,7 @@
 
 #include "scene/scene.h"
 #include "scene/sceneManager.h"
+#include <cmath>
 
 namespace
 {
@@ -14,9 +15,12 @@ namespace
   {
     fm_vec3_t halfExtend{};
     fm_vec3_t offset{};
+    uint8_t type{};
     uint8_t flags{};
     uint8_t maskRead{};
     uint8_t maskWrite{};
+    float friction{};
+    float bounce{};
   };
 }
 
@@ -25,10 +29,10 @@ namespace P64::Comp
   void CollBody::initDelete([[maybe_unused]] Object& obj, CollBody* data, void* initData_)
   {
     InitData* initData = static_cast<InitData*>(initData_);
-    auto &coll = SceneManager::getCurrent().getCollision();
+    auto &coll = SceneManager::getCurrent().getCollisionNew();
 
     if (initData == nullptr) {
-      coll.unregisterBCS(&data->bcs);
+      coll.removeCollider(&data->collider);
       data->~CollBody();
       return;
     }
@@ -37,33 +41,93 @@ namespace P64::Comp
 
     data->orgScale = initData->halfExtend;
 
-    data->bcs = {
-      .center = obj.pos + initData->offset,
-      .halfExtend = data->orgScale * obj.scale,
-      .parentOffset = initData->offset,
-      .obj = &obj,
-      .maskRead = initData->maskRead,
-      .maskWrite = initData->maskWrite,
-      .flags = initData->flags,
-    };
-    coll.registerBCS(&data->bcs);
+    data->collider = {};
+    data->collider.type = static_cast<P64::CollNew::ShapeType>(initData->type);
+    data->collider.friction = initData->friction;
+    data->collider.bounce = initData->bounce;
+    data->collider.owner = &obj;
+    data->collider.parentOffset = initData->offset;
+
+    data->collider.worldCenter = obj.pos + (obj.rot * (data->collider.parentOffset * obj.scale));
+
+    fm_vec3_t scaledHalfExtend = initData->halfExtend * obj.scale;
+
+    //TODO: add read & write masks to colliders and not phys objects
+    // data->collider.maskRead = initData->maskRead;
+    // data->collider.maskWrite = initData->maskWrite;
+    switch(data->collider.type)
+    {
+      case P64::CollNew::ShapeType::Sphere:
+        data->collider.sphere.radius = fmaxf(scaledHalfExtend.x, fmaxf(scaledHalfExtend.y, scaledHalfExtend.z));
+      break;
+      case P64::CollNew::ShapeType::Box:
+        data->collider.box.halfSize = scaledHalfExtend;
+      break;
+      case P64::CollNew::ShapeType::Cylinder:
+        data->collider.cylinder.radius = fmaxf(scaledHalfExtend.x, scaledHalfExtend.z);
+        data->collider.cylinder.halfHeight = scaledHalfExtend.y;
+      break;
+      case P64::CollNew::ShapeType::Capsule:
+        data->collider.capsule.radius = fmaxf(scaledHalfExtend.x, scaledHalfExtend.z);
+        data->collider.capsule.innerHalfHeight = scaledHalfExtend.y;
+      break;
+      case P64::CollNew::ShapeType::Cone:
+        data->collider.cone.radius = fmaxf(scaledHalfExtend.x, scaledHalfExtend.z);
+        data->collider.cone.halfHeight = scaledHalfExtend.y;
+      break;
+      case P64::CollNew::ShapeType::Pyramid:
+        data->collider.pyramid.baseHalfWidthX = scaledHalfExtend.x;
+        data->collider.pyramid.baseHalfWidthZ = scaledHalfExtend.z;
+        data->collider.pyramid.halfHeight = scaledHalfExtend.y;
+      break;
+    }
+    if (obj.isEnabled()) {
+      coll.addCollider(&data->collider);
+    }
   }
 
   void CollBody::onEvent(Object &obj, CollBody* data, const ObjectEvent &event)
   {
     if(event.type == EVENT_TYPE_DISABLE) {
-      return obj.getScene().getCollision().unregisterBCS(&data->bcs);
+      return obj.getScene().getCollisionNew().removeCollider(&data->collider);
     }
     if(event.type == EVENT_TYPE_ENABLE) {
-      return obj.getScene().getCollision().registerBCS(&data->bcs);
+      return obj.getScene().getCollisionNew().addCollider(&data->collider);
     }
   }
 
   void CollBody::update(Object &obj, CollBody* data, float deltaTime)
   {
-    data->bcs.halfExtend = data->orgScale * obj.scale;
-    if(data->bcs.isTrigger() || data->bcs.isFixed()) {
-      data->bcs.center = obj.pos + data->bcs.parentOffset;
+    fm_vec3_t scaledHalfExtend = data->orgScale * obj.scale;
+    scaledHalfExtend.x = fabsf(scaledHalfExtend.x);
+    scaledHalfExtend.y = fabsf(scaledHalfExtend.y);
+    scaledHalfExtend.z = fabsf(scaledHalfExtend.z);
+
+    switch(data->collider.type)
+    {
+      case P64::CollNew::ShapeType::Sphere:
+        data->collider.sphere.radius = fmaxf(scaledHalfExtend.x, fmaxf(scaledHalfExtend.y, scaledHalfExtend.z));
+      break;
+      case P64::CollNew::ShapeType::Box:
+        data->collider.box.halfSize = scaledHalfExtend;
+      break;
+      case P64::CollNew::ShapeType::Cylinder:
+        data->collider.cylinder.radius = fmaxf(scaledHalfExtend.x, scaledHalfExtend.z);
+        data->collider.cylinder.halfHeight = scaledHalfExtend.y;
+      break;
+      case P64::CollNew::ShapeType::Capsule:
+        data->collider.capsule.radius = fmaxf(scaledHalfExtend.x, scaledHalfExtend.z);
+        data->collider.capsule.innerHalfHeight = scaledHalfExtend.y;
+      break;
+      case P64::CollNew::ShapeType::Cone:
+        data->collider.cone.radius = fmaxf(scaledHalfExtend.x, scaledHalfExtend.z);
+        data->collider.cone.halfHeight = scaledHalfExtend.y;
+      break;
+      case P64::CollNew::ShapeType::Pyramid:
+        data->collider.pyramid.baseHalfWidthX = scaledHalfExtend.x;
+        data->collider.pyramid.baseHalfWidthZ = scaledHalfExtend.z;
+        data->collider.pyramid.halfHeight = scaledHalfExtend.y;
+      break;
     }
   }
 }

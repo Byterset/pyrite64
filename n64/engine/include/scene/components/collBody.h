@@ -9,6 +9,7 @@
 #include <t3d/t3dmodel.h>
 
 #include "collision/mesh.h"
+#include "collision_new/collider_shape.h"
 
 namespace P64::Comp
 {
@@ -16,7 +17,7 @@ namespace P64::Comp
   {
     static constexpr uint32_t ID = 5;
 
-    Coll::BCS bcs{};
+    CollNew::Collider collider{};
     fm_vec3_t orgScale{};
 
     static uint32_t getAllocSize([[maybe_unused]] uint16_t* initData)

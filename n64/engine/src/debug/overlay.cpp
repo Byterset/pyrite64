@@ -84,7 +84,7 @@ namespace {
   }
 
   bool showCollMesh = false;
-  bool showCollBCS = false;
+  bool showColliders = false;
   bool matrixDebug = false;
   bool showMenuScene = false;
   bool showFrameTime = false;
@@ -136,7 +136,7 @@ void Debug::Overlay::draw(P64::Scene &scene, surface_t* surf)
     didInit = true;
   }
 
-  auto &collScene = scene.getCollision();
+  auto &collScene = scene.getCollisionNew();
   uint64_t newTicksSelf = get_user_ticks();
   MEMORY_BARRIER();
 
@@ -147,7 +147,7 @@ void Debug::Overlay::draw(P64::Scene &scene, surface_t* surf)
   if(menu.items.empty()) {
     addActionItem(menu, "Scenes", []([[maybe_unused]] auto &item) { showMenuScene = true; });
 
-    addBoolItem(menu, "Coll-Obj", showCollBCS);
+    addBoolItem(menu, "Coll-Obj", showColliders);
     addBoolItem(menu, "Coll-Tri", showCollMesh);
     addBoolItem(menu, "Memory", matrixDebug);
     addBoolItem(menu, "Frames", showFrameTime);
@@ -179,7 +179,7 @@ void Debug::Overlay::draw(P64::Scene &scene, surface_t* surf)
     item.onChange(item);
   }
 
-  collScene.debugDraw(showCollMesh, showCollBCS);
+  collScene.debugDraw(showCollMesh, showColliders);
 
   float posX = 16;
   float posY = 130;

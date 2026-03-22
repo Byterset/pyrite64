@@ -12,6 +12,7 @@
 #include "scene/components/camera.h"
 #include "scene/components/collMesh.h"
 #include "scene/components/collBody.h"
+#include "scene/components/rigidBody.h"
 #include "scene/components/audio2d.h"
 #include "scene/components/constraint.h"
 #include "scene/components/culling.h"
@@ -63,5 +64,6 @@ namespace P64
     SET_COMP(Culling),
     SET_COMP(NodeGraph),
     SET_COMP(AnimModel),
+    SET_COMP(RigidBody),
   };
 }

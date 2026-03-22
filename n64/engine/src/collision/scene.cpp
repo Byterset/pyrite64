@@ -175,7 +175,7 @@ void P64::Coll::Scene::update(float deltaTime)
         }
 
         // @TODO: don't do if object has no callback
-        gameScene.onObjectCollision({bcsA, nullptr, nullptr, res.meshInstance});
+        gameScene.onObjectCollision({bcsA, nullptr, nullptr, nullptr});
       }
     }
 

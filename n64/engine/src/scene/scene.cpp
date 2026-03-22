@@ -10,6 +10,7 @@
 
 #include "scene/scene.h"
 #include "scene/globalState.h"
+#include "collision_new/mesh_collider.h"
 #include "vi/swapChain.h"
 #include "lib/memory.h"
 #include "lib/logger.h"
@@ -31,6 +32,8 @@
 namespace
 {
   uint16_t nextId = 0xFF;
+  constexpr uint32_t MAX_PHYSICS_STEPS = 5;
+  constexpr float SEC_TO_USEC = 1000000.0f;
 #if RSPQ_PROFILE
   uint32_t frameCount = 0;
 #endif
@@ -87,6 +90,14 @@ P64::Scene::Scene(uint16_t sceneId, Scene** ref)
   VI::SwapChain::setFrameSkip(conf.frameSkip);
   VI::SwapChain::start();
 
+  auto *collisionScene = CollNew::collisionSceneGetInstance();
+  collisionScene->reset();
+  collisionScene->configureSimulation(
+    conf.physicsTickRate > 0 ? (1.0f / static_cast<float>(conf.physicsTickRate)) : CollNew::DEFAULT_FIXED_DT,
+    conf.gravity,
+    conf.velocitySolverIterations,
+    conf.positionSolverIterations
+  );
   loadScene();
 
   Log::info("Scene %d Loaded", getId());
@@ -111,6 +122,7 @@ P64::Scene::~Scene()
 
 void P64::Scene::update(float deltaTime)
 {
+  accumulator_ticks += TICKS_FROM_US((uint32_t)(deltaTime * 1000000.0f));
   joypad_poll();
   auto pressed = joypad_get_buttons_pressed(JOYPAD_PORT_1);
   auto held = joypad_get_buttons_held(JOYPAD_PORT_1);
@@ -149,6 +161,26 @@ void P64::Scene::update(float deltaTime)
 
   objectsToAdd.clear();
 
+  // ======== Run the Physics and fixed Update Callbacks in a fixed Deltatime Loop ======== //
+  uint16_t physicsTickRate = conf.physicsTickRate > 0 ? conf.physicsTickRate : 50;
+  float fixedDeltaTime = 1.0f / static_cast<float>(physicsTickRate);
+  uint32_t fixedDeltaTimeTicks = TICKS_FROM_US((uint32_t)(fixedDeltaTime * SEC_TO_USEC));
+  // Safety Clamp
+  if (accumulator_ticks > fixedDeltaTimeTicks * MAX_PHYSICS_STEPS)
+  {
+    accumulator_ticks = fixedDeltaTimeTicks * MAX_PHYSICS_STEPS;
+  }
+  while (accumulator_ticks >= fixedDeltaTimeTicks)
+  {
+    //TODO: dispatch fixedupdate calls here
+    //fixed_update_dispatch();
+    // if (update_has_layer(UPDATE_LAYER_WORLD))
+    // {
+    CollNew::collisionSceneGetInstance()->step();
+    // }
+    accumulator_ticks -= fixedDeltaTimeTicks;
+  }
+
   ticksGlobalUpdate = get_user_ticks();
   GlobalScript::callHooks(GlobalScript::HookType::SCENE_UPDATE);
   ticksGlobalUpdate = get_user_ticks() - ticksGlobalUpdate;
@@ -172,7 +204,7 @@ void P64::Scene::update(float deltaTime)
   }
 
   ticksActorUpdate = get_ticks() - ticksActorUpdate;
-  collScene.update(deltaTime);
+  // collScene.update(deltaTime);
 
   for(auto &obj : pendingObjDelete)
   {
@@ -294,8 +326,8 @@ void P64::Scene::draw([[maybe_unused]] float deltaTime)
 
 void P64::Scene::onObjectCollision(const Coll::CollEvent &event)
 {
-  auto objA = event.selfBCS ? event.selfBCS->obj : event.selfMesh->object;
-  auto objB = event.otherBCS ? event.otherBCS->obj : event.otherMesh->object;
+  auto objA = event.selfBCS ? event.selfBCS->obj : (event.selfMesh ? event.selfMesh->owner : nullptr);
+  auto objB = event.otherBCS ? event.otherBCS->obj : (event.otherMesh ? event.otherMesh->owner : nullptr);
   if(!objA || !objB)return;
 
   auto compRefsA = objA->getCompRefs();

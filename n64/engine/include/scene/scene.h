@@ -10,6 +10,7 @@
 #include "lighting.h"
 #include "object.h"
 #include "collision/scene.h"
+#include "collision_new/collision_scene.h"
 #include "lib/types.h"
 #include "renderer/drawLayer.h"
 #include "renderer/pipeline.h"
@@ -57,7 +58,13 @@ namespace P64
     uint8_t padding[1]{};
 
     uint16_t audioFreq{};
-    uint16_t padding2{};
+    uint16_t physicsTickRate{};
+
+    fm_vec3_t gravity{};
+
+    uint8_t velocitySolverIterations{};
+    uint8_t positionSolverIterations{};
+    uint8_t padding2[2]{};
 
     DrawLayer::Setup layerSetup{};
   };
@@ -97,6 +104,7 @@ namespace P64
       std::array<Object*, 128> idLookup{};
 
       Coll::Scene collScene{};
+      uint32_t accumulator_ticks{0};
       std::vector<Object*> pendingObjDelete{};
 
       uint32_t eventQueueIdx{0};
@@ -132,6 +140,7 @@ namespace P64
       [[nodiscard]] Camera* getCamera(uint32_t index = 0) { return cameras[index]; }
       [[nodiscard]] Camera& getActiveCamera() { return *camMain; }
       Coll::Scene &getCollision() { return collScene; }
+      CollNew::CollisionScene &getCollisionNew() { return *CollNew::collisionSceneGetInstance(); }
 
       void onObjectCollision(const Coll::CollEvent &event);
 

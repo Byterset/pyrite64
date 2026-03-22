@@ -13,11 +13,12 @@ N64_CXXFLAGS += -std=gnu++20 -fno-exceptions -Os -Iinclude \
 
 src = $(wildcard src/*.cpp) $(wildcard src/vi/*.cpp) $(wildcard src/lib/*.cpp)
 src += $(wildcard src/scene/*.cpp) $(wildcard src/audio/*.cpp) $(wildcard src/assets/*.cpp)
-src += $(wildcard src/collision/*.cpp) $(wildcard src/debug/*.cpp)
+src += $(wildcard src/collision/*.cpp) $(wildcard src/collision_new/*.cpp) $(wildcard src/collision_new/shapes/*.cpp) $(wildcard src/debug/*.cpp)
 src += $(wildcard src/scene/components/*.cpp) $(wildcard src/renderer/*.cpp)
 src += $(wildcard src/renderer/hdr/*.cpp) $(wildcard src/renderer/bigtex/*.cpp)
 src += $(wildcard src/renderer/particles/*.cpp) $(wildcard src/script/*.cpp)
 src += $(wildcard src/libdragon/*.cpp)
+src += $(wildcard src/collision_new/*.cpp)
 
 # HDR / Bloom ucode
 extraObj = $(BUILD_DIR)/renderer/hdr/rsp_hdr.o

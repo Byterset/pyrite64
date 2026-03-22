@@ -12,15 +12,15 @@ fm_vec3_t P64::Coll::Attach::update(const fm_vec3_t &ownPos)
   auto trackedColl = trackedObj ? trackedObj->getComponent<Comp::CollMesh>() : nullptr;
 
   fm_vec3_t diff{};
-  if(trackedColl)
+  if(trackedColl && trackedColl->meshCollider)
   {
     if(lastRefId == refId) {
-      diff = refPos - trackedColl->meshInstance.outOfLocalSpace(refPosLocal);
+      diff = refPos - trackedColl->meshCollider->toWorldSpace(refPosLocal);
     }
 
     lastRefId = refId;
     refPos = ownPos;
-    refPosLocal = trackedColl->meshInstance.intoLocalSpace(refPos);
+    refPosLocal = trackedColl->meshCollider->toLocalSpace(refPos);
   } else {
     lastRefId = 0;
   }
@@ -28,7 +28,9 @@ fm_vec3_t P64::Coll::Attach::update(const fm_vec3_t &ownPos)
   return diff;
 }
 
-void P64::Coll::Attach::setReference(const MeshInstance* meshInst)
+void P64::Coll::Attach::setReference(const CollNew::MeshCollider *meshCollider)
 {
-  refId = meshInst ? meshInst->object->id : 0;
+  if(meshCollider) {
+    refId = meshCollider->owner->id;
+  }
 }

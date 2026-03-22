@@ -76,6 +76,7 @@ add_executable(n64_engine
         engine/include/scene/components/audio2d.h
         engine/src/scene/components/audio2d.cpp
         engine/src/scene/components/collBody.cpp
+        engine/src/scene/components/rigidBody.cpp
         engine/include/collision/flags.h
         engine/src/renderer/hdr/rspHDR.cpp
         engine/include/renderer/particles/ptxSprites.h
