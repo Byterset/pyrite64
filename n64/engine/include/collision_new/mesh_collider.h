@@ -9,7 +9,6 @@
 #include <cstdint>
 
 namespace P64 { class Object; }
-namespace P64::Coll { struct Mesh; }
 
 namespace P64::CollNew {
 
@@ -83,10 +82,10 @@ namespace P64::CollNew {
     /// Returns true if the mesh has a non-uniform (1,1,1) scale
     bool hasScale() const;
 
-    /// Create a MeshCollider from a legacy Coll::Mesh, binding to the given Object's transform.
-    /// The returned collider takes ownership of newly allocated arrays (vertices, triangles, normals).
+    /// Create a MeshCollider directly from collision asset raw data, binding to the given Object's transform.
+    /// The returned collider owns newly allocated arrays (vertices, triangles, normals).
     /// Call destroyData() to free them.
-    static MeshCollider *createFromLegacyMesh(Coll::Mesh *mesh, Object *obj);
+    static MeshCollider *createFromRawData(void *rawData, Object *obj);
 
     /// Free owned vertex/triangle/normal arrays and destroy the AABB tree.
     void destroyData();

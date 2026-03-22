@@ -49,8 +49,7 @@ namespace P64::Comp
     data->flags = initData->flags;
 
     void *rawData = AssetManager::getByIndex(initData->assetIdx);
-    Coll::Mesh *legacyMesh = Coll::Mesh::load(rawData);
-    data->meshCollider = CollNew::MeshCollider::createFromLegacyMesh(legacyMesh, &obj);
+    data->meshCollider = CollNew::MeshCollider::createFromRawData(rawData, &obj);
     if(data->meshCollider && obj.isEnabled()) {
       obj.getScene().getCollisionNew().addMeshCollider(data->meshCollider);
     }

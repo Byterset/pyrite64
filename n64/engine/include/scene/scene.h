@@ -5,11 +5,12 @@
 #pragma once
 #include <libdragon.h>
 #include <vector>
+#include <functional>
 
 #include "event.h"
 #include "lighting.h"
 #include "object.h"
-#include "collision/scene.h"
+// #include "collision/scene.h"
 #include "collision_new/collision_scene.h"
 #include "lib/types.h"
 #include "renderer/drawLayer.h"
@@ -103,7 +104,6 @@ namespace P64
       // most scene probably don't exceed that much anyway
       std::array<Object*, 128> idLookup{};
 
-      Coll::Scene collScene{};
       uint32_t accumulator_ticks{0};
       std::vector<Object*> pendingObjDelete{};
 
@@ -139,7 +139,7 @@ namespace P64
       [[nodiscard]] uint16_t getId() const { return id; }
       [[nodiscard]] Camera* getCamera(uint32_t index = 0) { return cameras[index]; }
       [[nodiscard]] Camera& getActiveCamera() { return *camMain; }
-      Coll::Scene &getCollision() { return collScene; }
+
       CollNew::CollisionScene &getCollisionNew() { return *CollNew::collisionSceneGetInstance(); }
 
       void onObjectCollision(const CollNew::CollEvent &event);

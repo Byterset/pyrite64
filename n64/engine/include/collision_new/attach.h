@@ -3,9 +3,9 @@
 * @license MIT
 */
 #pragma once
-#include "collision_new/mesh_collider.h"
+#include "mesh_collider.h"
 
-namespace P64::Coll
+namespace P64::CollNew
 {
   /**
    * Helper to attach something to a transforming mesh collider.

@@ -3,10 +3,28 @@
  * @license MIT
  */
 #include "collision_new/mesh_collider.h"
-#include "collision/mesh.h"
 #include "scene/object.h"
 
 namespace P64::CollNew {
+
+  namespace {
+    struct RawCollisionHeader {
+      uint32_t triCount;
+      uint32_t vertCount;
+      float collScale;
+      uint32_t vertexPtr;
+      uint32_t normalsPtr;
+      uint32_t bvhPtr;
+    };
+
+    struct PackedNormal {
+      int16_t v[3];
+    };
+
+    char *alignPtr(char *ptr, size_t alignment) {
+      return reinterpret_cast<char *>((reinterpret_cast<uintptr_t>(ptr) + alignment - 1) & ~(alignment - 1));
+    }
+  }
 
   // ── MeshTriangle ──────────────────────────────────────────────────
 
@@ -181,36 +199,52 @@ namespace P64::CollNew {
 
   // ── Legacy mesh conversion ────────────────────────────────────────
 
-  MeshCollider *MeshCollider::createFromLegacyMesh(Coll::Mesh *mesh, Object *obj) {
-    if(!mesh || mesh->triCount == 0) return nullptr;
+  MeshCollider *MeshCollider::createFromRawData(void *rawData, Object *obj) {
+    if(!rawData) return nullptr;
+
+    auto *header = static_cast<RawCollisionHeader *>(rawData);
+    if(header->triCount == 0 || header->vertCount == 0) return nullptr;
+    if(header->triCount > 0xFFFFu || header->vertCount > 0xFFFFu) return nullptr;
+
+    char *data = reinterpret_cast<char *>(header + 1);
+
+    auto *indexData = reinterpret_cast<uint16_t *>(data);
+    data += header->triCount * sizeof(uint16_t) * 3;
+
+    data = alignPtr(data, 4);
+    auto *normalData = reinterpret_cast<PackedNormal *>(data);
+
+    data += header->triCount * sizeof(PackedNormal);
+    data = alignPtr(data, 4);
+    auto *vertexData = reinterpret_cast<fm_vec3_t *>(data);
 
     auto *collider = new MeshCollider();
 
-    collider->triangleCount = static_cast<uint16_t>(mesh->triCount);
-    collider->vertexCount = static_cast<uint16_t>(mesh->vertCount);
+    collider->triangleCount = static_cast<uint16_t>(header->triCount);
+    collider->vertexCount = static_cast<uint16_t>(header->vertCount);
 
-    // Copy vertices (already fm_vec3_t in the old mesh, scaled by collScale)
-    collider->vertices = new fm_vec3_t[mesh->vertCount];
-    for(uint32_t i = 0; i < mesh->vertCount; ++i) {
-      collider->vertices[i] = mesh->verts[i];
+    // Copy vertex data
+    collider->vertices = new fm_vec3_t[header->vertCount];
+    for(uint32_t i = 0; i < header->vertCount; ++i) {
+      collider->vertices[i] = vertexData[i];
     }
 
-    // Convert indices from int16_t triplets to MeshTriangleIndices
-    collider->triangles = new MeshTriangleIndices[mesh->triCount];
-    for(uint32_t t = 0; t < mesh->triCount; ++t) {
-      collider->triangles[t].indices[0] = static_cast<uint16_t>(mesh->indices[t * 3 + 0]);
-      collider->triangles[t].indices[1] = static_cast<uint16_t>(mesh->indices[t * 3 + 1]);
-      collider->triangles[t].indices[2] = static_cast<uint16_t>(mesh->indices[t * 3 + 2]);
+    // Copy triangle indices
+    collider->triangles = new MeshTriangleIndices[header->triCount];
+    for(uint32_t t = 0; t < header->triCount; ++t) {
+      collider->triangles[t].indices[0] = indexData[t * 3 + 0];
+      collider->triangles[t].indices[1] = indexData[t * 3 + 1];
+      collider->triangles[t].indices[2] = indexData[t * 3 + 2];
     }
 
-    // Convert normals from IVec3 (int16_t scaled by 32767) to fm_vec3_t
+    // Convert packed normals (int16_t scaled by 32767) to fm_vec3_t
     constexpr float NORM_SCALE = 1.0f / 32767.0f;
-    collider->normals = new fm_vec3_t[mesh->triCount];
-    for(uint32_t t = 0; t < mesh->triCount; ++t) {
+    collider->normals = new fm_vec3_t[header->triCount];
+    for(uint32_t t = 0; t < header->triCount; ++t) {
       collider->normals[t] = vec3(
-        static_cast<float>(mesh->normals[t].v[0]) * NORM_SCALE,
-        static_cast<float>(mesh->normals[t].v[1]) * NORM_SCALE,
-        static_cast<float>(mesh->normals[t].v[2]) * NORM_SCALE
+        static_cast<float>(normalData[t].v[0]) * NORM_SCALE,
+        static_cast<float>(normalData[t].v[1]) * NORM_SCALE,
+        static_cast<float>(normalData[t].v[2]) * NORM_SCALE
       );
     }
 
@@ -221,10 +255,10 @@ namespace P64::CollNew {
 
     // Build AABB tree from triangle bounding boxes
     // Need 2*N-1 internal nodes for N leaves, plus some margin
-    int treeCapacity = static_cast<int>(mesh->triCount) * 2 + 1;
+    int treeCapacity = static_cast<int>(header->triCount) * 2 + 1;
     collider->aabbTree.init(treeCapacity);
 
-    for(uint32_t t = 0; t < mesh->triCount; ++t) {
+    for(uint32_t t = 0; t < header->triCount; ++t) {
       const fm_vec3_t &v0 = collider->vertices[collider->triangles[t].indices[0]];
       const fm_vec3_t &v1 = collider->vertices[collider->triangles[t].indices[1]];
       const fm_vec3_t &v2 = collider->vertices[collider->triangles[t].indices[2]];

@@ -134,9 +134,6 @@ void P64::Scene::update(float deltaTime)
   ticksActorUpdate = 0;
   ticksDraw = 0;
   ticksGlobalDraw = 0;
-  collScene.ticks = 0;
-  collScene.ticksBVH = 0;
-  collScene.raycastCount = 0;
   AudioManager::ticksUpdate = 0;
 
   AudioManager::update();
@@ -204,7 +201,6 @@ void P64::Scene::update(float deltaTime)
   }
 
   ticksActorUpdate = get_ticks() - ticksActorUpdate;
-  // collScene.update(deltaTime);
 
   for(auto &obj : pendingObjDelete)
   {

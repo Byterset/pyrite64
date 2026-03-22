@@ -4,9 +4,9 @@
  */
 #pragma once
 
-#include "shapes.h"
 #include "gjk.h"
 #include "types.h"
+#include "shapes.h"
 
 namespace P64
 {

@@ -8,7 +8,6 @@
 #include "assets/assetManager.h"
 #include <t3d/t3dmodel.h>
 
-#include "collision/mesh.h"
 #include "collision_new/collider_shape.h"
 
 namespace P64::Comp

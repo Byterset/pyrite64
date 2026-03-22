@@ -49,6 +49,8 @@ namespace P64::CollNew {
     cachedConstraintCount_ = 0;
     cachedConstraints_.clear();
     cachedConstraintPairs_.clear();
+    ticksDetect = 0;
+    ticksTotal = 0;
 
     rigidBodyAABBTree.init(32); // Initial capacity (will grow as needed)
   }
@@ -1034,6 +1036,8 @@ namespace P64::CollNew {
   // ── Main step ─────────────────────────────────────────────────────
 
   void CollisionScene::step() {
+    const uint64_t totalStart = get_ticks();
+
     // 0. Update mesh collider world AABBs (in case transforms changed)
     // TODO: maybe only update if transform is dirty?
     updateMeshColliderWorldAABBs();
@@ -1065,7 +1069,9 @@ namespace P64::CollNew {
     }
 
     // 4. Detect all contacts (broad + narrow phase)
+    const uint64_t detectStart = get_ticks();
     detectAllContacts();
+    ticksDetect = get_ticks() - detectStart;
 
     // Refresh anchors from local-space points before solving.
     refreshContacts();
@@ -1180,6 +1186,8 @@ namespace P64::CollNew {
         obj->sleepCounter = 0;
       }
     }
+
+    ticksTotal = get_ticks() - totalStart;
   }
 
   /// @brief Draws debug visuals for the collision scene.

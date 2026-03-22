@@ -40,8 +40,8 @@ namespace P64::CollNew {
 
   class CollisionScene {
   public:
-    uint64_t ticks{0};
-    uint64_t ticksBVH{0};
+    uint64_t ticksDetect{0};
+    uint64_t ticksTotal{0};
     uint64_t raycastCount{0};
     void debugDraw(bool showMeshColliders, bool showRigidBodies);
     void reset();

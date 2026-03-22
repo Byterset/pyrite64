@@ -28,7 +28,7 @@ namespace {
   constexpr float barHeight = 3.0f;
   constexpr float barRefTimeMs = 1000.0f / 30.0f; // FPS
 
-  constexpr color_t COLOR_BVH{ 0x00, 0xAA, 0x22, 0xFF};
+  constexpr color_t COLOR_COLL_DETECT{ 0x00, 0xAA, 0x22, 0xFF};
   constexpr color_t COLOR_COLL{0x22,0xFF,0x00, 0xFF};
   constexpr color_t COLOR_ACTOR_UPDATE{0xAA,0,0, 0xFF};
   constexpr color_t COLOR_GLOBAL_UPDATE{0x33,0x33,0x33, 0xFF};
@@ -219,10 +219,10 @@ void Debug::Overlay::draw(P64::Scene &scene, surface_t* surf)
   heap_stats_t heap_stats;
   sys_get_heap_stats(&heap_stats);
 
-  rdpq_set_prim_color(COLOR_BVH);
-  posX = Debug::printf(posX, posY, "Coll:%.2f", (double)TICKS_TO_US(collScene.ticksBVH) / 1000.0) + 4;
+  rdpq_set_prim_color(COLOR_COLL_DETECT);
+  posX = Debug::printf(posX, posY, "Coll:%.2f", (double)TICKS_TO_US(collScene.ticksDetect) / 1000.0) + 4;
   rdpq_set_prim_color(COLOR_COLL);
-  posX = Debug::printf(posX, posY, "%.2f", (double)TICKS_TO_US(collScene.ticks - collScene.ticksBVH) / 1000.0) + 8;
+  posX = Debug::printf(posX, posY, "%.2f", (double)TICKS_TO_US(collScene.ticksTotal) / 1000.0) + 8;
   //posX = Debug::printf(posX, posY, "Ray:%d", collScene.raycastCount) + 8;
   rdpq_set_prim_color(COLOR_ACTOR_UPDATE);
   Debug::printf(posX, posY, "%.2f", (double)TICKS_TO_US(scene.ticksActorUpdate) / 1000.0);
@@ -305,8 +305,11 @@ void Debug::Overlay::draw(P64::Scene &scene, surface_t* surf)
   posY = 16;
 
   // Performance graph
-  float timeCollBVH = usToWidth(TICKS_TO_US(collScene.ticksBVH));
-  float timeColl = usToWidth(TICKS_TO_US(collScene.ticks - collScene.ticksBVH));
+  uint64_t ticksCollRemainder = collScene.ticksTotal > collScene.ticksDetect
+    ? (collScene.ticksTotal - collScene.ticksDetect)
+    : 0;
+  float timeCollDetect = usToWidth(TICKS_TO_US(collScene.ticksDetect));
+  float timeColl = usToWidth(TICKS_TO_US(ticksCollRemainder));
   float timeActorUpdate = usToWidth(TICKS_TO_US(scene.ticksActorUpdate));
   float timeGlobalUpdate = usToWidth(TICKS_TO_US(scene.ticksGlobalUpdate));
   float timeSceneDraw = usToWidth(TICKS_TO_US(scene.ticksDraw - scene.ticksGlobalDraw));
@@ -319,8 +322,8 @@ void Debug::Overlay::draw(P64::Scene &scene, surface_t* surf)
   rdpq_set_mode_fill({0x33,0x33,0x33, 0xFF});
   rdpq_fill_rectangle(posX-1 + (barWidth/2), posY-1, posX + barWidth+1, posY + barHeight+1);
 
-  rdpq_set_fill_color(COLOR_BVH);
-  rdpq_fill_rectangle(posX, posY, posX + timeCollBVH, posY + barHeight); posX += timeCollBVH;
+  rdpq_set_fill_color(COLOR_COLL_DETECT);
+  rdpq_fill_rectangle(posX, posY, posX + timeCollDetect, posY + barHeight); posX += timeCollDetect;
   rdpq_set_fill_color(COLOR_COLL);
   rdpq_fill_rectangle(posX, posY, posX + timeColl, posY + barHeight); posX += timeColl;
   rdpq_set_fill_color(COLOR_ACTOR_UPDATE);

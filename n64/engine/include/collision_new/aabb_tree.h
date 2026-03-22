@@ -4,8 +4,8 @@
  */
 #pragma once
 
-#include "shapes.h"
 #include "vec_math.h"
+#include "shapes.h"
 #include <cstdint>
 #include <cassert>
 #include <memory>
