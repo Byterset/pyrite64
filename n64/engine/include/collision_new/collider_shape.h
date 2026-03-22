@@ -31,6 +31,9 @@ namespace P64::CollNew {
     float friction{0.8f};
     P64::Object *owner{};
     AABB worldAABB{}; // used for culling
+    bool isTrigger{false}; // whether this collider is a trigger (doesn't generate contacts, only events)
+    uint8_t maskRead{0x00};  // which collision layers this collider get's affected by
+    uint8_t maskWrite{0x00}; // which collision layers this collider affects
 
     fm_vec3_t support(const fm_vec3_t &dir) const;
     AABB boundingBox(const fm_quat_t *rotation) const;

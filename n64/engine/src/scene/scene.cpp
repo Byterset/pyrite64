@@ -324,10 +324,11 @@ void P64::Scene::draw([[maybe_unused]] float deltaTime)
 #endif
 }
 
-void P64::Scene::onObjectCollision(const Coll::CollEvent &event)
+void P64::Scene::onObjectCollision(const CollNew::CollEvent &event)
 {
-  auto objA = event.selfBCS ? event.selfBCS->obj : (event.selfMesh ? event.selfMesh->owner : nullptr);
-  auto objB = event.otherBCS ? event.otherBCS->obj : (event.otherMesh ? event.otherMesh->owner : nullptr);
+  auto objA = event.selfCollider->owner ? event.selfCollider->owner : nullptr;
+  auto selfCollider = event.selfCollider ? (CollNew::Collider*)event.selfCollider : nullptr;
+  auto objB = event.otherObject ? event.otherObject : nullptr;
   if(!objA || !objB)return;
 
   auto compRefsA = objA->getCompRefs();
@@ -342,11 +343,16 @@ void P64::Scene::onObjectCollision(const Coll::CollEvent &event)
 
   //if(!event.otherBCS)return;
 
-  Coll::CollEvent eventOther{
-    .selfBCS = event.otherBCS,
-    .otherBCS = event.selfBCS,
-    .selfMesh = event.otherMesh,
-    .otherMesh = event.selfMesh,
+  CollNew::CollEvent eventOther{
+    .selfCollider = event.hitCollider,
+    .hitCollider = event.selfCollider,
+    .selfMeshCollider = event.hitMeshCollider,
+    .hitMeshCollider = event.selfMeshCollider,
+    .selfRigidBody = event.hitRigidBody,
+    .hitRigidBody = event.selfRigidBody,
+    .contactCount = event.contactCount,
+    .otherObject = objA,
+    .relativeVelocity = {-event.relativeVelocity.x, -event.relativeVelocity.y, -event.relativeVelocity.z},
   };
 
   auto compRefsB = objB->getCompRefs();

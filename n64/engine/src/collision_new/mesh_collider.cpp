@@ -54,39 +54,64 @@ namespace P64::CollNew {
   // ── MeshCollider transform ────────────────────────────────────────
 
   fm_vec3_t MeshCollider::toWorldSpace(const fm_vec3_t &localPoint) const {
+    fm_vec3_t position = owner ? owner->pos : vec3Zero();
+    fm_quat_t rotation = owner ? owner->rot : QUAT_IDENTITY;
+    fm_vec3_t scale = owner ? owner->scale : vec3(1.0f, 1.0f, 1.0f);
     fm_vec3_t scaled = vec3(localPoint.x * scale.x, localPoint.y * scale.y, localPoint.z * scale.z);
-    if(rotation) {
-      scaled = quatRotateVec(*rotation, scaled);
+    if(!quatIsIdentical(&rotation, &QUAT_IDENTITY)) {
+      scaled = quatRotateVec(rotation, scaled);
     }
-    if(position) {
-      scaled = vec3Add(scaled, *position);
+    if(vec3MagSqrd(position) > EPSILON_SQUARED) {
+      scaled = vec3Add(scaled, position);
     }
     return scaled;
   }
 
   fm_vec3_t MeshCollider::toLocalSpace(const fm_vec3_t &worldPoint) const {
     fm_vec3_t p = worldPoint;
-    if(position) {
-      p = vec3Sub(p, *position);
+    fm_quat_t rotation = owner ? owner->rot : QUAT_IDENTITY;
+    fm_vec3_t scale = owner ? owner->scale : vec3(1.0f, 1.0f, 1.0f);
+    if(hasPosition()) {
+      p = p - owner->pos;
     }
-    if(rotation) {
-      p = quatRotateVec(quatConjugate(*rotation), p);
+    if(hasRotation()) {
+      p = quatConjugate(rotation) * p;
     }
-    // Inverse scale
-    if(fabsf(scale.x) > EPSILON) p.x /= scale.x;
-    if(fabsf(scale.y) > EPSILON) p.y /= scale.y;
-    if(fabsf(scale.z) > EPSILON) p.z /= scale.z;
+    if(hasScale()) {
+      if(fabsf(scale.x) > EPSILON) p.x /= scale.x;
+      if(fabsf(scale.y) > EPSILON) p.y /= scale.y;
+      if(fabsf(scale.z) > EPSILON) p.z /= scale.z;
+    }
     return p;
   }
 
   fm_vec3_t MeshCollider::rotateToWorld(const fm_vec3_t &localDir) const {
-    if(!rotation) return localDir;
-    return quatRotateVec(*rotation, localDir);
+    if(!hasRotation()) return localDir;
+    return owner->rot * localDir;
   }
 
   fm_vec3_t MeshCollider::rotateToLocal(const fm_vec3_t &worldDir) const {
-    if(!rotation) return worldDir;
-    return quatRotateVec(quatConjugate(*rotation), worldDir);
+    if(!hasRotation()) return worldDir;
+    return quatConjugate(owner->rot) * worldDir;
+  }
+
+  bool MeshCollider::hasTransform() const {
+    return (hasRotation() || hasPosition() || hasScale());
+  }
+
+  bool MeshCollider::hasRotation() const {
+    if(!owner) return false;
+    return !quatIsIdentical(&owner->rot, &QUAT_IDENTITY);
+  }
+
+  bool MeshCollider::hasPosition() const {
+    if(!owner) return false;
+    return vec3MagSqrd(owner->pos) > EPSILON_SQUARED;
+  }
+
+  bool MeshCollider::hasScale() const {
+    if(!owner) return false;
+    return (fabsf(owner->scale.x - 1.0f) > EPSILON) || (fabsf(owner->scale.y - 1.0f) > EPSILON) || (fabsf(owner->scale.z - 1.0f) > EPSILON);
   }
 
   void MeshCollider::computeLocalRootAABB() {
@@ -191,9 +216,6 @@ namespace P64::CollNew {
 
     // Bind to the object's transform
     if(obj) {
-      collider->position = &obj->pos;
-      collider->rotation = &obj->rot;
-      collider->scale = obj->scale;
       collider->owner = obj;
     }
 

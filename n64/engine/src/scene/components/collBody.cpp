@@ -16,7 +16,7 @@ namespace
     fm_vec3_t halfExtend{};
     fm_vec3_t offset{};
     uint8_t type{};
-    uint8_t flags{};
+    uint8_t isTrigger{};
     uint8_t maskRead{};
     uint8_t maskWrite{};
     float friction{};
@@ -52,9 +52,9 @@ namespace P64::Comp
 
     fm_vec3_t scaledHalfExtend = initData->halfExtend * obj.scale;
 
-    //TODO: add read & write masks to colliders and not phys objects
-    // data->collider.maskRead = initData->maskRead;
-    // data->collider.maskWrite = initData->maskWrite;
+    data->collider.isTrigger = initData->isTrigger;
+    data->collider.maskRead = initData->maskRead;
+    data->collider.maskWrite = initData->maskWrite;
     switch(data->collider.type)
     {
       case P64::CollNew::ShapeType::Sphere:

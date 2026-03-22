@@ -45,11 +45,6 @@ namespace P64::CollNew {
     uint16_t triangleCount{0};
     uint16_t vertexCount{0};
 
-    // Transform (pointers so they can track an owning object's transform)
-    fm_vec3_t *position{nullptr};   ///< World position
-    fm_quat_t *rotation{nullptr};   ///< World rotation
-    fm_vec3_t scale{1.0f, 1.0f, 1.0f};
-
     // Owner tracking
     P64::Object* owner{};          ///< Pointer to the owning Object (for event lookups)
 
@@ -79,7 +74,14 @@ namespace P64::CollNew {
     AABB worldAABBToLocal(const AABB &worldAABB) const;
 
     /// Returns true if the mesh has a non-identity transform
-    bool hasTransform() const { return position != nullptr; }
+    bool hasTransform() const;
+
+    /// Returns true if the mesh has a non-identity rotation
+    bool hasRotation() const;
+    /// Returns true if the mesh has a non-zero position
+    bool hasPosition() const;
+    /// Returns true if the mesh has a non-uniform (1,1,1) scale
+    bool hasScale() const;
 
     /// Create a MeshCollider from a legacy Coll::Mesh, binding to the given Object's transform.
     /// The returned collider takes ownership of newly allocated arrays (vertices, triangles, normals).

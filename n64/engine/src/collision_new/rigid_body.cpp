@@ -73,7 +73,8 @@ namespace P64::CollNew {
     position = pos;
     rotation = rot;
     centerOffset = offset;
-    activeContacts = nullptr;
+    activeContacts.clear();
+    activeContacts.reserve(8);
     aabbTreeNodeId = NULL_NODE;
     constraints = Constraint::None;
     sleepCounter = 0;
@@ -337,28 +338,6 @@ namespace P64::CollNew {
 
     // Rotate back to world space and add world center of mass
     output = vec3Add(matrix3Vec3Mul(rotationMatrix, localSupport), worldCenterOfMass);
-  }
-
-  Contact *RigidBody::nearestContact() const {
-    Contact *nearest = nullptr;
-    float nearestDist = 1e30f;
-
-    for(Contact *c = activeContacts; c; c = c->next) {
-      if(!c->constraint || c->constraint->pointCount == 0) continue;
-      float pen = c->constraint->points[0].penetration;
-      if(pen < nearestDist) {
-        nearestDist = pen;
-        nearest = c;
-      }
-    }
-    return nearest;
-  }
-
-  bool RigidBody::isTouching(uint16_t id) const {
-    for(Contact *c = activeContacts; c; c = c->next) {
-      if(c->otherBody && c->otherBody->owner && c->otherBody->owner->id == id) return true;
-    }
-    return false;
   }
 
   void rigidBodyGjkSupport(const void *data, const fm_vec3_t &direction, fm_vec3_t &output) {

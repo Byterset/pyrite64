@@ -9,6 +9,7 @@
 #include "aabb_tree.h"
 #include "contact.h"
 #include <cstdint>
+#include <vector>
 #include "scene/object.h"
 
 namespace P64::CollNew {
@@ -98,7 +99,7 @@ namespace P64::CollNew {
     AABB boundingBox{};
     fm_vec3_t centerOffset{};
     Collider *collider{nullptr};
-    Contact *activeContacts{nullptr};
+    std::vector<Contact> activeContacts{};
 
     // Cached transforms
     Matrix3x3 invWorldInertiaTensor{};
@@ -158,8 +159,6 @@ namespace P64::CollNew {
 
     void gjkSupport(const fm_vec3_t &direction, fm_vec3_t &output) const;
 
-    Contact *nearestContact() const;
-    bool isTouching(uint16_t id) const;
   };
 
   /// GJK-compatible free function wrapper

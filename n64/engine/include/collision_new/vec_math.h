@@ -10,6 +10,8 @@
 namespace P64::CollNew {
 
   constexpr float EPSILON = 0.000001f;
+  constexpr float EPSILON_SQUARED = EPSILON * EPSILON;
+  constexpr fm_quat_t QUAT_IDENTITY = {0.0f, 0.0f, 0.0f, 1.0f};
 
   inline fm_vec3_t vec3(float x, float y, float z) {
     return fm_vec3_t{{x, y, z}};
@@ -273,6 +275,14 @@ namespace P64::CollNew {
     dq.z = hdt * (omega.z * q.w + omega.x * q.y - omega.y * q.x);
     dq.w = hdt * (-omega.x * q.x - omega.y * q.y - omega.z * q.z);
     return quatNormalize({q.x + dq.x, q.y + dq.y, q.z + dq.z, q.w + dq.w});
+  }
+
+  /// @brief Checks if two quaternions are the same component-wise
+  /// @param a
+  /// @param b
+  /// @return
+  inline bool quatIsIdentical(const fm_quat_t* a, const fm_quat_t* b) {
+      return (a->x == b->x) && (a->y == b->y) && (a->z == b->z) && (a->w == b->w);
   }
 
 } // namespace P64::CollNew

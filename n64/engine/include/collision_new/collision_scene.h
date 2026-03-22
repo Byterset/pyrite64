@@ -14,15 +14,29 @@
 #include <deque>
 #include <map>
 #include <cstddef>
+#include <unordered_map>
 #include <vector>
 
 namespace P64::CollNew {
   constexpr int MAX_OBJ_COLLISION_CANDIDATES = 15;
-  constexpr int MAX_ACTIVE_CONTACTS = 128;
   constexpr float DEFAULT_FIXED_DT = 1.0f / 50.0f;
   constexpr fm_vec3_t DEFAULT_GRAVITY = {0.0f, -9.8f * 16.0f, 0.0f}; //scaled with Pyrites default scale for assets
   constexpr uint8_t DEFAULT_VELOCITY_SOLVER_ITERATIONS = 7;
   constexpr uint8_t DEFAULT_POSITION_SOLVER_ITERATIONS = 6;
+
+  struct CollEvent
+  {
+    Collider *selfCollider{};
+    Collider *hitCollider{};
+    MeshCollider *selfMeshCollider{};
+    MeshCollider *hitMeshCollider{};
+    RigidBody *selfRigidBody{};
+    RigidBody *hitRigidBody{};
+    uint16_t contactCount{0};
+    Object *otherObject{};
+    fm_vec3_t relativeVelocity{};
+    // TODO: add array of contacts
+  };
 
   class CollisionScene {
   public:
@@ -34,12 +48,11 @@ namespace P64::CollNew {
 
     void addRigidBody(RigidBody *rigidBody);
     void removeRigidBody(RigidBody *rigidBody);
-    RigidBody *findRigidBody(uint16_t id) const;
+    RigidBody *findRigidBodyByObjectId(uint16_t id) const;
     const std::vector<RigidBody *> &getRigidBodies() const { return rigidBodies_; }
 
     void addCollider(Collider *collider);
     void removeCollider(Collider *collider);
-    Collider *findCollider(uint16_t id) const;
     const std::vector<Collider *> &getColliders() const { return colliders_; }
 
     void addMeshCollider(MeshCollider *mesh);
@@ -49,7 +62,6 @@ namespace P64::CollNew {
 
     void step();
 
-    Contact *allocateContact();
     int getCachedConstraintCount() const;
     ContactConstraint &getCachedConstraint(int index);
     const ContactConstraint &getCachedConstraint(int index) const;
@@ -65,12 +77,12 @@ namespace P64::CollNew {
   private:
 
     std::vector<RigidBody *> rigidBodies_{};
+    std::unordered_map<const Object *, RigidBody *> ownerRigidBodies_{};
     std::vector<Collider *> colliders_{};
-    std::array<Contact, MAX_ACTIVE_CONTACTS> contacts_{};
+    std::unordered_map<const Object *, std::vector<Collider *>> ownerColliders_{};
     std::deque<ContactConstraint> cachedConstraints_{};
     std::map<std::pair<Collider *, Collider *>, std::vector<int>> cachedConstraintPairs_{};
 
-    Contact *nextFreeContact_{nullptr};
     AABBTree rigidBodyAABBTree;
 
     // Multiple mesh colliders
@@ -84,7 +96,8 @@ namespace P64::CollNew {
     int cachedConstraintCount_{0};
 
     static std::pair<Collider *, Collider *> makeColliderPairKey(Collider *a, Collider *b);
-    RigidBody *findRigidBodyForObject(const Object *owner) const;
+    RigidBody *findRigidBodyByOwner(const Object *owner) const;
+    const std::vector<Collider *> *findCollidersForOwner(const Object *owner) const;
     void updateColliderWorldState(Collider *collider) const;
     void updateCompoundProperties(RigidBody *rigidBody) const;
 
@@ -99,7 +112,7 @@ namespace P64::CollNew {
     void solveVelocityConstraints();
     void solvePositionConstraints();
     void fixSweptCollisions();
-    void updateMeshColliderAABBs();
+    void updateMeshColliderWorldAABBs();
   };
 
   CollisionScene *collisionSceneGetInstance();

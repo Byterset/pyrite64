@@ -42,22 +42,20 @@ namespace P64::CollNew {
     rigidBodyAABBTree.destroy();
 
     rigidBodies_.clear();
+    ownerRigidBodies_.clear();
     colliders_.clear();
+    ownerColliders_.clear();
     meshColliders_.clear();
     cachedConstraintCount_ = 0;
     cachedConstraints_.clear();
     cachedConstraintPairs_.clear();
 
-    // Build contact pool free list
-    for(int i = 0; i < MAX_ACTIVE_CONTACTS; ++i) {
-      contacts_[i] = Contact{};
-      contacts_[i].next = (i + 1 < MAX_ACTIVE_CONTACTS) ? &contacts_[i + 1] : nullptr;
-    }
-    nextFreeContact_ = &contacts_[0];
-
     rigidBodyAABBTree.init(32); // Initial capacity (will grow as needed)
   }
 
+  /// @brief Updates the world state of a collider.
+  /// Recalculates the world center and world AABB of the collider based on its owner's transform.
+  /// @param collider The collider to update.
   void CollisionScene::updateColliderWorldState(Collider *collider) const {
     if(!collider || !collider->owner) return;
     const Object *owner = collider->owner;
@@ -68,23 +66,32 @@ namespace P64::CollNew {
     collider->worldAABB.max = vec3Add(local.max, collider->worldCenter);
   }
 
-  RigidBody *CollisionScene::findRigidBodyForObject(const Object *owner) const {
+  RigidBody *CollisionScene::findRigidBodyByOwner(const Object *owner) const {
     if(!owner) return nullptr;
-    for(RigidBody *body : rigidBodies_) {
-      if(body && body->owner == owner) {
-        return body;
-      }
-    }
-    return nullptr;
+    auto it = ownerRigidBodies_.find(owner);
+    return (it != ownerRigidBodies_.end()) ? it->second : nullptr;
+  }
+
+  const std::vector<Collider *> *CollisionScene::findCollidersForOwner(const Object *owner) const {
+    if(!owner) return nullptr;
+    auto it = ownerColliders_.find(owner);
+    if(it == ownerColliders_.end()) return nullptr;
+    return &it->second;
   }
 
   void CollisionScene::updateCompoundProperties(RigidBody *rigidBody) const {
     if(!rigidBody || !rigidBody->owner || !rigidBody->position) return;
 
+    const std::vector<Collider *> *ownerColliders = findCollidersForOwner(rigidBody->owner);
+    if(!ownerColliders || ownerColliders->empty()) {
+      rigidBody->centerOffset = vec3Zero();
+      return;
+    }
+
     int count = 0;
     fm_vec3_t worldCenterSum = vec3Zero();
-    for(Collider *collider : colliders_) {
-      if(!collider || collider->owner != rigidBody->owner) continue;
+    for(Collider *collider : *ownerColliders) {
+      if(!collider) continue;
       worldCenterSum = vec3Add(worldCenterSum, collider->worldCenter);
       ++count;
     }
@@ -110,8 +117,8 @@ namespace P64::CollNew {
     const float massPerCollider = rigidBody->mass * invCount;
     fm_vec3_t compoundInertia = vec3Zero();
 
-    for(Collider *collider : colliders_) {
-      if(!collider || collider->owner != rigidBody->owner) continue;
+    for(Collider *collider : *ownerColliders) {
+      if(!collider) continue;
 
       fm_vec3_t colliderInertia = collider->inertiaTensor(massPerCollider);
       fm_vec3_t r = vec3Sub(collider->worldCenter, worldCenter);
@@ -141,8 +148,10 @@ namespace P64::CollNew {
   // ── Object management ─────────────────────────────────────────────
 
   void CollisionScene::addRigidBody(RigidBody *rigidBody) {
-    if(!rigidBody) return;
+    if(!rigidBody || !rigidBody->owner) return;
     rigidBodies_.push_back(rigidBody);
+    ownerRigidBodies_[rigidBody->owner] = rigidBody;
+    
 
     updateCompoundProperties(rigidBody);
     rigidBody->updateWorldInertia();
@@ -153,6 +162,13 @@ namespace P64::CollNew {
 
   void CollisionScene::removeRigidBody(RigidBody *rigidBody) {
     if(!rigidBody) return;
+
+    if(rigidBody->owner) {
+      auto ownerIt = ownerRigidBodies_.find(rigidBody->owner);
+      if(ownerIt != ownerRigidBodies_.end() && ownerIt->second == rigidBody) {
+        ownerRigidBodies_.erase(ownerIt);
+      }
+    }
 
     // Release contacts
     releaseObjectContacts(rigidBody);
@@ -186,7 +202,7 @@ namespace P64::CollNew {
     rigidBodies_.erase(std::remove(rigidBodies_.begin(), rigidBodies_.end(), rigidBody), rigidBodies_.end());
   }
 
-  RigidBody *CollisionScene::findRigidBody(uint16_t id) const
+  RigidBody *CollisionScene::findRigidBodyByObjectId(uint16_t id) const
   {
     for (RigidBody *body : rigidBodies_)
     {
@@ -199,21 +215,22 @@ namespace P64::CollNew {
   }
 
   void CollisionScene::addCollider(Collider *collider) {
-    if(!collider) return;
+    if(!collider || !collider->owner) return;
     colliders_.push_back(collider);
+    ownerColliders_[collider->owner].push_back(collider);
     updateColliderWorldState(collider);
 
-    if(collider->owner) {
-      RigidBody *rigidBody = findRigidBodyForObject(collider->owner);
-      if(rigidBody) {
-        updateCompoundProperties(rigidBody);
-        rigidBody->updateWorldInertia();
-      }
+    RigidBody *rigidBody = findRigidBodyByOwner(collider->owner);
+    if (rigidBody)
+    {
+      updateCompoundProperties(rigidBody);
+      rigidBody->updateWorldInertia();
     }
   }
 
   void CollisionScene::removeCollider(Collider *collider) {
     if(!collider) return;
+    Object *owner = collider->owner;
 
     bool removedAny = false;
     for(int i = 0; i < cachedConstraintCount_;) {
@@ -234,24 +251,26 @@ namespace P64::CollNew {
       rebuildCachedConstraintPairs();
     }
 
+    if(owner) {
+      auto it = ownerColliders_.find(owner);
+      if(it != ownerColliders_.end()) {
+        std::vector<Collider *> &ownerList = it->second;
+        ownerList.erase(std::remove(ownerList.begin(), ownerList.end(), collider), ownerList.end());
+        if(ownerList.empty()) {
+          ownerColliders_.erase(it);
+        }
+      }
+    }
+
     colliders_.erase(std::remove(colliders_.begin(), colliders_.end(), collider), colliders_.end());
 
-    if(collider->owner) {
-      RigidBody *rigidBody = findRigidBodyForObject(collider->owner);
+    if(owner) {
+      RigidBody *rigidBody = findRigidBodyByOwner(owner);
       if(rigidBody) {
         updateCompoundProperties(rigidBody);
         rigidBody->updateWorldInertia();
       }
     }
-  }
-
-  Collider *CollisionScene::findCollider(uint16_t id) const {
-    for(Collider *collider : colliders_) {
-      if(collider && collider->owner && collider->owner->id == id) {
-        return collider;
-      }
-    }
-    return nullptr;
   }
 
   void CollisionScene::addMeshCollider(MeshCollider *mesh) {
@@ -302,16 +321,6 @@ namespace P64::CollNew {
     gravity_ = gravity;
     velocitySolverIterations_ = std::max<uint8_t>(1, velocityIterations);
     positionSolverIterations_ = std::max<uint8_t>(1, positionIterations);
-  }
-
-  // ── Contact pool management ───────────────────────────────────────
-
-  Contact *CollisionScene::allocateContact() {
-    if(!nextFreeContact_) return nullptr;
-    Contact *c = nextFreeContact_;
-    nextFreeContact_ = c->next;
-    *c = Contact{};
-    return c;
   }
 
   int CollisionScene::getCachedConstraintCount() const {
@@ -365,17 +374,12 @@ namespace P64::CollNew {
   }
 
   void CollisionScene::releaseObjectContacts(RigidBody *rigidBody) {
-    Contact *c = rigidBody->activeContacts;
-    while(c) {
-      Contact *next = c->next;
-      // Return to free list
-      c->constraint = nullptr;
-      c->otherBody = nullptr;
-      c->next = nextFreeContact_;
-      nextFreeContact_ = c;
-      c = next;
+    if(!rigidBody) return;
+    for(Contact &c : rigidBody->activeContacts) {
+      c.constraint = nullptr;
+      c.otherBody = nullptr;
     }
-    rigidBody->activeContacts = nullptr;
+    rigidBody->activeContacts.clear();
   }
 
   // ── Wake island ───────────────────────────────────────────────────
@@ -385,9 +389,9 @@ namespace P64::CollNew {
     rigidBody->wake();
 
     // Wake connected rigidBodies through contacts
-    for(Contact *c = rigidBody->activeContacts; c; c = c->next) {
-      if(c->otherBody && c->otherBody->isSleeping) {
-        wakeIsland(c->otherBody);
+    for(const Contact &c : rigidBody->activeContacts) {
+      if(c.otherBody && c.otherBody->isSleeping) {
+        wakeIsland(c.otherBody);
       }
     }
   }
@@ -481,7 +485,7 @@ namespace P64::CollNew {
       if(!a || !a->owner) continue;
 
       updateColliderWorldState(a);
-      RigidBody *rbA = findRigidBodyForObject(a->owner);
+      RigidBody *rbA = findRigidBodyByOwner(a->owner);
       if(rbA && rbA->isSleeping && !rbA->isTrigger) continue;
 
       for(std::size_t j = i + 1; j < colliders_.size(); ++j) {
@@ -492,7 +496,7 @@ namespace P64::CollNew {
         updateColliderWorldState(b);
         if(!aabbOverlap(a->worldAABB, b->worldAABB)) continue;
 
-        RigidBody *rbB = findRigidBodyForObject(b->owner);
+        RigidBody *rbB = findRigidBodyByOwner(b->owner);
         if(rbA && rbB && rbA->isSleeping && rbB->isSleeping) continue;
 
         collideDetectObjectToObject(a, rbA, b, rbB);
@@ -509,7 +513,7 @@ namespace P64::CollNew {
 
         updateColliderWorldState(collider);
 
-        RigidBody *rigidBody = findRigidBodyForObject(collider->owner);
+        RigidBody *rigidBody = findRigidBodyByOwner(collider->owner);
         if(rigidBody && (rigidBody->isTrigger || rigidBody->isSleeping)) continue;
 
         if(!aabbOverlap(collider->worldAABB, mesh->worldBoundingBox)) continue;
@@ -874,7 +878,8 @@ namespace P64::CollNew {
     }
   }
 
-  void CollisionScene::updateMeshColliderAABBs() {
+  /// @brief Recalculate the world-space AABBs of all Mesh Colliders in the Collision Scene.
+  void CollisionScene::updateMeshColliderWorldAABBs() {
     for(std::size_t i = 0; i < meshColliders_.size(); ++i) {
       MeshCollider *mesh = meshColliders_[i];
       if(!mesh) continue;
@@ -1030,7 +1035,8 @@ namespace P64::CollNew {
 
   void CollisionScene::step() {
     // 0. Update mesh collider world AABBs (in case transforms changed)
-    updateMeshColliderAABBs();
+    // TODO: maybe only update if transform is dirty?
+    updateMeshColliderWorldAABBs();
 
     // 1. Refresh collider world state
     for(Collider *collider : colliders_) {
@@ -1082,15 +1088,17 @@ namespace P64::CollNew {
       obj->integrateRotation(fixedDt_);
       AABB bounds{};
       bool hasBounds = false;
-      for(Collider *collider : colliders_) {
-        if(!collider || collider->owner != obj->owner) continue;
-        updateColliderWorldState(collider);
-        if(!hasBounds) {
-          bounds = collider->worldAABB;
-          hasBounds = true;
-        } else {
-          bounds.min = vec3Min(bounds.min, collider->worldAABB.min);
-          bounds.max = vec3Max(bounds.max, collider->worldAABB.max);
+      if(const std::vector<Collider *> *ownerColliders = findCollidersForOwner(obj->owner)) {
+        for(Collider *collider : *ownerColliders) {
+          if(!collider) continue;
+          updateColliderWorldState(collider);
+          if(!hasBounds) {
+            bounds = collider->worldAABB;
+            hasBounds = true;
+          } else {
+            bounds.min = vec3Min(bounds.min, collider->worldAABB.min);
+            bounds.max = vec3Max(bounds.max, collider->worldAABB.max);
+          }
         }
       }
 
@@ -1120,15 +1128,17 @@ namespace P64::CollNew {
       obj->updateWorldInertia();
       AABB bounds{};
       bool hasBounds = false;
-      for(Collider *collider : colliders_) {
-        if(!collider || collider->owner != obj->owner) continue;
-        updateColliderWorldState(collider);
-        if(!hasBounds) {
-          bounds = collider->worldAABB;
-          hasBounds = true;
-        } else {
-          bounds.min = vec3Min(bounds.min, collider->worldAABB.min);
-          bounds.max = vec3Max(bounds.max, collider->worldAABB.max);
+      if(const std::vector<Collider *> *ownerColliders = findCollidersForOwner(obj->owner)) {
+        for(Collider *collider : *ownerColliders) {
+          if(!collider) continue;
+          updateColliderWorldState(collider);
+          if(!hasBounds) {
+            bounds = collider->worldAABB;
+            hasBounds = true;
+          } else {
+            bounds.min = vec3Min(bounds.min, collider->worldAABB.min);
+            bounds.max = vec3Max(bounds.max, collider->worldAABB.max);
+          }
         }
       }
 
@@ -1172,53 +1182,67 @@ namespace P64::CollNew {
     }
   }
 
+  /// @brief Draws debug visuals for the collision scene.
+  /// Draws on the CPU which may cause significant slowdown
+  /// @param showMeshColliders Whether to draw mesh colliders.
+  /// @param showRigidBodies Whether to draw rigid bodies.
   void P64::CollNew::CollisionScene::debugDraw(bool showMeshColliders, bool showRigidBodies)
-{
-  if(showMeshColliders) {
-    for(std::size_t meshIdx = 0; meshIdx < meshColliders_.size(); ++meshIdx) {
-      const auto *meshCollider = meshColliders_[meshIdx];
-      if(!meshCollider || !meshCollider->vertices || !meshCollider->triangles || meshCollider->triangleCount == 0) {
-        continue;
-      }
-
-      color_t color = Debug::paletteColor(static_cast<uint32_t>(meshIdx));
-
-      const bool useRotation = meshCollider->rotation && (meshCollider->rotation->x != 0.0f || meshCollider->rotation->y != 0.0f || meshCollider->rotation->z != 0.0f || meshCollider->rotation->w != 1.0f);
-
-      const fm_quat_t rot = *meshCollider->rotation;
-      const fm_vec3_t pos = *meshCollider->position;
-      const fm_vec3_t scale = meshCollider->scale;
-
-      auto toWorldMesh = [&](const fm_vec3_t &local) {
-        fm_vec3_t scaled = vec3(local.x * scale.x, local.y * scale.y, local.z * scale.z);
-        if(useRotation) {
-          scaled = quatRotateVec(rot, scaled);
+  {
+    if (showMeshColliders)
+    {
+      for (std::size_t meshIdx = 0; meshIdx < meshColliders_.size(); ++meshIdx)
+      {
+        const auto *meshCollider = meshColliders_[meshIdx];
+        if (!meshCollider || !meshCollider->vertices || !meshCollider->triangles || meshCollider->triangleCount == 0)
+        {
+          continue;
         }
-        return vec3Add(scaled, pos);
-      };
 
-      for(uint16_t t = 0; t < meshCollider->triangleCount; ++t) {
-        int idxA = meshCollider->triangles[t].indices[0];
-        int idxB = meshCollider->triangles[t].indices[1];
-        int idxC = meshCollider->triangles[t].indices[2];
+        color_t color = Debug::paletteColor(static_cast<uint32_t>(meshIdx));
 
-        fm_vec3_t v0 = toWorldMesh(meshCollider->vertices[idxA]);
-        fm_vec3_t v1 = toWorldMesh(meshCollider->vertices[idxB]);
-        fm_vec3_t v2 = toWorldMesh(meshCollider->vertices[idxC]);
+        const bool useRotation = meshCollider->hasRotation();
 
-        Debug::drawLine(v0, v1, color);
-        Debug::drawLine(v1, v2, color);
-        Debug::drawLine(v2, v0, color);
+        const fm_quat_t rot = meshCollider->owner->rot;
+        const fm_vec3_t pos = meshCollider->owner->pos;
+        const fm_vec3_t scale = meshCollider->owner->scale;
+
+        auto toWorldMesh = [&](const fm_vec3_t &local)
+        {
+          fm_vec3_t scaled = vec3(local.x * scale.x, local.y * scale.y, local.z * scale.z);
+          if (useRotation)
+          {
+            scaled = quatRotateVec(rot, scaled);
+          }
+          return vec3Add(scaled, pos);
+        };
+
+        for (uint16_t t = 0; t < meshCollider->triangleCount; ++t)
+        {
+          int idxA = meshCollider->triangles[t].indices[0];
+          int idxB = meshCollider->triangles[t].indices[1];
+          int idxC = meshCollider->triangles[t].indices[2];
+
+          fm_vec3_t v0 = toWorldMesh(meshCollider->vertices[idxA]);
+          fm_vec3_t v1 = toWorldMesh(meshCollider->vertices[idxB]);
+          fm_vec3_t v2 = toWorldMesh(meshCollider->vertices[idxC]);
+
+          Debug::drawLine(v0, v1, color);
+          Debug::drawLine(v1, v2, color);
+          Debug::drawLine(v2, v0, color);
+        }
       }
     }
-  }
 
-  if(showRigidBodies) {
-    for(const auto &collider : colliders_) {
+    if (showRigidBodies)
+    {
+      for (const auto &collider : colliders_)
+      {
 
-      color_t col{0xFF, 0xFF, 0x00, 0xFF};
-      if(collider) {
-        switch(collider->type) {
+        color_t col{0xFF, 0xFF, 0x00, 0xFF};
+        if (collider)
+        {
+          switch (collider->type)
+          {
           case ShapeType::Sphere:
             col = color_t{0xFF, 0x00, 0x00, 0xFF};
             Debug::drawSphere(collider->worldCenter, collider->sphere.radius, col);
@@ -1230,46 +1254,46 @@ namespace P64::CollNew {
           case ShapeType::Capsule:
             col = color_t{0x00, 0x80, 0xFF, 0xFF};
             Debug::drawCapsule(
-              collider->worldCenter,
-              collider->capsule.radius,
-              collider->capsule.innerHalfHeight,
-              collider->owner->rot,
-              col);
+                collider->worldCenter,
+                collider->capsule.radius,
+                collider->capsule.innerHalfHeight,
+                collider->owner->rot,
+                col);
             break;
           case ShapeType::Cylinder:
             col = color_t{0xFF, 0x80, 0x00, 0xFF};
             Debug::drawCylinder(
-              collider->worldCenter,
-              collider->cylinder.radius,
-              collider->cylinder.halfHeight,
-              collider->owner->rot,
-              col);
+                collider->worldCenter,
+                collider->cylinder.radius,
+                collider->cylinder.halfHeight,
+                collider->owner->rot,
+                col);
             break;
           case ShapeType::Cone:
             col = color_t{0xFF, 0x40, 0xA0, 0xFF};
             Debug::drawCone(
-              collider->worldCenter,
-              collider->cone.radius,
-              collider->cone.halfHeight,
-              collider->owner->rot,
-              col);
+                collider->worldCenter,
+                collider->cone.radius,
+                collider->cone.halfHeight,
+                collider->owner->rot,
+                col);
             break;
           case ShapeType::Pyramid:
             col = color_t{0xB0, 0xFF, 0x40, 0xFF};
             Debug::drawPyramid(
-              collider->worldCenter,
-              collider->pyramid.baseHalfWidthX,
-              collider->pyramid.baseHalfWidthZ,
-              collider->pyramid.halfHeight,
-              collider->owner->rot,
-              col);
+                collider->worldCenter,
+                collider->pyramid.baseHalfWidthX,
+                collider->pyramid.baseHalfWidthZ,
+                collider->pyramid.halfHeight,
+                collider->owner->rot,
+                col);
             break;
           default:
             break;
+          }
         }
       }
     }
   }
-}
 
 } // namespace P64::CollNew

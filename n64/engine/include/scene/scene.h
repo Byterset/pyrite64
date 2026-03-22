@@ -142,7 +142,7 @@ namespace P64
       Coll::Scene &getCollision() { return collScene; }
       CollNew::CollisionScene &getCollisionNew() { return *CollNew::collisionSceneGetInstance(); }
 
-      void onObjectCollision(const Coll::CollEvent &event);
+      void onObjectCollision(const CollNew::CollEvent &event);
 
       void sendEvent(uint16_t targetId, uint16_t senderId, uint16_t type, uint32_t value) {
         eventQueue[eventQueueIdx].add(targetId, senderId, type, value);

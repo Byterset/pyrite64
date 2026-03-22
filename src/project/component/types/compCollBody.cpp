@@ -15,7 +15,6 @@
 #include <glm/gtc/quaternion.hpp>
 #include <algorithm>
 
-#include "../../../../n64/engine/include/collision/flags.h"
 #include "../../../../n64/engine/include/collision_new/types.h"
 
 namespace
@@ -92,12 +91,8 @@ namespace Project::Component::CollBody
       case TYPE_CONE: type = (uint8_t)P64::CollNew::ShapeType::Cone; break;
       case TYPE_PYRAMID: type = (uint8_t)P64::CollNew::ShapeType::Pyramid; break;
     }
-    uint8_t flags = 0;
-    if(data.isTrigger.resolve(obj.propOverrides)) {
-      flags |= P64::Coll::BCSFlags::TRIGGER;
-    }
     ctx.fileObj.write<uint8_t>(type);
-    ctx.fileObj.write<uint8_t>(flags);
+    ctx.fileObj.write<uint8_t>(data.isTrigger.resolve(obj.propOverrides));
     ctx.fileObj.write<uint8_t>(data.maskRead.resolve(obj.propOverrides));
     ctx.fileObj.write<uint8_t>(data.maskWrite.resolve(obj.propOverrides));
     ctx.fileObj.write<float>(data.friction.resolve(obj.propOverrides));

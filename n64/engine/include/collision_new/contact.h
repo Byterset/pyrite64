@@ -19,7 +19,6 @@ namespace P64::CollNew {
 
   /// Linked-list node for tracking contacts on a physics object
   struct Contact {
-    Contact *next{nullptr};
     struct ContactConstraint *constraint{nullptr};
     RigidBody *otherBody{nullptr};
   };

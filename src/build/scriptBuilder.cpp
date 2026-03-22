@@ -54,7 +54,7 @@ void Build::buildScripts(Project::Project &project, SceneCtx &sceneCtx)
     if(hasUpdate)srcDecl += "void update(Object& obj, Data *data, float deltaTime);\n";
     if(hasDraw)srcDecl += "void draw(Object& obj, Data *data, float deltaTime);\n";
     if(hasEvent)srcDecl += "void onEvent(Object& obj, Data *data, const ObjectEvent& event);\n";
-    if(hasColl)srcDecl += "void onCollision(Object& obj, Data *data, const P64::Coll::CollEvent& event);\n";
+    if(hasColl)srcDecl += "void onCollision(Object& obj, Data *data, const P64::CollNew::CollEvent& event);\n";
     srcDecl += "}\n";
 
     srcEntries += "{\n";

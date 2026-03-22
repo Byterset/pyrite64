@@ -5,6 +5,7 @@
 #include "collision_new/collide.h"
 #include "collision_new/collision_scene.h"
 #include "collision_new/gjk.h"
+#include "scene/scene.h"
 
 #include <cmath>
 #include <cstdlib>
@@ -173,18 +174,12 @@ namespace P64::CollNew {
   // ── Contact management ────────────────────────────────────────────
 
   void collideAddContact(RigidBody *rigidBody, ContactConstraint *constraint, RigidBody *other) {
-    CollisionScene *scene = collisionSceneGetInstance();
-    Contact *contact = scene->allocateContact();
-    if(!contact) return;
-
-    contact->constraint = constraint;
-    contact->otherBody = other;
-    contact->next = rigidBody->activeContacts;
-    rigidBody->activeContacts = contact;
+    if(!rigidBody || !constraint) return;
+    rigidBody->activeContacts.push_back(Contact{constraint, other});
   }
 
   void collideCorrectVelocity(RigidBody *b, const EpaResult &result, float friction, float bounce) {
-    if(b->isKinematic || b->isTrigger) return;
+    if(b->isKinematic) return;
 
     float relVelN = vec3Dot(b->velocity, result.normal);
 
@@ -220,6 +215,7 @@ namespace P64::CollNew {
     float combinedFriction, float combinedBounce, bool isTrigger) {
 
     CollisionScene *scene = collisionSceneGetInstance();
+    P64::Scene &gameScene = P64::SceneManager::getCurrent();
 
     // Search for existing constraint with matching collider pair and similar normal
     ContactConstraint *existing = scene->findCachedConstraintByPair(
@@ -473,21 +469,25 @@ namespace P64::CollNew {
     }
   }
 
-  // ── Object-to-rigidBody ──────────────────────────────────────────────
-
-  void collideDetectObjectToObject(Collider *colliderA, RigidBody *a, Collider *colliderB, RigidBody *b) {
+  
+  /// @brief Detects collision between two colliders and caches contact constraints if needed.
+  /// @param colliderA The first collider.
+  /// @param rbA The rigid body associated with the first collider.
+  /// @param colliderB The second collider.
+  /// @param rbB The rigid body associated with the second collider.
+  void collideDetectObjectToObject(Collider *colliderA, RigidBody *rbA, Collider *colliderB, RigidBody *rbB) {
     if(!colliderA || !colliderB) return;
 
-    if(a && b && a->isSleeping && b->isSleeping) return;
+    if(rbA && rbB && rbA->isSleeping && rbB->isSleeping) return;
 
     // If both have rigidbodies, evaluate rigidbody-level filters.
-    if(a && b) {
-      if((a->collisionLayers & b->collisionLayers) == 0) return;
-      if(a->collisionGroup != 0 && a->collisionGroup == b->collisionGroup) return;
-      if(a->isTrigger && b->isTrigger) return;
+    if(colliderA && colliderB) {
+      if((colliderA->maskRead & colliderB->maskWrite) == 0) return;
+      if(colliderA->isTrigger && colliderB->isTrigger) return;
     }
 
-    // Try analytical tests first
+    // Try analytical tests first before falling back to GJK+EPA for general convex shapes.
+    
     EpaResult result;
     bool analyticalHit = false;
     bool hasAnalyticalPath = false;
@@ -556,7 +556,7 @@ namespace P64::CollNew {
     }
 
     //handle trigger events
-    if ((a && a->isTrigger) || (b && b->isTrigger)) {
+    if ((colliderA && colliderA->isTrigger) || (colliderB && colliderB->isTrigger)) {
       EpaResult dummyResult;
       dummyResult.normal = vec3Zero();
       dummyResult.penetration = 0.0f;
@@ -564,8 +564,8 @@ namespace P64::CollNew {
       dummyResult.contactB = colliderB->worldCenter;
       // Cache the trigger constraint without velocity correction
       collideCacheContactConstraint(
-        a, colliderA, colliderA->owner,
-        b, colliderB, colliderB->owner,
+        rbA, colliderA, colliderA->owner,
+        rbB, colliderB, colliderB->owner,
         dummyResult,
         0.0f, 0.0f, // friction and bounce don't matter for triggers
         true // isTrigger
@@ -585,17 +585,17 @@ namespace P64::CollNew {
         return;
     }
 
-    // Wake sleeping rigidBodys
-    if(a && a->isSleeping) a->wake();
-    if(b && b->isSleeping) b->wake();
+    // Wake sleeping rigidBodies
+    if(rbA && rbA->isSleeping) rbA->wake();
+    if(rbB && rbB->isSleeping) rbB->wake();
 
     float combinedFriction = fmin(colliderA->friction, colliderB->friction);
     float combinedBounce = fmaxf(colliderA->bounce, colliderB->bounce);
 
     // Cache the constraint
     collideCacheContactConstraint(
-      a, colliderA, colliderA->owner,
-      b, colliderB, colliderB->owner,
+      rbA, colliderA, colliderA->owner,
+      rbB, colliderB, colliderB->owner,
       result, combinedFriction, combinedBounce, false);
   }
 
