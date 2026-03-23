@@ -221,10 +221,11 @@ namespace P64::Coll {
     return {localMin, localMax};
   }
 
-  // ── Legacy mesh conversion ────────────────────────────────────────
+  // ── Load Mesh Collider from Raw Data and build AABB Tree ────────────────────────────────────────
 
   MeshCollider *MeshCollider::createFromRawData(void *rawData, Object *obj) {
     if(!rawData) return nullptr;
+    if(!obj) return nullptr;
 
     auto *header = static_cast<RawCollisionHeader *>(rawData);
     if(header->triCount == 0 || header->vertCount == 0) return nullptr;
@@ -272,10 +273,8 @@ namespace P64::Coll {
       );
     }
 
-    // Bind to the object's transform
-    if(obj) {
-      collider->owner = obj;
-    }
+    // Bind to owner object
+    collider->owner = obj;
 
     // Build AABB tree from triangle bounding boxes
     // Need 2*N-1 internal nodes for N leaves, plus some margin

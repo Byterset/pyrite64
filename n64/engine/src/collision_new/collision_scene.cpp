@@ -136,7 +136,17 @@ namespace P64::Coll {
     cachedConstraintCount_ = 0;
     cachedConstraints_.clear();
     cachedConstraintPairs_.clear();
+    ticksWakePrep = 0;
+    ticksWorldUpdate = 0;
+    ticksIntegrateVel = 0;
     ticksDetect = 0;
+    ticksRefreshCallbacks = 0;
+    ticksPreSolve = 0;
+    ticksWarmStart = 0;
+    ticksVelocitySolve = 0;
+    ticksIntegratePos = 0;
+    ticksPositionSolve = 0;
+    ticksFinalize = 0;
     ticksTotal = 0;
 
     rigidBodyAABBTree.init(32); // Initial capacity (will grow as needed)
@@ -715,41 +725,48 @@ namespace P64::Coll {
       cachedConstraints_[i].isActive = false;
     }
 
+    struct OrderedColliderEntry {
+      Collider *collider{nullptr};
+      RigidBody *rigidBody{nullptr};
+      bool isSleepingSolid{false};
+    };
+
     // Build deterministic processing order: non-sleeping colliders first, sleeping last.
     // This keeps the sleeping-outer skip optimization while avoiding scene-order dependent misses.
-    std::vector<Collider *> orderedColliders = colliders_;
-    std::sort(orderedColliders.begin(), orderedColliders.end(), [this](Collider *lhs, Collider *rhs) {
-      auto sleepKey = [this](Collider *c) {
-        if(!c || !c->owner) return false;
-        if(c->isTrigger) return false;
-        RigidBody *rb = findRigidBodyByOwner(c->owner);
-        return rb && rb->isSleeping;
-      };
+    std::vector<OrderedColliderEntry> orderedColliders;
+    orderedColliders.reserve(colliders_.size());
+    for(Collider *collider : colliders_) {
+      if(!collider || !collider->owner) continue;
 
-      const bool lhsSleeping = sleepKey(lhs);
-      const bool rhsSleeping = sleepKey(rhs);
-      if(lhsSleeping != rhsSleeping) return !lhsSleeping;
-      return lhs < rhs;
+      RigidBody *rigidBody = findRigidBodyByOwner(collider->owner);
+      orderedColliders.push_back(OrderedColliderEntry{
+        collider,
+        rigidBody,
+        rigidBody && rigidBody->isSleeping && !collider->isTrigger
+      });
+    }
+
+    std::sort(orderedColliders.begin(), orderedColliders.end(), [](const OrderedColliderEntry &lhs, const OrderedColliderEntry &rhs) {
+      if(lhs.isSleepingSolid != rhs.isSleepingSolid) return !lhs.isSleepingSolid;
+      return lhs.collider < rhs.collider;
     });
 
     // Collider-to-collider broad phase using collider world AABBs.
     for(std::size_t i = 0; i < orderedColliders.size(); ++i) {
-      Collider *a = orderedColliders[i];
-      if(!a || !a->owner) continue;
+      const OrderedColliderEntry &entryA = orderedColliders[i];
+      Collider *a = entryA.collider;
+      RigidBody *rbA = entryA.rigidBody;
 
-      updateColliderWorldState(a);
-      RigidBody *rbA = findRigidBodyByOwner(a->owner);
       if(rbA && rbA->isSleeping && !a->isTrigger) continue;
 
       for(std::size_t j = i + 1; j < orderedColliders.size(); ++j) {
-        Collider *b = orderedColliders[j];
-        if(!b || !b->owner) continue;
+        const OrderedColliderEntry &entryB = orderedColliders[j];
+        Collider *b = entryB.collider;
         if(a->owner == b->owner) continue;
 
-        updateColliderWorldState(b);
         if(!aabbOverlap(a->worldAABB, b->worldAABB)) continue;
 
-        RigidBody *rbB = findRigidBodyByOwner(b->owner);
+        RigidBody *rbB = entryB.rigidBody;
         if(rbA && rbB && rbA->isSleeping && rbB->isSleeping && !a->isTrigger && !b->isTrigger) continue;
 
         collideDetectObjectToObject(a, rbA, b, rbB);
@@ -761,16 +778,13 @@ namespace P64::Coll {
       MeshCollider *mesh = meshColliders_[m];
       if(!mesh || mesh->triangleCount == 0) continue;
 
-      for(Collider *collider : colliders_) {
-        if(!collider || !collider->owner) continue;
-
-        updateColliderWorldState(collider);
-
-        RigidBody *rigidBody = findRigidBodyByOwner(collider->owner);
-        if (rigidBody && rigidBody->isSleeping && !collider->isTrigger)
+      for(const OrderedColliderEntry &entry : orderedColliders) {
+        Collider *collider = entry.collider;
+        RigidBody *rigidBody = entry.rigidBody;
+        if(rigidBody && rigidBody->isSleeping && !collider->isTrigger)
           continue;
 
-        if (!aabbOverlap(collider->worldAABB, mesh->worldBoundingBox))
+        if(!aabbOverlap(collider->worldAABB, mesh->worldBoundingBox))
           continue;
 
         collideDetectObjectToMesh(collider, rigidBody, *mesh);
@@ -1342,13 +1356,17 @@ namespace P64::Coll {
   void CollisionScene::step() {
     const uint64_t totalStart = get_ticks();
 
+    uint64_t stageStart = get_ticks();
+
     // 0. Update mesh collider world AABBs (in case transforms changed)
     // TODO: maybe only update if transform is dirty?
     updateMeshColliderWorldAABBs();
 
     // 0.5 Wake sleeping dynamic bodies that were moved or rotated externally.
     wakeBodiesMovedExternally();
+    ticksWakePrep = get_ticks() - stageStart;
 
+    stageStart = get_ticks();
     // 1. Refresh collider world state
     for(Collider *collider : colliders_) {
       updateColliderWorldState(collider);
@@ -1361,7 +1379,9 @@ namespace P64::Coll {
       updateCompoundProperties(obj);
       obj->updateWorldInertia();
     }
+    ticksWorldUpdate = get_ticks() - stageStart;
 
+    stageStart = get_ticks();
     // 3. Integrate velocities
     for(RigidBody *body : rigidBodies_) {
       RigidBody *obj = body;
@@ -1372,27 +1392,37 @@ namespace P64::Coll {
         obj->integrateAngularVelocity(fixedDt_);
       }
     }
+    ticksIntegrateVel = get_ticks() - stageStart;
 
     // 4. Detect all contacts (broad + narrow phase)
     const uint64_t detectStart = get_ticks();
     detectAllContacts();
     ticksDetect = get_ticks() - detectStart;
 
+    stageStart = get_ticks();
     // Refresh anchors from local-space points before solving.
     refreshContacts();
 
     dispatchCollisionCallbacks();
+    ticksRefreshCallbacks = get_ticks() - stageStart;
 
     // 5. Pre-solve contacts (compute effective masses)
+    stageStart = get_ticks();
     preSolveContacts();
+    ticksPreSolve = get_ticks() - stageStart;
 
     // 6. Warm start
+    stageStart = get_ticks();
     warmStart();
+    ticksWarmStart = get_ticks() - stageStart;
 
     // 7. Velocity constraint solver
+    stageStart = get_ticks();
     solveVelocityConstraints();
+    ticksVelocitySolve = get_ticks() - stageStart;
 
     // 8. Integrate positions and update AABBs
+    stageStart = get_ticks();
     for(RigidBody *body : rigidBodies_) {
       RigidBody *obj = body;
       if(!obj || obj->isSleeping) continue;
@@ -1424,13 +1454,17 @@ namespace P64::Coll {
         rigidBodyAABBTree.moveNode(obj->aabbTreeNodeId, obj->boundingBox, displacement);
       }
     }
+    ticksIntegratePos = get_ticks() - stageStart;
 
     // 9. Position constraint solver
+    stageStart = get_ticks();
     for(uint8_t iter = 0; iter < positionSolverIterations_; ++iter) {
       solvePositionConstraints();
     }
+    ticksPositionSolve = get_ticks() - stageStart;
 
     // 10. Apply position constraints and update sleep
+    stageStart = get_ticks();
     for(RigidBody *body : rigidBodies_) {
       RigidBody *obj = body;
       if(!obj) continue;
@@ -1465,6 +1499,7 @@ namespace P64::Coll {
     }
 
     updateSleepStates();
+    ticksFinalize = get_ticks() - stageStart;
 
     ticksTotal = get_ticks() - totalStart;
   }

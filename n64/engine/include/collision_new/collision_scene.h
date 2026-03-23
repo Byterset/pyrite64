@@ -56,7 +56,17 @@ namespace P64::Coll {
 
   class CollisionScene {
   public:
+    uint64_t ticksWakePrep{0};
+    uint64_t ticksWorldUpdate{0};
+    uint64_t ticksIntegrateVel{0};
     uint64_t ticksDetect{0};
+    uint64_t ticksRefreshCallbacks{0};
+    uint64_t ticksPreSolve{0};
+    uint64_t ticksWarmStart{0};
+    uint64_t ticksVelocitySolve{0};
+    uint64_t ticksIntegratePos{0};
+    uint64_t ticksPositionSolve{0};
+    uint64_t ticksFinalize{0};
     uint64_t ticksTotal{0};
     uint64_t raycastCount{0};
     void debugDraw(bool showMeshColliders, bool showRigidBodies);
