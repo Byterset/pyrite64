@@ -18,6 +18,42 @@ namespace P64::CollNew {
 
   static CollisionScene g_scene;
 
+  static fm_vec3_t constrainAngularWorld(const RigidBody *body, const fm_vec3_t &worldAngular) {
+    if(!body) return worldAngular;
+    if(hasFlag(body->constraints, Constraint::FreezeRotAll)) return vec3Zero();
+    if(!body->rotation) return worldAngular;
+
+    fm_vec3_t local = quatRotateVec(quatConjugate(*body->rotation), worldAngular);
+    if(hasFlag(body->constraints, Constraint::FreezeRotX)) local.x = 0.0f;
+    if(hasFlag(body->constraints, Constraint::FreezeRotY)) local.y = 0.0f;
+    if(hasFlag(body->constraints, Constraint::FreezeRotZ)) local.z = 0.0f;
+    return quatRotateVec(*body->rotation, local);
+  }
+
+  static fm_vec3_t constrainLinearWorld(const RigidBody *body, const fm_vec3_t &worldLinear) {
+    if(!body) return worldLinear;
+    fm_vec3_t out = worldLinear;
+    if(hasFlag(body->constraints, Constraint::FreezePosX)) out.x = 0.0f;
+    if(hasFlag(body->constraints, Constraint::FreezePosY)) out.y = 0.0f;
+    if(hasFlag(body->constraints, Constraint::FreezePosZ)) out.z = 0.0f;
+    return out;
+  }
+
+  static void applyConstrainedLinearVelocityDelta(RigidBody *body, const fm_vec3_t &deltaLinearVelocity) {
+    if(!body) return;
+    body->velocity = vec3Add(body->velocity, constrainLinearWorld(body, deltaLinearVelocity));
+  }
+
+  static float constrainedLinearInvMassAlong(const RigidBody *body, const fm_vec3_t &direction) {
+    if(!body || body->isKinematic) return 0.0f;
+    if(body->invMass <= EPSILON) return 0.0f;
+
+    fm_vec3_t constrainedDir = constrainLinearWorld(body, direction);
+    float dirFactor = vec3Dot(direction, constrainedDir);
+    if(dirFactor <= EPSILON) return 0.0f;
+    return body->invMass * dirFactor;
+  }
+
   std::pair<Collider *, Collider *> CollisionScene::makeColliderPairKey(Collider *a, Collider *b) {
     return (a < b) ? std::make_pair(a, b)
                    : std::make_pair(b, a);
@@ -112,11 +148,11 @@ namespace P64::CollNew {
     }
     rigidBody->centerOffset = localCenterOffset;
 
-    if(rigidBody->mass <= EPSILON) {
+    if(rigidBody->getMass() <= EPSILON) {
       return;
     }
 
-    const float massPerCollider = rigidBody->mass * invCount;
+    const float massPerCollider = rigidBody->getMass() * invCount;
     fm_vec3_t compoundInertia = vec3Zero();
 
     for(Collider *collider : *ownerColliders) {
@@ -541,8 +577,8 @@ namespace P64::CollNew {
       RigidBody *a = cc.rigidBodyA;
       RigidBody *b = cc.rigidBodyB;
 
-      float invMassA = (a && !a->isKinematic) ? a->invMass : 0.0f;
-      float invMassB = (b && !b->isKinematic) ? b->invMass : 0.0f;
+      float invMassA = constrainedLinearInvMassAlong(a, cc.normal);
+      float invMassB = constrainedLinearInvMassAlong(b, cc.normal);
       float totalInvMass = invMassA + invMassB;
       if(totalInvMass < EPSILON) continue;
 
@@ -558,8 +594,8 @@ namespace P64::CollNew {
         fm_vec3_t raCrossN = vec3Cross(cp.aToContact, cc.normal);
         fm_vec3_t rbCrossN = vec3Cross(cp.bToContact, cc.normal);
 
-        float angularA = a ? vec3Dot(raCrossN, a->applyWorldInertia(raCrossN)) : 0.0f;
-        float angularB = b ? vec3Dot(rbCrossN, b->applyWorldInertia(rbCrossN)) : 0.0f;
+        float angularA = a ? vec3Dot(raCrossN, constrainAngularWorld(a, a->applyWorldInertia(raCrossN))) : 0.0f;
+        float angularB = b ? vec3Dot(rbCrossN, constrainAngularWorld(b, b->applyWorldInertia(rbCrossN))) : 0.0f;
 
         float denomN = totalInvMass + angularA + angularB;
         if(denomN < EPSILON) denomN = EPSILON;
@@ -567,20 +603,22 @@ namespace P64::CollNew {
 
         // Tangent effective masses
         {
+          float linearU = constrainedLinearInvMassAlong(a, cc.tangentU) + constrainedLinearInvMassAlong(b, cc.tangentU);
           fm_vec3_t raCrossU = vec3Cross(cp.aToContact, cc.tangentU);
           fm_vec3_t rbCrossU = vec3Cross(cp.bToContact, cc.tangentU);
-          float angU_A = a ? vec3Dot(raCrossU, a->applyWorldInertia(raCrossU)) : 0.0f;
-          float angU_B = b ? vec3Dot(rbCrossU, b->applyWorldInertia(rbCrossU)) : 0.0f;
-          float denomU = totalInvMass + angU_A + angU_B;
+          float angU_A = a ? vec3Dot(raCrossU, constrainAngularWorld(a, a->applyWorldInertia(raCrossU))) : 0.0f;
+          float angU_B = b ? vec3Dot(rbCrossU, constrainAngularWorld(b, b->applyWorldInertia(rbCrossU))) : 0.0f;
+          float denomU = linearU + angU_A + angU_B;
           if(denomU < EPSILON) denomU = EPSILON;
           cp.tangentMassU = 1.0f / denomU;
         }
         {
+          float linearV = constrainedLinearInvMassAlong(a, cc.tangentV) + constrainedLinearInvMassAlong(b, cc.tangentV);
           fm_vec3_t raCrossV = vec3Cross(cp.aToContact, cc.tangentV);
           fm_vec3_t rbCrossV = vec3Cross(cp.bToContact, cc.tangentV);
-          float angV_A = a ? vec3Dot(raCrossV, a->applyWorldInertia(raCrossV)) : 0.0f;
-          float angV_B = b ? vec3Dot(rbCrossV, b->applyWorldInertia(rbCrossV)) : 0.0f;
-          float denomV = totalInvMass + angV_A + angV_B;
+          float angV_A = a ? vec3Dot(raCrossV, constrainAngularWorld(a, a->applyWorldInertia(raCrossV))) : 0.0f;
+          float angV_B = b ? vec3Dot(rbCrossV, constrainAngularWorld(b, b->applyWorldInertia(rbCrossV))) : 0.0f;
+          float denomV = linearV + angV_A + angV_B;
           if(denomV < EPSILON) denomV = EPSILON;
           cp.tangentMassV = 1.0f / denomV;
         }
@@ -623,14 +661,14 @@ namespace P64::CollNew {
         impulse = vec3Add(impulse, vec3Scale(cc.tangentV, cp.accumulatedTangentImpulseV));
 
         if(a && !a->isKinematic) {
-          a->velocity = vec3Add(a->velocity, vec3Scale(impulse, a->invMass));
-          a->angularVelocity = vec3Add(a->angularVelocity,
-            a->applyWorldInertia(vec3Cross(cp.aToContact, impulse)));
+          applyConstrainedLinearVelocityDelta(a, vec3Scale(impulse, a->invMass));
+          fm_vec3_t angDeltaA = constrainAngularWorld(a, a->applyWorldInertia(vec3Cross(cp.aToContact, impulse)));
+          a->angularVelocity = vec3Add(a->angularVelocity, angDeltaA);
         }
         if(b && !b->isKinematic) {
-          b->velocity = vec3Sub(b->velocity, vec3Scale(impulse, b->invMass));
-          b->angularVelocity = vec3Sub(b->angularVelocity,
-            b->applyWorldInertia(vec3Cross(cp.bToContact, impulse)));
+          applyConstrainedLinearVelocityDelta(b, vec3Scale(impulse, -b->invMass));
+          fm_vec3_t angDeltaB = constrainAngularWorld(b, b->applyWorldInertia(vec3Cross(cp.bToContact, impulse)));
+          b->angularVelocity = vec3Sub(b->angularVelocity, angDeltaB);
         }
       }
     }
@@ -672,14 +710,14 @@ namespace P64::CollNew {
           fm_vec3_t impulseN = vec3Scale(cc.normal, dImpulseN);
 
           if(a && !a->isKinematic) {
-            a->velocity = vec3Add(a->velocity, vec3Scale(impulseN, a->invMass));
-            a->angularVelocity = vec3Add(a->angularVelocity,
-              a->applyWorldInertia(vec3Cross(cp.aToContact, impulseN)));
+            applyConstrainedLinearVelocityDelta(a, vec3Scale(impulseN, a->invMass));
+            fm_vec3_t angDeltaA = constrainAngularWorld(a, a->applyWorldInertia(vec3Cross(cp.aToContact, impulseN)));
+            a->angularVelocity = vec3Add(a->angularVelocity, angDeltaA);
           }
           if(b && !b->isKinematic) {
-            b->velocity = vec3Sub(b->velocity, vec3Scale(impulseN, b->invMass));
-            b->angularVelocity = vec3Sub(b->angularVelocity,
-              b->applyWorldInertia(vec3Cross(cp.bToContact, impulseN)));
+            applyConstrainedLinearVelocityDelta(b, vec3Scale(impulseN, -b->invMass));
+            fm_vec3_t angDeltaB = constrainAngularWorld(b, b->applyWorldInertia(vec3Cross(cp.bToContact, impulseN)));
+            b->angularVelocity = vec3Sub(b->angularVelocity, angDeltaB);
           }
 
           // Friction with proper accumulation and Coulomb cone clamping.
@@ -728,22 +766,18 @@ namespace P64::CollNew {
               fm_vec3_t impulseU = vec3Scale(cc.tangentU, lambdaU);
               if(a && !a->isKinematic) {
                 fm_vec3_t linearImpulseA = vec3Scale(impulseU, a->invMass);
-                if(!hasFlag(a->constraints, Constraint::FreezePosX)) a->velocity.x += linearImpulseA.x;
-                if(!hasFlag(a->constraints, Constraint::FreezePosY)) a->velocity.y += linearImpulseA.y;
-                if(!hasFlag(a->constraints, Constraint::FreezePosZ)) a->velocity.z += linearImpulseA.z;
+                applyConstrainedLinearVelocityDelta(a, linearImpulseA);
                 if(a->rotation) {
-                  a->angularVelocity = vec3Add(a->angularVelocity,
-                    a->applyWorldInertia(vec3Cross(cp.aToContact, impulseU)));
+                  fm_vec3_t angDeltaA = constrainAngularWorld(a, a->applyWorldInertia(vec3Cross(cp.aToContact, impulseU)));
+                  a->angularVelocity = vec3Add(a->angularVelocity, angDeltaA);
                 }
               }
               if(b && !b->isKinematic) {
                 fm_vec3_t linearImpulseB = vec3Scale(impulseU, -b->invMass);
-                if(!hasFlag(b->constraints, Constraint::FreezePosX)) b->velocity.x += linearImpulseB.x;
-                if(!hasFlag(b->constraints, Constraint::FreezePosY)) b->velocity.y += linearImpulseB.y;
-                if(!hasFlag(b->constraints, Constraint::FreezePosZ)) b->velocity.z += linearImpulseB.z;
+                applyConstrainedLinearVelocityDelta(b, linearImpulseB);
                 if(b->rotation) {
-                  b->angularVelocity = vec3Sub(b->angularVelocity,
-                    b->applyWorldInertia(vec3Cross(cp.bToContact, impulseU)));
+                  fm_vec3_t angDeltaB = constrainAngularWorld(b, b->applyWorldInertia(vec3Cross(cp.bToContact, impulseU)));
+                  b->angularVelocity = vec3Sub(b->angularVelocity, angDeltaB);
                 }
               }
             }
@@ -752,22 +786,18 @@ namespace P64::CollNew {
               fm_vec3_t impulseV = vec3Scale(cc.tangentV, lambdaV);
               if(a && !a->isKinematic) {
                 fm_vec3_t linearImpulseA = vec3Scale(impulseV, a->invMass);
-                if(!hasFlag(a->constraints, Constraint::FreezePosX)) a->velocity.x += linearImpulseA.x;
-                if(!hasFlag(a->constraints, Constraint::FreezePosY)) a->velocity.y += linearImpulseA.y;
-                if(!hasFlag(a->constraints, Constraint::FreezePosZ)) a->velocity.z += linearImpulseA.z;
+                applyConstrainedLinearVelocityDelta(a, linearImpulseA);
                 if(a->rotation) {
-                  a->angularVelocity = vec3Add(a->angularVelocity,
-                    a->applyWorldInertia(vec3Cross(cp.aToContact, impulseV)));
+                  fm_vec3_t angDeltaA = constrainAngularWorld(a, a->applyWorldInertia(vec3Cross(cp.aToContact, impulseV)));
+                  a->angularVelocity = vec3Add(a->angularVelocity, angDeltaA);
                 }
               }
               if(b && !b->isKinematic) {
                 fm_vec3_t linearImpulseB = vec3Scale(impulseV, -b->invMass);
-                if(!hasFlag(b->constraints, Constraint::FreezePosX)) b->velocity.x += linearImpulseB.x;
-                if(!hasFlag(b->constraints, Constraint::FreezePosY)) b->velocity.y += linearImpulseB.y;
-                if(!hasFlag(b->constraints, Constraint::FreezePosZ)) b->velocity.z += linearImpulseB.z;
+                applyConstrainedLinearVelocityDelta(b, linearImpulseB);
                 if(b->rotation) {
-                  b->angularVelocity = vec3Sub(b->angularVelocity,
-                    b->applyWorldInertia(vec3Cross(cp.bToContact, impulseV)));
+                  fm_vec3_t angDeltaB = constrainAngularWorld(b, b->applyWorldInertia(vec3Cross(cp.bToContact, impulseV)));
+                  b->angularVelocity = vec3Sub(b->angularVelocity, angDeltaB);
                 }
               }
             }
@@ -824,18 +854,18 @@ namespace P64::CollNew {
         float steeringForce = fminf(STEERING * (cp.penetration - SLOP), MAX_CORRECTION);
         if(steeringForce <= 0.0f) continue;
 
-        float invMassA = (a && !a->isKinematic) ? a->invMass : 0.0f;
-        float invMassB = (b && !b->isKinematic) ? b->invMass : 0.0f;
+        float invMassA = constrainedLinearInvMassAlong(a, cc.normal);
+        float invMassB = constrainedLinearInvMassAlong(b, cc.normal);
         float invMassSum = invMassA + invMassB;
 
         // Add rotational inertia terms
         if(a && a->rotation && !a->isKinematic) {
           fm_vec3_t rCrossN = vec3Cross(cp.aToContact, cc.normal);
-          invMassSum += vec3Dot(rCrossN, a->applyWorldInertia(rCrossN));
+          invMassSum += vec3Dot(rCrossN, constrainAngularWorld(a, a->applyWorldInertia(rCrossN)));
         }
         if(b && b->rotation && !b->isKinematic) {
           fm_vec3_t rCrossN = vec3Cross(cp.bToContact, cc.normal);
-          invMassSum += vec3Dot(rCrossN, b->applyWorldInertia(rCrossN));
+          invMassSum += vec3Dot(rCrossN, constrainAngularWorld(b, b->applyWorldInertia(rCrossN)));
         }
 
         if(invMassSum < EPSILON) continue;
@@ -846,11 +876,12 @@ namespace P64::CollNew {
         // Apply linear + angular corrections to A
         if(a && !a->isKinematic && a->position) {
           if(invMassA > 0.0f) {
-            *a->position = vec3Add(*a->position, vec3Scale(cc.normal, correctionMag * invMassA));
+            fm_vec3_t corrA = constrainLinearWorld(a, vec3Scale(cc.normal, correctionMag * invMassA));
+            *a->position = vec3Add(*a->position, corrA);
           }
           if(a->rotation) {
             fm_vec3_t angImpulse = vec3Cross(cp.aToContact, impulse);
-            fm_vec3_t rotChange = a->applyWorldInertia(angImpulse);
+            fm_vec3_t rotChange = constrainAngularWorld(a, a->applyWorldInertia(angImpulse));
             float angle = vec3Mag(rotChange);
             if(angle > EPSILON) {
               fm_vec3_t axis = vec3Scale(rotChange, 1.0f / angle);
@@ -863,11 +894,12 @@ namespace P64::CollNew {
         // Apply linear + angular corrections to B
         if(b && !b->isKinematic && b->position) {
           if(invMassB > 0.0f) {
-            *b->position = vec3Sub(*b->position, vec3Scale(cc.normal, correctionMag * invMassB));
+            fm_vec3_t corrB = constrainLinearWorld(b, vec3Scale(cc.normal, correctionMag * invMassB));
+            *b->position = vec3Sub(*b->position, corrB);
           }
           if(b->rotation) {
             fm_vec3_t angImpulse = vec3Negate(vec3Cross(cp.bToContact, impulse));
-            fm_vec3_t rotChange = b->applyWorldInertia(angImpulse);
+            fm_vec3_t rotChange = constrainAngularWorld(b, b->applyWorldInertia(angImpulse));
             float angle = vec3Mag(rotChange);
             if(angle > EPSILON) {
               fm_vec3_t axis = vec3Scale(rotChange, 1.0f / angle);
@@ -980,7 +1012,7 @@ namespace P64::CollNew {
         if(!data) continue;
         auto *obj = static_cast<RigidBody *>(data);
 
-        if(!obj->collider) continue;
+        // if(!obj->collider) continue;
         if((obj->collisionLayers & ray.collisionLayers) == 0) continue;
         if((obj->collisionLayers & ray.ignoreLayers) != 0) continue;
         if(obj->isTrigger && !ray.interactTrigger) continue;
@@ -1000,32 +1032,33 @@ namespace P64::CollNew {
         if(distSq > approxRadius * approxRadius) continue;
 
         // Refine: for spheres, do exact intersection
-        if(obj->collider->type == ShapeType::Sphere) {
-          float r = obj->collider->sphere.radius;
-          float disc = projLen * projLen - vec3MagSqrd(toObj) + r * r;
-          if(disc < 0.0f) continue;
+        //TODO: fix this
+        // if(obj->collider->type == ShapeType::Sphere) {
+        //   float r = obj->collider->sphere.radius;
+        //   float disc = projLen * projLen - vec3MagSqrd(toObj) + r * r;
+        //   if(disc < 0.0f) continue;
 
-          float dist = projLen - sqrtf(disc);
-          if(dist < EPSILON || dist > ray.maxDistance) continue;
-          if(dist >= hit.distance) continue;
+        //   float dist = projLen - sqrtf(disc);
+        //   if(dist < EPSILON || dist > ray.maxDistance) continue;
+        //   if(dist >= hit.distance) continue;
 
-          hit.distance = dist;
-          hit.point = vec3Add(ray.origin, vec3Scale(ray.dir, dist));
-          hit.normal = vec3Normalize(vec3Sub(hit.point, obj->worldCenterOfMass));
-          hit.hitId = obj->owner ? obj->owner->id : 0;
-          hit.didHit = true;
-        } else {
-          // Use approximate distance for non-sphere shapes
-          float dist = projLen - approxRadius;
-          if(dist < EPSILON) dist = projLen;
-          if(dist > ray.maxDistance || dist >= hit.distance) continue;
+        //   hit.distance = dist;
+        //   hit.point = vec3Add(ray.origin, vec3Scale(ray.dir, dist));
+        //   hit.normal = vec3Normalize(vec3Sub(hit.point, obj->worldCenterOfMass));
+        //   hit.hitId = obj->owner ? obj->owner->id : 0;
+        //   hit.didHit = true;
+        // } else {
+        //   // Use approximate distance for non-sphere shapes
+        //   float dist = projLen - approxRadius;
+        //   if(dist < EPSILON) dist = projLen;
+        //   if(dist > ray.maxDistance || dist >= hit.distance) continue;
 
-          hit.distance = dist;
-          hit.point = vec3Add(ray.origin, vec3Scale(ray.dir, dist));
-          hit.normal = vec3Normalize(vec3Sub(hit.point, obj->worldCenterOfMass));
-          hit.hitId = obj->owner ? obj->owner->id : 0;
-          hit.didHit = true;
-        }
+        //   hit.distance = dist;
+        //   hit.point = vec3Add(ray.origin, vec3Scale(ray.dir, dist));
+        //   hit.normal = vec3Normalize(vec3Sub(hit.point, obj->worldCenterOfMass));
+        //   hit.hitId = obj->owner ? obj->owner->id : 0;
+        //   hit.didHit = true;
+        // }
         tested++;
       }
     }
@@ -1110,8 +1143,6 @@ namespace P64::CollNew {
 
       if(hasBounds) {
         obj->boundingBox = bounds;
-      } else {
-        obj->recalculateAABB();
       }
 
       if(obj->aabbTreeNodeId != NULL_NODE) {
@@ -1150,8 +1181,6 @@ namespace P64::CollNew {
 
       if(hasBounds) {
         obj->boundingBox = bounds;
-      } else {
-        obj->recalculateAABB();
       }
 
       // Keep broadphase in sync with post-solve corrected transforms.
@@ -1249,18 +1278,26 @@ namespace P64::CollNew {
         color_t col{0xFF, 0xFF, 0x00, 0xFF};
         if (collider)
         {
+          const RigidBody *rigidBody = findRigidBodyByOwner(collider->owner);
+          const bool isSleepingBody = rigidBody && rigidBody->isSleeping;
+
+          if (isSleepingBody)
+          {
+            col = color_t{0x80, 0x80, 0x80, 0xFF};
+          }
+
           switch (collider->type)
           {
           case ShapeType::Sphere:
-            col = color_t{0xFF, 0x00, 0x00, 0xFF};
+            if (!isSleepingBody) col = color_t{0xFF, 0x00, 0x00, 0xFF};
             Debug::drawSphere(collider->worldCenter, collider->sphere.radius, col);
             break;
           case ShapeType::Box:
-            col = color_t{0x00, 0xFF, 0xFF, 0xFF};
+            if (!isSleepingBody) col = color_t{0x00, 0xFF, 0xFF, 0xFF};
             Debug::drawOBB(collider->worldCenter, collider->box.halfSize, collider->owner->rot, col);
             break;
           case ShapeType::Capsule:
-            col = color_t{0x00, 0x80, 0xFF, 0xFF};
+            if (!isSleepingBody) col = color_t{0x00, 0x80, 0xFF, 0xFF};
             Debug::drawCapsule(
                 collider->worldCenter,
                 collider->capsule.radius,
@@ -1269,7 +1306,7 @@ namespace P64::CollNew {
                 col);
             break;
           case ShapeType::Cylinder:
-            col = color_t{0xFF, 0x80, 0x00, 0xFF};
+            if (!isSleepingBody) col = color_t{0xFF, 0x80, 0x00, 0xFF};
             Debug::drawCylinder(
                 collider->worldCenter,
                 collider->cylinder.radius,
@@ -1278,7 +1315,7 @@ namespace P64::CollNew {
                 col);
             break;
           case ShapeType::Cone:
-            col = color_t{0xFF, 0x40, 0xA0, 0xFF};
+            if (!isSleepingBody) col = color_t{0xFF, 0x40, 0xA0, 0xFF};
             Debug::drawCone(
                 collider->worldCenter,
                 collider->cone.radius,
@@ -1287,7 +1324,7 @@ namespace P64::CollNew {
                 col);
             break;
           case ShapeType::Pyramid:
-            col = color_t{0xB0, 0xFF, 0x40, 0xFF};
+            if (!isSleepingBody) col = color_t{0xB0, 0xFF, 0x40, 0xFF};
             Debug::drawPyramid(
                 collider->worldCenter,
                 collider->pyramid.baseHalfWidthX,

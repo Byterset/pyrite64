@@ -8,6 +8,14 @@
 
 namespace P64::CollNew {
 
+  static fm_vec3_t constrainLinearByFlags(Constraint constraints, const fm_vec3_t &v) {
+    fm_vec3_t out = v;
+    if(hasFlag(constraints, Constraint::FreezePosX)) out.x = 0.0f;
+    if(hasFlag(constraints, Constraint::FreezePosY)) out.y = 0.0f;
+    if(hasFlag(constraints, Constraint::FreezePosZ)) out.z = 0.0f;
+    return out;
+  }
+
   // ── Matrix utilities ──────────────────────────────────────────────
 
   fm_vec3_t matrix3Vec3Mul(const Matrix3x3 &mat, const fm_vec3_t &v) {
@@ -62,17 +70,14 @@ namespace P64::CollNew {
 
   // ── RigidBody ─────────────────────────────────────────────────
 
-  void RigidBody::init(P64::Object *object, Collider *coll, uint16_t layers,
-                           fm_vec3_t *pos, fm_quat_t *rot, fm_vec3_t offset, float m) {
-    assert(m > 0.0f);
+  void RigidBody::init(P64::Object *object, float m) {
+    assertf(m > 0.0f, "Mass must be greater than zero");
+    assertf(object, "RigidBody must be initialized with a valid owner object");
 
     owner = object;
-    collider = coll;
-    collisionLayers = layers;
+    position = &object->pos;
+    rotation = &object->rot;
     collisionGroup = 0;
-    position = pos;
-    rotation = rot;
-    centerOffset = offset;
     activeContacts.clear();
     activeContacts.reserve(8);
     aabbTreeNodeId = NULL_NODE;
@@ -102,20 +107,17 @@ namespace P64::CollNew {
     }
 
     updateWorldInertia();
-    recalculateAABB();
   }
 
   void RigidBody::setMass(float newMass) {
     assert(newMass > 0.0f);
-    mass = newMass;
+    mass_ = newMass;
     invMass = 1.0f / newMass;
 
-    if(collider) {
-      localInertiaTensor = collider->inertiaTensor(mass);
-    } else {
-      float inertia = 0.4f * mass;
-      localInertiaTensor = vec3(inertia, inertia, inertia);
-    }
+    // Initialize inertia tensor for a solid sphere as a simple default.
+    // This can be overridden later by the colliders associated with the owner object.
+    float inertia = 0.4f * mass_;
+    localInertiaTensor = vec3(inertia, inertia, inertia);
 
     invLocalInertiaTensor = vec3(
       localInertiaTensor.x > EPSILON ? 1.0f / localInertiaTensor.x : 0.0f,
@@ -145,9 +147,7 @@ namespace P64::CollNew {
     acceleration = vec3Zero();
 
     // Apply position constraints
-    if(hasFlag(constraints, Constraint::FreezePosX)) velocity.x = 0.0f;
-    if(hasFlag(constraints, Constraint::FreezePosY)) velocity.y = 0.0f;
-    if(hasFlag(constraints, Constraint::FreezePosZ)) velocity.z = 0.0f;
+    velocity = constrainLinearByFlags(constraints, velocity);
 
     // Clamp to terminal speed
     float speedSq = vec3MagSqrd(velocity);
@@ -237,13 +237,14 @@ namespace P64::CollNew {
   }
 
   void RigidBody::setVelocity(const fm_vec3_t &vel) {
-    velocity = vel;
+    velocity = constrainLinearByFlags(constraints, vel);
     if(isSleeping) wake();
   }
 
   void RigidBody::applyLinearImpulse(const fm_vec3_t &impulse) {
     if(isKinematic || isTrigger) return;
-    velocity = vec3Add(velocity, vec3Scale(impulse, invMass));
+    fm_vec3_t deltaV = constrainLinearByFlags(constraints, vec3Scale(impulse, invMass));
+    velocity = vec3Add(velocity, deltaV);
     if(isSleeping) wake();
   }
 
@@ -269,23 +270,6 @@ namespace P64::CollNew {
     applyLinearImpulse(force);
     fm_vec3_t r = vec3Sub(worldPoint, worldCenterOfMass);
     applyAngularImpulse(vec3Cross(r, force));
-  }
-
-  void RigidBody::recalculateAABB() {
-    if(!collider || !position) return;
-
-    AABB local = collider->boundingBox(rotation);
-    boundingBox.min = vec3Add(local.min, *position);
-    boundingBox.max = vec3Add(local.max, *position);
-
-    // Expand for center offset
-    if(!vec3IsZero(centerOffset) && rotation) {
-      fm_vec3_t worldOffset = quatRotateVec(*rotation, centerOffset);
-      fm_vec3_t expandedMin = vec3Add(local.min, worldOffset);
-      fm_vec3_t expandedMax = vec3Add(local.max, worldOffset);
-      boundingBox.min = vec3Add(vec3Min(local.min, expandedMin), *position);
-      boundingBox.max = vec3Add(vec3Max(local.max, expandedMax), *position);
-    }
   }
 
   void RigidBody::updateWorldInertia() {
@@ -321,28 +305,6 @@ namespace P64::CollNew {
     if(hasFlag(constraints, Constraint::FreezePosX)) position->x = prevStepPos.x;
     if(hasFlag(constraints, Constraint::FreezePosY)) position->y = prevStepPos.y;
     if(hasFlag(constraints, Constraint::FreezePosZ)) position->z = prevStepPos.z;
-  }
-
-  void RigidBody::gjkSupport(const fm_vec3_t &direction, fm_vec3_t &output) const {
-    if(!collider) {
-      output = worldCenterOfMass;
-      return;
-    }
-
-    // Transform direction to local space
-    Matrix3x3 rT = matrix3Transpose(rotationMatrix);
-    fm_vec3_t localDir = matrix3Vec3Mul(rT, direction);
-
-    // Get local support point
-    fm_vec3_t localSupport = collider->support(localDir);
-
-    // Rotate back to world space and add world center of mass
-    output = vec3Add(matrix3Vec3Mul(rotationMatrix, localSupport), worldCenterOfMass);
-  }
-
-  void rigidBodyGjkSupport(const void *data, const fm_vec3_t &direction, fm_vec3_t &output) {
-    auto *obj = static_cast<const RigidBody *>(data);
-    obj->gjkSupport(direction, output);
   }
 
 } // namespace P64::CollNew

@@ -46,15 +46,7 @@ namespace P64::Comp
 
     data->rigid_body = {};
     //TODO: init
-    data->rigid_body.init(
-      &obj,
-      nullptr, // collider is registered separately below
-      0xFFFF,
-      &obj.pos,
-      &obj.rot,
-      {0.0f, 0.0f, 0.0f},
-      initData->mass
-     );
+    data->rigid_body.init(&obj, initData->mass);
     data->rigid_body.isKinematic = initData->isKinematic;
     data->rigid_body.hasGravity = initData->hasGravity;
     data->rigid_body.gravityScalar = initData->gravityScalar;

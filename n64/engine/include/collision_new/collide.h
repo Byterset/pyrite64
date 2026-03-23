@@ -13,7 +13,6 @@ namespace P64::CollNew {
   struct CollisionScene; // forward declare
 
   void collideAddContact(RigidBody *rigidBody, ContactConstraint *constraint, RigidBody *other);
-  void collideCorrectVelocity(RigidBody *b, const EpaResult &result, float friction, float bounce);
 
   void collideDetectObjectToObject(Collider *colliderA, RigidBody *rigidBodyA, Collider *colliderB, RigidBody *rigidBodyB);
   void collideDetectObjectToMesh(Collider *collider, RigidBody *rigidBody, const MeshCollider &mesh);

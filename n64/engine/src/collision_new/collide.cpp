@@ -178,34 +178,6 @@ namespace P64::CollNew {
     rigidBody->activeContacts.push_back(Contact{constraint, other});
   }
 
-  void collideCorrectVelocity(RigidBody *b, const EpaResult &result, float friction, float bounce) {
-    if(b->isKinematic) return;
-
-    float relVelN = vec3Dot(b->velocity, result.normal);
-
-    // Only correct if moving into the surface
-    if(relVelN >= 0.0f) return;
-
-    // Normal impulse
-    float jN = -(1.0f + bounce) * relVelN;
-    fm_vec3_t normalImpulse = vec3Scale(result.normal, jN);
-    b->velocity = vec3Add(b->velocity, vec3Scale(normalImpulse, b->invMass));
-
-    // Friction
-    fm_vec3_t tangentVel = vec3Sub(b->velocity, vec3Scale(result.normal, vec3Dot(b->velocity, result.normal)));
-    float tangentSpeed = vec3Mag(tangentVel);
-    if(tangentSpeed > EPSILON) {
-      fm_vec3_t tangentDir = vec3Scale(tangentVel, 1.0f / tangentSpeed);
-      float jT = fminf(friction * jN, tangentSpeed / b->invMass);
-      fm_vec3_t frictionImpulse = vec3Scale(tangentDir, -jT);
-      b->velocity = vec3Add(b->velocity, vec3Scale(frictionImpulse, b->invMass));
-    }
-
-    // Apply constraints
-    if(hasFlag(b->constraints, Constraint::FreezePosX)) b->velocity.x = 0.0f;
-    if(hasFlag(b->constraints, Constraint::FreezePosY)) b->velocity.y = 0.0f;
-    if(hasFlag(b->constraints, Constraint::FreezePosZ)) b->velocity.z = 0.0f;
-  }
 
   // ── Contact constraint caching ────────────────────────────────────
 

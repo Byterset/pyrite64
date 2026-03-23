@@ -28,21 +28,7 @@ namespace P64::CollNew {
   constexpr float AMPLIFY_ANG_DAMPING_THRESHOLD = 0.015f; // Radians per second, below this angular velocity, amplification is applied to damping
   constexpr float AMPLIFY_ANG_DAMPING_THRESHOLD_SQ = AMPLIFY_ANG_DAMPING_THRESHOLD * AMPLIFY_ANG_DAMPING_THRESHOLD;
   constexpr float AMPLIFY_ANG_DAMPING_THRESHOLD_SQ_INV = 1.0f / AMPLIFY_ANG_DAMPING_THRESHOLD_SQ;
-  constexpr int SLEEP_STEPS = 50;
-
-  enum class CollisionLayer : uint16_t {
-    None         = 0,
-    Tangible     = (1 << 0),
-    Player       = (1 << 1),
-    DamageEnemy  = (1 << 2),
-    Collectables = (1 << 3),
-    TerrainLike  = (1 << 4),
-    All          = 0xFF
-  };
-
-  enum class CollisionGroup : uint16_t {
-    None = 0, Player = 1, Collectable = 2, All = 0xFF
-  };
+  constexpr int SLEEP_STEPS = 120;
 
   enum class Constraint : uint16_t {
     None = 0,
@@ -98,7 +84,6 @@ namespace P64::CollNew {
     // Collision
     AABB boundingBox{};
     fm_vec3_t centerOffset{};
-    Collider *collider{nullptr};
     std::vector<Contact> activeContacts{};
 
     // Cached transforms
@@ -114,7 +99,6 @@ namespace P64::CollNew {
     fm_vec3_t localInertiaTensor{};
     fm_vec3_t invLocalInertiaTensor{};
 
-    float mass{1.0f};
     P64::Object *owner{};
     NodeProxy aabbTreeNodeId{NULL_NODE};
     Constraint constraints{Constraint::None};
@@ -128,9 +112,9 @@ namespace P64::CollNew {
     bool isSleeping{false};
 
     // Methods
-    void init(P64::Object *object, Collider *coll, uint16_t layers,
-              fm_vec3_t *pos, fm_quat_t *rot, fm_vec3_t offset, float m);
+    void init(P64::Object *object, float m);
 
+    float getMass() const { return mass_; }
     void setMass(float newMass);
 
     void integrateVelocity(float fixedDt, const fm_vec3_t &gravity);
@@ -146,7 +130,6 @@ namespace P64::CollNew {
     void setAngularVelocity(const fm_vec3_t &angVel);
     void applyForceAtPoint(const fm_vec3_t &force, const fm_vec3_t &worldPoint);
 
-    void recalculateAABB();
     void updateWorldInertia();
     void applyPositionConstraints();
 
@@ -157,11 +140,9 @@ namespace P64::CollNew {
       return matrix3Vec3Mul(invWorldInertiaTensor, in);
     }
 
-    void gjkSupport(const fm_vec3_t &direction, fm_vec3_t &output) const;
+  private:
+    float mass_{1.0f};
 
   };
-
-  /// GJK-compatible free function wrapper
-  void rigidBodyGjkSupport(const void *data, const fm_vec3_t &direction, fm_vec3_t &output);
 
 } // namespace P64::CollNew
