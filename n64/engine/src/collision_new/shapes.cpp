@@ -6,7 +6,7 @@
 
 #include <cmath>
 
-using namespace P64::CollNew;
+using namespace P64::Coll;
 
 namespace {
   constexpr float SQRT_1_2 = 0.707106781f;

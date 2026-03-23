@@ -13,7 +13,7 @@ namespace P64
   class Object;
 }
 
-namespace P64::CollNew {
+namespace P64::Coll {
 
   struct Collider {
     ShapeType type{ShapeType::Sphere};
@@ -31,7 +31,7 @@ namespace P64::CollNew {
     float friction{0.8f};
     P64::Object *owner{};
     AABB worldAABB{}; // used for culling
-    bool isTrigger{false}; // whether this collider is a trigger (doesn't generate contacts, only events)
+    bool isTrigger{false}; // whether this collider is a trigger (generates contacts for events, but no physical response)
     uint8_t maskRead{0x00};  // which collision layers this collider get's affected by
     uint8_t maskWrite{0x00}; // which collision layers this collider affects
 
@@ -43,4 +43,4 @@ namespace P64::CollNew {
   /// GJK-compatible support wrapper
   void colliderGjkSupport(const void *data, const fm_vec3_t &direction, fm_vec3_t &output);
 
-} // namespace P64::CollNew
+} // namespace P64::Coll

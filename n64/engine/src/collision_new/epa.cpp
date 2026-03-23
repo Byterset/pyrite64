@@ -15,7 +15,7 @@
 
 #include <cassert>
 
-using namespace P64::CollNew;
+using namespace P64::Coll;
 
 namespace {
 
@@ -391,7 +391,7 @@ namespace {
 } // anonymous namespace
 
 
-bool P64::CollNew::epaSolve(
+bool P64::Coll::epaSolve(
   Simplex &startingSimplex,
   const void *rigidBodyA, GjkSupportFunction rigidBodyASupport,
   const void *rigidBodyB, GjkSupportFunction rigidBodyBSupport,
@@ -434,7 +434,7 @@ bool P64::CollNew::epaSolve(
   return false;
 }
 
-bool P64::CollNew::epaSolveSwept(
+bool P64::Coll::epaSolveSwept(
   Simplex &startingSimplex,
   const void *rigidBodyA, GjkSupportFunction rigidBodyASupport,
   const void *rigidBodyB, GjkSupportFunction rigidBodyBSupport,

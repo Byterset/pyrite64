@@ -54,7 +54,7 @@ namespace P64::Script::__UUID__
     }
   }
 
-  void onCollision(Object& obj, Data *data, const CollNew::CollEvent& event)
+  void onCollision(Object& obj, Data *data, const Coll::CollEvent& event)
   {
     // collision callbacks, only used if any collider is attached
   }

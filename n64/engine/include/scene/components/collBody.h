@@ -16,7 +16,7 @@ namespace P64::Comp
   {
     static constexpr uint32_t ID = 5;
 
-    CollNew::Collider collider{};
+    Coll::Collider collider{};
     fm_vec3_t orgScale{};
 
     static uint32_t getAllocSize([[maybe_unused]] uint16_t* initData)

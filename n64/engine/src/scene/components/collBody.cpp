@@ -42,7 +42,7 @@ namespace P64::Comp
     data->orgScale = initData->halfExtend;
 
     data->collider = {};
-    data->collider.type = static_cast<P64::CollNew::ShapeType>(initData->type);
+    data->collider.type = static_cast<P64::Coll::ShapeType>(initData->type);
     data->collider.friction = initData->friction;
     data->collider.bounce = initData->bounce;
     data->collider.owner = &obj;
@@ -57,25 +57,25 @@ namespace P64::Comp
     data->collider.maskWrite = initData->maskWrite;
     switch(data->collider.type)
     {
-      case P64::CollNew::ShapeType::Sphere:
+      case P64::Coll::ShapeType::Sphere:
         data->collider.sphere.radius = fmaxf(scaledHalfExtend.x, fmaxf(scaledHalfExtend.y, scaledHalfExtend.z));
       break;
-      case P64::CollNew::ShapeType::Box:
+      case P64::Coll::ShapeType::Box:
         data->collider.box.halfSize = scaledHalfExtend;
       break;
-      case P64::CollNew::ShapeType::Cylinder:
+      case P64::Coll::ShapeType::Cylinder:
         data->collider.cylinder.radius = fmaxf(scaledHalfExtend.x, scaledHalfExtend.z);
         data->collider.cylinder.halfHeight = scaledHalfExtend.y;
       break;
-      case P64::CollNew::ShapeType::Capsule:
+      case P64::Coll::ShapeType::Capsule:
         data->collider.capsule.radius = fmaxf(scaledHalfExtend.x, scaledHalfExtend.z);
         data->collider.capsule.innerHalfHeight = scaledHalfExtend.y;
       break;
-      case P64::CollNew::ShapeType::Cone:
+      case P64::Coll::ShapeType::Cone:
         data->collider.cone.radius = fmaxf(scaledHalfExtend.x, scaledHalfExtend.z);
         data->collider.cone.halfHeight = scaledHalfExtend.y;
       break;
-      case P64::CollNew::ShapeType::Pyramid:
+      case P64::Coll::ShapeType::Pyramid:
         data->collider.pyramid.baseHalfWidthX = scaledHalfExtend.x;
         data->collider.pyramid.baseHalfWidthZ = scaledHalfExtend.z;
         data->collider.pyramid.halfHeight = scaledHalfExtend.y;
@@ -105,25 +105,25 @@ namespace P64::Comp
 
     switch(data->collider.type)
     {
-      case P64::CollNew::ShapeType::Sphere:
+      case P64::Coll::ShapeType::Sphere:
         data->collider.sphere.radius = fmaxf(scaledHalfExtend.x, fmaxf(scaledHalfExtend.y, scaledHalfExtend.z));
       break;
-      case P64::CollNew::ShapeType::Box:
+      case P64::Coll::ShapeType::Box:
         data->collider.box.halfSize = scaledHalfExtend;
       break;
-      case P64::CollNew::ShapeType::Cylinder:
+      case P64::Coll::ShapeType::Cylinder:
         data->collider.cylinder.radius = fmaxf(scaledHalfExtend.x, scaledHalfExtend.z);
         data->collider.cylinder.halfHeight = scaledHalfExtend.y;
       break;
-      case P64::CollNew::ShapeType::Capsule:
+      case P64::Coll::ShapeType::Capsule:
         data->collider.capsule.radius = fmaxf(scaledHalfExtend.x, scaledHalfExtend.z);
         data->collider.capsule.innerHalfHeight = scaledHalfExtend.y;
       break;
-      case P64::CollNew::ShapeType::Cone:
+      case P64::Coll::ShapeType::Cone:
         data->collider.cone.radius = fmaxf(scaledHalfExtend.x, scaledHalfExtend.z);
         data->collider.cone.halfHeight = scaledHalfExtend.y;
       break;
-      case P64::CollNew::ShapeType::Pyramid:
+      case P64::Coll::ShapeType::Pyramid:
         data->collider.pyramid.baseHalfWidthX = scaledHalfExtend.x;
         data->collider.pyramid.baseHalfWidthZ = scaledHalfExtend.z;
         data->collider.pyramid.halfHeight = scaledHalfExtend.y;

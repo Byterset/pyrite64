@@ -6,7 +6,7 @@
 #include <cassert>
 #include <cmath>
 
-namespace P64::CollNew {
+namespace P64::Coll {
 
   static fm_vec3_t constrainLinearByFlags(Constraint constraints, const fm_vec3_t &v) {
     fm_vec3_t out = v;
@@ -82,7 +82,6 @@ namespace P64::CollNew {
     constraints = Constraint::None;
     sleepCounter = 0;
     isSleeping = false;
-    isTrigger = false;
     isKinematic = false;
     hasGravity = true;
 
@@ -125,7 +124,7 @@ namespace P64::CollNew {
   }
 
   void RigidBody::integrateVelocity(float fixedDt, const fm_vec3_t &gravity) {
-    if(isTrigger || isKinematic || isSleeping) return;
+    if(isKinematic || isSleeping) return;
 
     if(hasFlag(constraints, Constraint::FreezePosAll)) {
       velocity = vec3Zero();
@@ -155,7 +154,7 @@ namespace P64::CollNew {
   }
 
   void RigidBody::integrateAngularVelocity(float fixedDt) {
-    if(isTrigger || isKinematic || isSleeping) return;
+    if(isKinematic || isSleeping) return;
     if(invMass < EPSILON) return;
 
     if(hasFlag(constraints, Constraint::FreezeRotAll)) {
@@ -199,7 +198,7 @@ namespace P64::CollNew {
   }
 
   void RigidBody::integratePosition(float fixedDt) {
-    if(isTrigger || isKinematic || isSleeping) return;
+    if(isKinematic || isSleeping) return;
     if(!position) return;
 
     float dt = fixedDt * timeScalar;
@@ -208,7 +207,7 @@ namespace P64::CollNew {
   }
 
   void RigidBody::integrateRotation(float fixedDt) {
-    if(isTrigger || isKinematic || isSleeping) return;
+    if(isKinematic || isSleeping) return;
     if(!rotation) return;
     if(vec3IsZero(angularVelocity)) return;
 
@@ -240,20 +239,20 @@ namespace P64::CollNew {
   }
 
   void RigidBody::applyLinearImpulse(const fm_vec3_t &impulse) {
-    if(isKinematic || isTrigger) return;
+    if(isKinematic) return;
     fm_vec3_t deltaV = constrainLinearByFlags(constraints, vec3Scale(impulse, invMass));
     velocity = vec3Add(velocity, deltaV);
     if(isSleeping) wake();
   }
 
   void RigidBody::applyTorque(const fm_vec3_t &torque) {
-    if(isKinematic || isTrigger) return;
+    if(isKinematic) return;
     torqueAccumulator = vec3Add(torqueAccumulator, torque);
     if(isSleeping) wake();
   }
 
   void RigidBody::applyAngularImpulse(const fm_vec3_t &angImpulse) {
-    if(isKinematic || isTrigger) return;
+    if(isKinematic) return;
     angularVelocity = vec3Add(angularVelocity, applyWorldInertia(angImpulse));
     if(isSleeping) wake();
   }
@@ -264,7 +263,7 @@ namespace P64::CollNew {
   }
 
   void RigidBody::applyForceAtPoint(const fm_vec3_t &force, const fm_vec3_t &worldPoint) {
-    if(isKinematic || isTrigger) return;
+    if(isKinematic) return;
     applyLinearImpulse(force);
     fm_vec3_t r = vec3Sub(worldPoint, worldCenterOfMass);
     applyAngularImpulse(vec3Cross(r, force));
@@ -305,4 +304,4 @@ namespace P64::CollNew {
     if(hasFlag(constraints, Constraint::FreezePosZ)) position->z = prevStepPos.z;
   }
 
-} // namespace P64::CollNew
+} // namespace P64::Coll

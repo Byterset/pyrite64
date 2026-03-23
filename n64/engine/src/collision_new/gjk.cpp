@@ -9,7 +9,7 @@
  */
 #include "collision_new/gjk.h"
 
-using namespace P64::CollNew;
+using namespace P64::Coll;
 
 namespace {
   constexpr int GJK_MAX_ITERATIONS = 24;
@@ -20,7 +20,7 @@ namespace {
   }
 }
 
-fm_vec3_t *P64::CollNew::simplexAddPoint(Simplex &simplex, const fm_vec3_t &aPoint, const fm_vec3_t &bPoint) {
+fm_vec3_t *P64::Coll::simplexAddPoint(Simplex &simplex, const fm_vec3_t &aPoint, const fm_vec3_t &bPoint) {
   if(simplex.nPoints == GJK_MAX_SIMPLEX_SIZE) {
     return nullptr;
   }
@@ -33,7 +33,7 @@ fm_vec3_t *P64::CollNew::simplexAddPoint(Simplex &simplex, const fm_vec3_t &aPoi
   return &simplex.points[index];
 }
 
-bool P64::CollNew::simplexCheck(Simplex &simplex, fm_vec3_t &nextDirection) {
+bool P64::Coll::simplexCheck(Simplex &simplex, fm_vec3_t &nextDirection) {
   auto &lastAdded = simplex.points[simplex.nPoints - 1];
   auto aToOrigin = vec3Negate(lastAdded);
 
@@ -148,7 +148,7 @@ bool P64::CollNew::simplexCheck(Simplex &simplex, fm_vec3_t &nextDirection) {
   return false;
 }
 
-bool P64::CollNew::gjkCheckForOverlap(
+bool P64::Coll::gjkCheckForOverlap(
   Simplex &simplex,
   const void *rigidBodyA, GjkSupportFunction rigidBodyASupport,
   const void *rigidBodyB, GjkSupportFunction rigidBodyBSupport,

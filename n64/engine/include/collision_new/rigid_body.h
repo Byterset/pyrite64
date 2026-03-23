@@ -12,13 +12,13 @@
 #include <vector>
 #include "scene/object.h"
 
-namespace P64::CollNew {
+namespace P64::Coll {
 
   // Constants
   constexpr float TERMINAL_SPEED = 1000.0f;
   constexpr float TERMINAL_ANGULAR_SPEED = 400.0f;
   constexpr float TERMINAL_ANGULAR_SPEED_SQ = TERMINAL_ANGULAR_SPEED * TERMINAL_ANGULAR_SPEED;
-  constexpr float POS_SLEEP_THRESHOLD = 0.015f * 16.0f; // convert to Scaled Units
+  constexpr float POS_SLEEP_THRESHOLD = 0.01f * 16.0f; // convert to Scaled Units
   constexpr float POS_SLEEP_THRESHOLD_SQ = POS_SLEEP_THRESHOLD * POS_SLEEP_THRESHOLD;
   constexpr float SPEED_SLEEP_THRESHOLD = 0.65f * 16.0f; // convert to Scaled Units
   constexpr float SPEED_SLEEP_THRESHOLD_SQ = SPEED_SLEEP_THRESHOLD * SPEED_SLEEP_THRESHOLD;
@@ -106,7 +106,6 @@ namespace P64::CollNew {
     uint16_t collisionGroup{0};
 
     bool hasGravity{true};
-    bool isTrigger{false};
     bool isKinematic{false};
     bool isSleeping{false};
 
@@ -144,4 +143,4 @@ namespace P64::CollNew {
 
   };
 
-} // namespace P64::CollNew
+} // namespace P64::Coll

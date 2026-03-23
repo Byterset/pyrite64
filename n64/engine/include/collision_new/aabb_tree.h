@@ -10,7 +10,7 @@
 #include <cassert>
 #include <memory>
 
-namespace P64::CollNew {
+namespace P64::Coll {
 
   using NodeProxy = int16_t;
   constexpr NodeProxy NULL_NODE = -1;
@@ -109,4 +109,4 @@ namespace P64::CollNew {
     NodeProxy freeList_{NULL_NODE};
   };
 
-} // namespace P64::CollNew
+} // namespace P64::Coll

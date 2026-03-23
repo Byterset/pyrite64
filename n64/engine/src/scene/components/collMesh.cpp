@@ -49,7 +49,7 @@ namespace P64::Comp
     data->flags = initData->flags;
 
     void *rawData = AssetManager::getByIndex(initData->assetIdx);
-    data->meshCollider = CollNew::MeshCollider::createFromRawData(rawData, &obj);
+    data->meshCollider = Coll::MeshCollider::createFromRawData(rawData, &obj);
     if(data->meshCollider && obj.isEnabled()) {
       obj.getScene().getCollisionNew().addMeshCollider(data->meshCollider);
     }

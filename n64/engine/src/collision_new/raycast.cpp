@@ -4,7 +4,7 @@
  */
 #include "collision_new/raycast.h"
 
-namespace P64::CollNew {
+namespace P64::Coll {
 
   Raycast Raycast::create(const fm_vec3_t &origin, const fm_vec3_t &dir, float maxDist,
                           RaycastMask mask, bool interactTrigger,
@@ -36,4 +36,4 @@ namespace P64::CollNew {
     return r;
   }
 
-} // namespace P64::CollNew
+} // namespace P64::Coll

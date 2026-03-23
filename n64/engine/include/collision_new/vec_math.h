@@ -7,7 +7,7 @@
 #include <cmath>
 #include <t3d/t3dmath.h>
 
-namespace P64::CollNew {
+namespace P64::Coll {
 
   constexpr float EPSILON = 0.000001f;
   constexpr float EPSILON_SQUARED = EPSILON * EPSILON;
@@ -285,4 +285,4 @@ namespace P64::CollNew {
       return (a->x == b->x) && (a->y == b->y) && (a->z == b->z) && (a->w == b->w);
   }
 
-} // namespace P64::CollNew
+} // namespace P64::Coll

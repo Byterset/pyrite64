@@ -6,7 +6,7 @@
 #include "scene/components/collMesh.h"
 #include "scene/scene.h"
 
-fm_vec3_t P64::CollNew::Attach::update(const fm_vec3_t &ownPos)
+fm_vec3_t P64::Coll::Attach::update(const fm_vec3_t &ownPos)
 {
   auto trackedObj = SceneManager::getCurrent().getObjectById(refId);
   auto trackedColl = trackedObj ? trackedObj->getComponent<Comp::CollMesh>() : nullptr;
@@ -28,7 +28,7 @@ fm_vec3_t P64::CollNew::Attach::update(const fm_vec3_t &ownPos)
   return diff;
 }
 
-void P64::CollNew::Attach::setReference(const CollNew::MeshCollider *meshCollider)
+void P64::Coll::Attach::setReference(const Coll::MeshCollider *meshCollider)
 {
   if(meshCollider) {
     refId = meshCollider->owner->id;

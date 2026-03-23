@@ -10,7 +10,6 @@
 #include "event.h"
 #include "lighting.h"
 #include "object.h"
-// #include "collision/scene.h"
 #include "collision_new/collision_scene.h"
 #include "lib/types.h"
 #include "renderer/drawLayer.h"
@@ -140,9 +139,9 @@ namespace P64
       [[nodiscard]] Camera* getCamera(uint32_t index = 0) { return cameras[index]; }
       [[nodiscard]] Camera& getActiveCamera() { return *camMain; }
 
-      CollNew::CollisionScene &getCollisionNew() { return *CollNew::collisionSceneGetInstance(); }
+      Coll::CollisionScene &getCollisionNew() { return *Coll::collisionSceneGetInstance(); }
 
-      void onObjectCollision(const CollNew::CollEvent &event);
+      void onObjectCollision(const Coll::CollEvent &event);
 
       void sendEvent(uint16_t targetId, uint16_t senderId, uint16_t type, uint32_t value) {
         eventQueue[eventQueueIdx].add(targetId, senderId, type, value);

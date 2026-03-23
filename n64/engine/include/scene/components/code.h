@@ -85,7 +85,7 @@ namespace P64::Comp
       }
     }
 
-    static void onColl(Object& obj, Code* data, const CollNew::CollEvent& event) {
+    static void onColl(Object& obj, Code* data, const Coll::CollEvent& event) {
       if(data->usedFunctions & FN_COLL) {
         data->script->onColl(obj, data->getCodeData(), event);
       }

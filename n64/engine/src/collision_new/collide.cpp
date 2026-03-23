@@ -5,12 +5,11 @@
 #include "collision_new/collide.h"
 #include "collision_new/collision_scene.h"
 #include "collision_new/gjk.h"
-#include "scene/scene.h"
 
 #include <cmath>
 #include <cstdlib>
 
-namespace P64::CollNew {
+namespace P64::Coll {
 
   struct ColliderProxy {
     const Collider *collider{nullptr};
@@ -42,12 +41,26 @@ namespace P64::CollNew {
     return keyB < keyA;
   }
 
+  static fm_vec3_t makeSafeContactNormal(const fm_vec3_t &normal, const fm_vec3_t &contactA, const fm_vec3_t &contactB) {
+    if(vec3MagSqrd(normal) > EPSILON_SQUARED) {
+      return vec3Normalize(normal);
+    }
+
+    fm_vec3_t fallback = vec3Sub(contactA, contactB);
+    if(vec3MagSqrd(fallback) > EPSILON_SQUARED) {
+      return vec3Normalize(fallback);
+    }
+
+    return vec3Up();
+  }
+
   static void swapConstraintOrder(
-    RigidBody *&rigidBodyA, Collider *&colliderA, Object *&objectA,
-    RigidBody *&rigidBodyB, Collider *&colliderB, Object *&objectB,
+    RigidBody *&rigidBodyA, Collider *&colliderA, MeshCollider *&meshColliderA, Object *&objectA,
+    RigidBody *&rigidBodyB, Collider *&colliderB, MeshCollider *&meshColliderB, Object *&objectB,
     EpaResult &result) {
     std::swap(rigidBodyA, rigidBodyB);
     std::swap(colliderA, colliderB);
+    std::swap(meshColliderA, meshColliderB);
     std::swap(objectA, objectB);
     result.normal = vec3Negate(result.normal);
     std::swap(result.contactA, result.contactB);
@@ -198,15 +211,17 @@ namespace P64::CollNew {
   // ── Contact constraint caching ────────────────────────────────────
 
   ContactConstraint *collideCacheContactConstraint(
-    RigidBody *rigidBodyA, Collider *colliderA, Object *objectA,
-    RigidBody *rigidBodyB, Collider *colliderB, Object *objectB, const EpaResult &result,
+    RigidBody *rigidBodyA, Collider *colliderA, MeshCollider *meshColliderA, Object *objectA,
+    RigidBody *rigidBodyB, Collider *colliderB, MeshCollider *meshColliderB, Object *objectB, const EpaResult &result,
     float combinedFriction, float combinedBounce, bool isTrigger) {
 
     CollisionScene *scene = collisionSceneGetInstance();
     EpaResult orderedResult = result;
 
+    orderedResult.normal = makeSafeContactNormal(orderedResult.normal, orderedResult.contactA, orderedResult.contactB);
+
     if(shouldSwapConstraintOrder(colliderA, objectA, colliderB, objectB)) {
-      swapConstraintOrder(rigidBodyA, colliderA, objectA, rigidBodyB, colliderB, objectB, orderedResult);
+      swapConstraintOrder(rigidBodyA, colliderA, meshColliderA, objectA, rigidBodyB, colliderB, meshColliderB, objectB, orderedResult);
     }
 
     // Search for existing constraint with matching collider pair and similar normal
@@ -214,11 +229,13 @@ namespace P64::CollNew {
       colliderA, objectA, colliderB, objectB, orderedResult.normal, 0.9f);
 
     if(existing) {
-      if(existing->rigidBodyA != rigidBodyA || existing->colliderA != colliderA || existing->objectA != objectA ||
-         existing->rigidBodyB != rigidBodyB || existing->colliderB != colliderB || existing->objectB != objectB) {
-        return nullptr;
+      if(existing->rigidBodyA != rigidBodyA || existing->colliderA != colliderA || existing->meshColliderA != meshColliderA || existing->objectA != objectA ||
+         existing->rigidBodyB != rigidBodyB || existing->colliderB != colliderB || existing->meshColliderB != meshColliderB || existing->objectB != objectB) {
+        existing = nullptr;
       }
+    }
 
+    if(existing) {
       // Update existing constraint
       existing->isActive = true;
       existing->normal = orderedResult.normal;
@@ -311,8 +328,8 @@ namespace P64::CollNew {
 
     // Create new constraint
     ContactConstraint *cc = scene->createCachedConstraint(
-      rigidBodyA, colliderA, objectA,
-      rigidBodyB, colliderB, objectB);
+      rigidBodyA, colliderA, meshColliderA, objectA,
+      rigidBodyB, colliderB, meshColliderB, objectB);
     if(!cc) return nullptr;
     cc->normal = orderedResult.normal;
     vec3CalculateTangents(orderedResult.normal, cc->tangentU, cc->tangentV);
@@ -414,14 +431,15 @@ namespace P64::CollNew {
 
     float combinedFriction = fmin(collider->friction, mesh.friction);
     float combinedBounce = fmax(collider->bounce, mesh.bounce);
+    const bool isTriggerContact = collider->isTrigger;
 
     Object *objectA = collider->owner;
     Object *objectB = mesh.owner;
 
     collideCacheContactConstraint(
-      rigidBody, collider, objectA,
-      nullptr, nullptr, objectB,
-      epaResult, combinedFriction, combinedBounce, false);
+      rigidBody, collider, nullptr, objectA,
+      nullptr, nullptr, const_cast<MeshCollider *>(&mesh), objectB,
+      epaResult, combinedFriction, combinedBounce, isTriggerContact);
 
     return true;
   }
@@ -431,7 +449,7 @@ namespace P64::CollNew {
 
   void collideDetectObjectToMesh(Collider *collider, RigidBody *rigidBody, const MeshCollider &mesh) {
     if(!collider) return;
-    if(rigidBody && rigidBody->isSleeping) return;
+    if(rigidBody && rigidBody->isSleeping && !collider->isTrigger) return;
     if(mesh.triangleCount == 0) return;
 
     // Transform the collider's world AABB into the mesh's local space for tree query
@@ -460,7 +478,9 @@ namespace P64::CollNew {
   void collideDetectObjectToObject(Collider *colliderA, RigidBody *rbA, Collider *colliderB, RigidBody *rbB) {
     if(!colliderA || !colliderB) return;
 
-    if(rbA && rbB && rbA->isSleeping && rbB->isSleeping) return;
+    CollisionScene *scene = collisionSceneGetInstance();
+
+    if(rbA && rbB && rbA->isSleeping && rbB->isSleeping && !colliderA->isTrigger && !colliderB->isTrigger) return;
 
     // If both have rigidbodies, evaluate rigidbody-level filters.
     if(colliderA && colliderB) {
@@ -537,20 +557,20 @@ namespace P64::CollNew {
 
     }
 
-    //handle trigger events
+    // Trigger pairs only need overlap confirmation, not a full contact manifold.
     if ((colliderA && colliderA->isTrigger) || (colliderB && colliderB->isTrigger)) {
       EpaResult dummyResult;
-      dummyResult.normal = vec3Zero();
+      dummyResult.normal = makeSafeContactNormal(vec3Zero(), colliderA->worldCenter, colliderB->worldCenter);
       dummyResult.penetration = 0.0f;
       dummyResult.contactA = colliderA->worldCenter;
       dummyResult.contactB = colliderB->worldCenter;
-      // Cache the trigger constraint without velocity correction
+
       collideCacheContactConstraint(
-        rbA, colliderA, colliderA->owner,
-        rbB, colliderB, colliderB->owner,
+        rbA, colliderA, nullptr, colliderA->owner,
+        rbB, colliderB, nullptr, colliderB->owner,
         dummyResult,
-        0.0f, 0.0f, // friction and bounce don't matter for triggers
-        true // isTrigger
+        0.0f, 0.0f,
+        true
       );
       return;
     }
@@ -568,17 +588,17 @@ namespace P64::CollNew {
     }
 
     // Wake sleeping rigidBodies
-    if(rbA && rbA->isSleeping) rbA->wake();
-    if(rbB && rbB->isSleeping) rbB->wake();
+    if(rbA && rbA->isSleeping) scene->wakeRigidBodyIsland(rbA);
+    if(rbB && rbB->isSleeping) scene->wakeRigidBodyIsland(rbB);
 
     float combinedFriction = fmin(colliderA->friction, colliderB->friction);
     float combinedBounce = fmaxf(colliderA->bounce, colliderB->bounce);
 
     // Cache the constraint
     collideCacheContactConstraint(
-      rbA, colliderA, colliderA->owner,
-      rbB, colliderB, colliderB->owner,
+      rbA, colliderA, nullptr, colliderA->owner,
+      rbB, colliderB, nullptr, colliderB->owner,
       result, combinedFriction, combinedBounce, false);
   }
 
-} // namespace P64::CollNew
+} // namespace P64::Coll

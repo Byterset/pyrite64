@@ -20,7 +20,7 @@
 #include <utility>
 #include <vector>
 
-namespace P64::CollNew {
+namespace P64::Coll {
   constexpr int MAX_OBJ_COLLISION_CANDIDATES = 15;
   constexpr float DEFAULT_FIXED_DT = 1.0f / 50.0f;
   constexpr fm_vec3_t DEFAULT_GRAVITY = {0.0f, -9.8f * 16.0f, 0.0f}; //scaled with Pyrites default scale for assets
@@ -36,9 +36,8 @@ namespace P64::CollNew {
     RigidBody *selfRigidBody{};
     RigidBody *hitRigidBody{};
     uint16_t contactCount{0};
+    std::array<ContactPoint, MAX_CONTACT_POINTS_PER_PAIR> contacts{};
     Object *otherObject{};
-    fm_vec3_t relativeVelocity{};
-    // TODO: add array of contacts
   };
 
   struct ConstraintCacheKeyPart {
@@ -76,6 +75,7 @@ namespace P64::CollNew {
     void removeMeshCollider(MeshCollider *mesh);
 
     void configureSimulation(float fixedDt, const fm_vec3_t &gravity, uint8_t velocityIterations, uint8_t positionIterations);
+    void wakeRigidBodyIsland(RigidBody *rigidBody);
 
     void step();
 
@@ -83,8 +83,8 @@ namespace P64::CollNew {
     ContactConstraint &getCachedConstraint(int index);
     const ContactConstraint &getCachedConstraint(int index) const;
     ContactConstraint *createCachedConstraint(
-      RigidBody *rigidBodyA, Collider *colliderA, Object *objectA,
-      RigidBody *rigidBodyB, Collider *colliderB, Object *objectB);
+      RigidBody *rigidBodyA, Collider *colliderA, MeshCollider *meshColliderA, Object *objectA,
+      RigidBody *rigidBodyB, Collider *colliderB, MeshCollider *meshColliderB, Object *objectB);
     ContactConstraint *findCachedConstraintByPair(
       Collider *colliderA, Object *objectA,
       Collider *colliderB, Object *objectB,
@@ -116,15 +116,25 @@ namespace P64::CollNew {
     static ConstraintCacheKeyPart makeConstraintCacheKeyPart(Collider *collider, Object *object);
     static ConstraintCacheKey makeConstraintPairKey(Collider *colliderA, Object *objectA, Collider *colliderB, Object *objectB);
     static bool shouldTrackSleepState(const RigidBody *rigidBody);
-    static bool rigidBodyCanSleep(const RigidBody *rigidBody);
+    static bool rigidBodyTransformExceededSleepThreshold(const RigidBody *rigidBody);
+    static bool rigidBodyVelocitiesExceededSleepThreshold(const RigidBody *rigidBody);
     RigidBody *findRigidBodyByOwner(const Object *owner) const;
     const std::vector<Collider *> *findCollidersForOwner(const Object *owner) const;
     void updateColliderWorldState(Collider *collider) const;
     void updateCompoundProperties(RigidBody *rigidBody) const;
     void collectConnectedIsland(RigidBody *seed, std::vector<RigidBody *> &island, std::unordered_set<RigidBody *> &visited) const;
+    static void addWakeCandidate(std::vector<RigidBody *> &wakeCandidates, RigidBody *candidate, RigidBody *ignoredCandidate = nullptr);
+    void wakeCandidateIslands(const std::vector<RigidBody *> &wakeCandidates);
+    void removeCachedConstraints(
+      const std::function<bool(const ContactConstraint &)> &shouldRemove,
+      std::vector<RigidBody *> &wakeCandidates,
+      RigidBody *ignoredCandidate = nullptr);
+    CollEvent makeCollisionEvent(const ContactConstraint &constraint) const;
+    void dispatchCollisionCallbacks() const;
 
     void rebuildCachedConstraintPairs();
     void wakeIsland(RigidBody *rigidBody);
+    void wakeBodiesMovedExternally();
     void updateSleepStates();
     void refreshContacts();
     void removeInactiveContacts();
@@ -139,4 +149,4 @@ namespace P64::CollNew {
 
   CollisionScene *collisionSceneGetInstance();
 
-} // namespace P64::CollNew
+} // namespace P64::Coll

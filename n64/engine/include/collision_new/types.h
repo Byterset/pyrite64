@@ -1,6 +1,6 @@
 #pragma once
 
-namespace P64::CollNew
+namespace P64::Coll
 {
   enum class ShapeType : uint8_t
   {

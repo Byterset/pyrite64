@@ -5,7 +5,7 @@
 #include "collision_new/mesh_collider.h"
 #include "scene/object.h"
 
-namespace P64::CollNew {
+namespace P64::Coll {
 
   namespace {
     struct RawCollisionHeader {
@@ -130,6 +130,30 @@ namespace P64::CollNew {
   bool MeshCollider::hasScale() const {
     if(!owner) return false;
     return (fabsf(owner->scale.x - 1.0f) > EPSILON) || (fabsf(owner->scale.y - 1.0f) > EPSILON) || (fabsf(owner->scale.z - 1.0f) > EPSILON);
+  }
+
+  bool MeshCollider::ownerTransformChanged() const {
+    if(!owner) return false;
+    if(!hasCachedOwnerTransform) return true;
+
+    if(vec3DistSqrd(owner->pos, lastOwnerPos) > EPSILON_SQUARED) return true;
+    if(vec3DistSqrd(owner->scale, lastOwnerScale) > EPSILON_SQUARED) return true;
+
+    const float rotSim = fabsf(quatDot(owner->rot, lastOwnerRot));
+    return rotSim < (1.0f - EPSILON);
+  }
+
+  void MeshCollider::syncOwnerTransform() {
+    if(!owner) {
+      lastOwnerPos = vec3Zero();
+      lastOwnerRot = QUAT_IDENTITY;
+      lastOwnerScale = vec3(1.0f, 1.0f, 1.0f);
+    } else {
+      lastOwnerPos = owner->pos;
+      lastOwnerRot = owner->rot;
+      lastOwnerScale = owner->scale;
+    }
+    hasCachedOwnerTransform = true;
   }
 
   void MeshCollider::computeLocalRootAABB() {
@@ -273,6 +297,7 @@ namespace P64::CollNew {
 
     collider->computeLocalRootAABB();
     collider->recalculateWorldAABB();
+    collider->syncOwnerTransform();
 
     return collider;
   }
@@ -289,4 +314,4 @@ namespace P64::CollNew {
     vertexCount = 0;
   }
 
-} // namespace P64::CollNew
+} // namespace P64::Coll

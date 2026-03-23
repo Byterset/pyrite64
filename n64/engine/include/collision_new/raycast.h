@@ -8,7 +8,7 @@
 #include <cstdint>
 #include <cmath>
 
-namespace P64::CollNew {
+namespace P64::Coll {
 
   constexpr float RAYCAST_MAX_DISTANCE = 2000.0f;
   constexpr int RAYCAST_MAX_OBJECT_TESTS = 10;
@@ -50,4 +50,4 @@ namespace P64::CollNew {
     bool didHit{false};
   };
 
-} // namespace P64::CollNew
+} // namespace P64::Coll

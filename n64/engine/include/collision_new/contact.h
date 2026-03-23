@@ -9,7 +9,7 @@
 
 namespace P64 { class Object; }
 
-namespace P64::CollNew {
+namespace P64::Coll {
 
   constexpr int MAX_CONTACT_POINTS_PER_PAIR = 4;
 
@@ -49,9 +49,11 @@ namespace P64::CollNew {
   struct ContactConstraint {
     RigidBody *rigidBodyA{nullptr};
     Collider *colliderA{nullptr};
+    MeshCollider *meshColliderA{nullptr};
     Object *objectA{nullptr};
     RigidBody *rigidBodyB{nullptr};
     Collider *colliderB{nullptr};
+    MeshCollider *meshColliderB{nullptr};
     Object *objectB{nullptr};
 
     fm_vec3_t normal{};
@@ -69,4 +71,4 @@ namespace P64::CollNew {
     ContactPoint points[MAX_CONTACT_POINTS_PER_PAIR]{};
   };
 
-} // namespace P64::CollNew
+} // namespace P64::Coll

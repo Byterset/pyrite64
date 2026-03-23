@@ -7,14 +7,14 @@
 #include "nodeGraph.h"
 
 namespace P64 { class Object; struct ObjectEvent; }
-namespace P64::CollNew { struct CollEvent; }
+namespace P64::Coll { struct CollEvent; }
 
 namespace P64::Script
 {
   typedef void(*FuncObjInit)(Object&, void*);
   typedef void(*FuncObjDataDelta)(Object&, void*, float);
   typedef void(*FuncObjDataEvent)(Object&, void*, const ObjectEvent&);
-  typedef void(*FuncObjDataColl)(Object&, void*, const P64::CollNew::CollEvent&);
+  typedef void(*FuncObjDataColl)(Object&, void*, const P64::Coll::CollEvent&);
 
   struct ScriptEntry
   {

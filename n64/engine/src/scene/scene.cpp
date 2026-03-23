@@ -90,10 +90,10 @@ P64::Scene::Scene(uint16_t sceneId, Scene** ref)
   VI::SwapChain::setFrameSkip(conf.frameSkip);
   VI::SwapChain::start();
 
-  auto *collisionScene = CollNew::collisionSceneGetInstance();
+  auto *collisionScene = Coll::collisionSceneGetInstance();
   collisionScene->reset();
   collisionScene->configureSimulation(
-    conf.physicsTickRate > 0 ? (1.0f / static_cast<float>(conf.physicsTickRate)) : CollNew::DEFAULT_FIXED_DT,
+    conf.physicsTickRate > 0 ? (1.0f / static_cast<float>(conf.physicsTickRate)) : Coll::DEFAULT_FIXED_DT,
     conf.gravity,
     conf.velocitySolverIterations,
     conf.positionSolverIterations
@@ -173,7 +173,7 @@ void P64::Scene::update(float deltaTime)
     //fixed_update_dispatch();
     // if (update_has_layer(UPDATE_LAYER_WORLD))
     // {
-    CollNew::collisionSceneGetInstance()->step();
+    Coll::collisionSceneGetInstance()->step();
     // }
     accumulator_ticks -= fixedDeltaTimeTicks;
   }
@@ -320,11 +320,11 @@ void P64::Scene::draw([[maybe_unused]] float deltaTime)
 #endif
 }
 
-void P64::Scene::onObjectCollision(const CollNew::CollEvent &event)
+void P64::Scene::onObjectCollision(const Coll::CollEvent &event)
 {
-  auto objA = event.selfCollider->owner ? event.selfCollider->owner : nullptr;
-  auto selfCollider = event.selfCollider ? (CollNew::Collider*)event.selfCollider : nullptr;
-  auto objB = event.otherObject ? event.otherObject : nullptr;
+  auto objA = event.selfCollider ? event.selfCollider->owner
+                                 : (event.selfMeshCollider ? event.selfMeshCollider->owner : nullptr);
+  auto objB = event.otherObject;
   if(!objA || !objB)return;
 
   auto compRefsA = objA->getCompRefs();
@@ -339,7 +339,7 @@ void P64::Scene::onObjectCollision(const CollNew::CollEvent &event)
 
   //if(!event.otherBCS)return;
 
-  CollNew::CollEvent eventOther{
+  Coll::CollEvent eventOther{
     .selfCollider = event.hitCollider,
     .hitCollider = event.selfCollider,
     .selfMeshCollider = event.hitMeshCollider,
@@ -347,9 +347,15 @@ void P64::Scene::onObjectCollision(const CollNew::CollEvent &event)
     .selfRigidBody = event.hitRigidBody,
     .hitRigidBody = event.selfRigidBody,
     .contactCount = event.contactCount,
-    .otherObject = objA,
-    .relativeVelocity = {-event.relativeVelocity.x, -event.relativeVelocity.y, -event.relativeVelocity.z},
+    .otherObject = objA
   };
+
+  for(uint16_t i = 0; i < event.contactCount; ++i) {
+    eventOther.contacts[i] = event.contacts[i];
+    std::swap(eventOther.contacts[i].contactA, eventOther.contacts[i].contactB);
+    std::swap(eventOther.contacts[i].localPointA, eventOther.contacts[i].localPointB);
+    std::swap(eventOther.contacts[i].aToContact, eventOther.contacts[i].bToContact);
+  }
 
   auto compRefsB = objB->getCompRefs();
   for (uint32_t i=0; i<objB->compCount; ++i)

@@ -6,7 +6,7 @@
 #include <libdragon.h>
 #include "event.h"
 
-namespace P64::CollNew
+namespace P64::Coll
 {
   struct CollEvent;
 }
@@ -20,7 +20,7 @@ namespace P64
   typedef void(*FuncUpdate)(Object&, void*, float deltaTime);
   typedef void(*FuncDraw)(Object&, void*, float deltaTime);
   typedef void(*FuncOnEvent)(Object&, void*, const ObjectEvent&);
-  typedef void(*FuncOnColl)(Object&, void*, const P64::CollNew::CollEvent&);
+  typedef void(*FuncOnColl)(Object&, void*, const P64::Coll::CollEvent&);
 
   struct ComponentDef
   {

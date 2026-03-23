@@ -8,11 +8,11 @@
 #include <cmath>
 #include <limits>
 
-using namespace P64::CollNew;
+using namespace P64::Coll;
 
 // ── Ray-AABB slab intersection ──────────────────────────────────────
 
-bool P64::CollNew::aabbIntersectsRay(const AABB &box, const fm_vec3_t &origin,
+bool P64::Coll::aabbIntersectsRay(const AABB &box, const fm_vec3_t &origin,
                                      const fm_vec3_t &invDir, float maxDist)
 {
   float t1x = (box.min.x - origin.x) * invDir.x;

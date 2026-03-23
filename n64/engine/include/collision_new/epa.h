@@ -6,7 +6,7 @@
 
 #include "gjk.h"
 
-namespace P64::CollNew {
+namespace P64::Coll {
 
   /// Result of EPA solving: contact information for overlapping rigidBodys
   struct EpaResult {
@@ -33,4 +33,4 @@ namespace P64::CollNew {
     EpaResult &result
   );
 
-} // namespace P64::CollNew
+} // namespace P64::Coll

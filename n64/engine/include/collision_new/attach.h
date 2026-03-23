@@ -5,7 +5,7 @@
 #pragma once
 #include "mesh_collider.h"
 
-namespace P64::CollNew
+namespace P64::Coll
 {
   /**
    * Helper to attach something to a transforming mesh collider.
@@ -34,6 +34,6 @@ namespace P64::CollNew
      * sets a new mesh to track.
      * @param meshCollider
      */
-    void setReference(const CollNew::MeshCollider *meshCollider);
+    void setReference(const Coll::MeshCollider *meshCollider);
   };
 }

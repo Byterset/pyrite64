@@ -5,6 +5,7 @@
 #include "collision_new/collision_scene.h"
 #include "collision_new/collide.h"
 #include "collision_new/gjk.h"
+#include "scene/scene.h"
 
 #include <cmath>
 #include <cassert>
@@ -16,9 +17,21 @@
 
 #include "debug/debugDraw.h"
 
-namespace P64::CollNew {
+namespace P64::Coll {
 
   static CollisionScene g_scene;
+
+  static bool aabbChanged(const AABB &lhs, const AABB &rhs) {
+    return vec3DistSqrd(lhs.min, rhs.min) > EPSILON_SQUARED ||
+           vec3DistSqrd(lhs.max, rhs.max) > EPSILON_SQUARED;
+  }
+
+  static AABB mergeAABBs(const AABB &lhs, const AABB &rhs) {
+    return AABB{
+      vec3Min(lhs.min, rhs.min),
+      vec3Max(lhs.max, rhs.max)
+    };
+  }
 
   static fm_vec3_t constrainAngularWorld(const RigidBody *body, const fm_vec3_t &worldAngular) {
     if(!body) return worldAngular;
@@ -70,27 +83,31 @@ namespace P64::CollNew {
   }
 
   bool CollisionScene::shouldTrackSleepState(const RigidBody *rigidBody) {
-    return rigidBody && !rigidBody->isTrigger && !rigidBody->isKinematic && rigidBody->position;
+    return rigidBody && !rigidBody->isKinematic && rigidBody->position;
   }
 
-  bool CollisionScene::rigidBodyCanSleep(const RigidBody *rigidBody) {
-    if(!shouldTrackSleepState(rigidBody) || rigidBody->isSleeping) return false;
+  bool CollisionScene::rigidBodyVelocitiesExceededSleepThreshold(const RigidBody *rigidBody) {
+    if(!shouldTrackSleepState(rigidBody)) return false;
 
     const float speedSq = vec3MagSqrd(rigidBody->velocity);
-    if(speedSq > SPEED_SLEEP_THRESHOLD_SQ) return false;
+    if(speedSq > SPEED_SLEEP_THRESHOLD_SQ) return true;
 
     const float angSpeedSq = vec3MagSqrd(rigidBody->angularVelocity);
-    if(angSpeedSq > ANGULAR_SLEEP_THRESHOLD_SQ) return false;
+    return angSpeedSq > ANGULAR_SLEEP_THRESHOLD_SQ;
+  }
+
+  bool CollisionScene::rigidBodyTransformExceededSleepThreshold(const RigidBody *rigidBody) {
+    if(!shouldTrackSleepState(rigidBody)) return false;
 
     const float posDeltaSq = vec3DistSqrd(*rigidBody->position, rigidBody->prevStepPos);
-    if(posDeltaSq > POS_SLEEP_THRESHOLD_SQ) return false;
+    if(posDeltaSq > POS_SLEEP_THRESHOLD_SQ) return true;
 
     if(rigidBody->rotation) {
       const float rotSim = fabsf(quatDot(*rigidBody->rotation, rigidBody->prevStepRot));
-      if(rotSim < ROT_SIMILARITY_SLEEP_THRESHOLD) return false;
+      if(rotSim < ROT_SIMILARITY_SLEEP_THRESHOLD) return true;
     }
 
-    return true;
+    return false;
   }
 
   void CollisionScene::rebuildCachedConstraintPairs() {
@@ -236,12 +253,6 @@ namespace P64::CollNew {
     if(!rigidBody) return;
 
     std::vector<RigidBody *> wakeCandidates;
-    auto addWakeCandidate = [&](RigidBody *candidate) {
-      if(!candidate || candidate == rigidBody) return;
-      if(std::find(wakeCandidates.begin(), wakeCandidates.end(), candidate) == wakeCandidates.end()) {
-        wakeCandidates.push_back(candidate);
-      }
-    };
 
     if(rigidBody->owner) {
       auto ownerIt = ownerRigidBodies_.find(rigidBody->owner);
@@ -256,41 +267,20 @@ namespace P64::CollNew {
       rigidBody->aabbTreeNodeId = NULL_NODE;
     }
 
-    // Remove cached constraints referencing this rigidBody
-    bool removedAny = false;
-    for(int i = 0; i < cachedConstraintCount_;) {
-      ContactConstraint &cc = cachedConstraints_[i];
-      if(cc.rigidBodyA == rigidBody || cc.rigidBodyB == rigidBody) {
-        RigidBody *otherBody = (cc.rigidBodyA == rigidBody) ? cc.rigidBodyB : cc.rigidBodyA;
-        addWakeCandidate(otherBody);
-
-        int lastIndex = cachedConstraintCount_ - 1;
-        if(i != lastIndex) {
-          cachedConstraints_[i] = cachedConstraints_[lastIndex];
-        }
-        cachedConstraints_.pop_back();
-        cachedConstraintCount_--;
-        removedAny = true;
-      } else {
-        ++i;
-      }
-    }
-    if(removedAny) {
-      rebuildCachedConstraintPairs();
-    }
+    removeCachedConstraints([rigidBody](const ContactConstraint &cc) {
+      return cc.rigidBodyA == rigidBody || cc.rigidBodyB == rigidBody;
+    }, wakeCandidates, rigidBody);
 
     // Sleeping rigidBodies overlapping the removed body are likely support-dependent and should re-evaluate.
     const AABB removedBounds = rigidBody->boundingBox;
     for(RigidBody *body : rigidBodies_) {
       if(!body || body == rigidBody) continue;
       if(aabbOverlap(body->boundingBox, removedBounds)) {
-        addWakeCandidate(body);
+        addWakeCandidate(wakeCandidates, body, rigidBody);
       }
     }
 
-    for(RigidBody *candidate : wakeCandidates) {
-      wakeIsland(candidate);
-    }
+    wakeCandidateIslands(wakeCandidates);
 
     rigidBodies_.erase(std::remove(rigidBodies_.begin(), rigidBodies_.end(), rigidBody), rigidBodies_.end());
   }
@@ -326,38 +316,11 @@ namespace P64::CollNew {
     Object *owner = collider->owner;
 
     std::vector<RigidBody *> wakeCandidates;
-    auto addWakeCandidate = [&](RigidBody *candidate) {
-      if(!candidate) return;
-      if(std::find(wakeCandidates.begin(), wakeCandidates.end(), candidate) == wakeCandidates.end()) {
-        wakeCandidates.push_back(candidate);
-      }
-    };
+    removeCachedConstraints([collider](const ContactConstraint &cc) {
+      return cc.colliderA == collider || cc.colliderB == collider;
+    }, wakeCandidates);
 
-    bool removedAny = false;
-    for(int i = 0; i < cachedConstraintCount_;) {
-      ContactConstraint &cc = cachedConstraints_[i];
-      if(cc.colliderA == collider || cc.colliderB == collider) {
-        if(cc.rigidBodyA) addWakeCandidate(cc.rigidBodyA);
-        if(cc.rigidBodyB) addWakeCandidate(cc.rigidBodyB);
-
-        int lastIndex = cachedConstraintCount_ - 1;
-        if(i != lastIndex) {
-          cachedConstraints_[i] = cachedConstraints_[lastIndex];
-        }
-        cachedConstraints_.pop_back();
-        cachedConstraintCount_--;
-        removedAny = true;
-      } else {
-        ++i;
-      }
-    }
-    if(removedAny) {
-      rebuildCachedConstraintPairs();
-    }
-
-    for(RigidBody *candidate : wakeCandidates) {
-      wakeIsland(candidate);
-    }
+    wakeCandidateIslands(wakeCandidates);
 
     if(owner) {
       auto it = ownerColliders_.find(owner);
@@ -386,6 +349,7 @@ namespace P64::CollNew {
 
     mesh->computeLocalRootAABB();
     mesh->recalculateWorldAABB();
+    mesh->syncOwnerTransform();
 
     meshColliders_.push_back(mesh);
   }
@@ -394,41 +358,11 @@ namespace P64::CollNew {
     if(!mesh) return;
 
     std::vector<RigidBody *> wakeCandidates;
-    auto addWakeCandidate = [&](RigidBody *candidate) {
-      if(!candidate) return;
-      if(std::find(wakeCandidates.begin(), wakeCandidates.end(), candidate) == wakeCandidates.end()) {
-        wakeCandidates.push_back(candidate);
-      }
-    };
+    removeCachedConstraints([mesh](const ContactConstraint &cc) {
+      return cc.objectB == mesh->owner;
+    }, wakeCandidates);
 
-    // Remove cached constraints referencing this mesh collider
-    bool removedAny = false;
-    for(int i = 0; i < cachedConstraintCount_;) {
-      ContactConstraint &cc = cachedConstraints_[i];
-      if(cc.objectB == mesh->owner) {
-        if(cc.rigidBodyA) addWakeCandidate(cc.rigidBodyA);
-        if(cc.rigidBodyB) addWakeCandidate(cc.rigidBodyB);
-
-        // Release contacts from the rigid body's linked list for this constraint
-        // (activeContacts may reference this constraint)
-        int lastIndex = cachedConstraintCount_ - 1;
-        if(i != lastIndex) {
-          cachedConstraints_[i] = cachedConstraints_[lastIndex];
-        }
-        cachedConstraints_.pop_back();
-        cachedConstraintCount_--;
-        removedAny = true;
-      } else {
-        ++i;
-      }
-    }
-    if(removedAny) {
-      rebuildCachedConstraintPairs();
-    }
-
-    for(RigidBody *candidate : wakeCandidates) {
-      wakeIsland(candidate);
-    }
+    wakeCandidateIslands(wakeCandidates);
 
     for(std::size_t i = 0; i < meshColliders_.size(); ++i) {
       if(meshColliders_[i] == mesh) {
@@ -446,6 +380,10 @@ namespace P64::CollNew {
     positionSolverIterations_ = std::max<uint8_t>(1, positionIterations);
   }
 
+  void CollisionScene::wakeRigidBodyIsland(RigidBody *rigidBody) {
+    wakeIsland(rigidBody);
+  }
+
   int CollisionScene::getCachedConstraintCount() const {
     return cachedConstraintCount_;
   }
@@ -461,16 +399,18 @@ namespace P64::CollNew {
   }
 
   ContactConstraint *CollisionScene::createCachedConstraint(
-    RigidBody *rigidBodyA, Collider *colliderA, Object *objectA,
-    RigidBody *rigidBodyB, Collider *colliderB, Object *objectB) {
+    RigidBody *rigidBodyA, Collider *colliderA, MeshCollider *meshColliderA, Object *objectA,
+    RigidBody *rigidBodyB, Collider *colliderB, MeshCollider *meshColliderB, Object *objectB) {
     cachedConstraints_.push_back(ContactConstraint{});
     cachedConstraintCount_ = static_cast<int>(cachedConstraints_.size());
     ContactConstraint &cc = cachedConstraints_.back();
     cc.rigidBodyA = rigidBodyA;
     cc.colliderA = colliderA;
+    cc.meshColliderA = meshColliderA;
     cc.objectA = objectA;
     cc.rigidBodyB = rigidBodyB;
     cc.colliderB = colliderB;
+    cc.meshColliderB = meshColliderB;
     cc.objectB = objectB;
 
     ConstraintCacheKey key = makeConstraintPairKey(colliderA, objectA, colliderB, objectB);
@@ -531,6 +471,76 @@ namespace P64::CollNew {
     }
   }
 
+  void CollisionScene::addWakeCandidate(std::vector<RigidBody *> &wakeCandidates, RigidBody *candidate, RigidBody *ignoredCandidate) {
+    if(!candidate || candidate == ignoredCandidate) return;
+    if(std::find(wakeCandidates.begin(), wakeCandidates.end(), candidate) == wakeCandidates.end()) {
+      wakeCandidates.push_back(candidate);
+    }
+  }
+
+  void CollisionScene::wakeCandidateIslands(const std::vector<RigidBody *> &wakeCandidates) {
+    for(RigidBody *candidate : wakeCandidates) {
+      wakeIsland(candidate);
+    }
+  }
+
+  void CollisionScene::removeCachedConstraints(
+    const std::function<bool(const ContactConstraint &)> &shouldRemove,
+    std::vector<RigidBody *> &wakeCandidates,
+    RigidBody *ignoredCandidate) {
+    bool removedAny = false;
+
+    for(int i = 0; i < cachedConstraintCount_;) {
+      ContactConstraint &cc = cachedConstraints_[i];
+      if(shouldRemove(cc)) {
+        addWakeCandidate(wakeCandidates, cc.rigidBodyA, ignoredCandidate);
+        addWakeCandidate(wakeCandidates, cc.rigidBodyB, ignoredCandidate);
+
+        int lastIndex = cachedConstraintCount_ - 1;
+        if(i != lastIndex) {
+          cachedConstraints_[i] = cachedConstraints_[lastIndex];
+        }
+        cachedConstraints_.pop_back();
+        cachedConstraintCount_--;
+        removedAny = true;
+      } else {
+        ++i;
+      }
+    }
+
+    if(removedAny) {
+      rebuildCachedConstraintPairs();
+    }
+  }
+
+  CollEvent CollisionScene::makeCollisionEvent(const ContactConstraint &constraint) const {
+    CollEvent event{};
+    event.selfCollider = constraint.colliderA;
+    event.hitCollider = constraint.colliderB;
+    event.selfMeshCollider = constraint.meshColliderA;
+    event.hitMeshCollider = constraint.meshColliderB;
+    event.selfRigidBody = constraint.rigidBodyA;
+    event.hitRigidBody = constraint.rigidBodyB;
+    event.otherObject = constraint.objectB;
+    event.contactCount = static_cast<uint16_t>(std::min(constraint.pointCount, MAX_CONTACT_POINTS_PER_PAIR));
+
+    for(uint16_t i = 0; i < event.contactCount; ++i) {
+      event.contacts[i] = constraint.points[i];
+    }
+
+    return event;
+  }
+
+  void CollisionScene::dispatchCollisionCallbacks() const {
+    for(int i = 0; i < cachedConstraintCount_; ++i) {
+      const ContactConstraint &constraint = cachedConstraints_[i];
+      if(!constraint.isActive || constraint.pointCount <= 0) continue;
+      if(!constraint.objectA || !constraint.objectB) continue;
+
+      SceneManager::getCurrent().onObjectCollision(makeCollisionEvent(constraint));
+    }
+  }
+
 
   // ── Wake island ───────────────────────────────────────────────────
 
@@ -555,6 +565,20 @@ namespace P64::CollNew {
     }
   }
 
+  void CollisionScene::wakeBodiesMovedExternally() {
+    std::vector<RigidBody *> wakeCandidates;
+
+    for(RigidBody *body : rigidBodies_) {
+      if(!body || !body->isSleeping) continue;
+      if(!rigidBodyTransformExceededSleepThreshold(body)) continue;
+      wakeCandidates.push_back(body);
+    }
+
+    for(RigidBody *body : wakeCandidates) {
+      wakeIsland(body);
+    }
+  }
+
   void CollisionScene::updateSleepStates() {
     std::unordered_set<RigidBody *> visited;
 
@@ -571,7 +595,10 @@ namespace P64::CollNew {
         if(islandBody->isSleeping) {
           islandBody->wake();
         }
-        if(!rigidBodyCanSleep(islandBody)) {
+
+        const bool transformChangedTooMuch = rigidBodyTransformExceededSleepThreshold(islandBody);
+        const bool velocitiesTooHigh = rigidBodyVelocitiesExceededSleepThreshold(islandBody);
+        if(transformChangedTooMuch || velocitiesTooHigh) {
           islandCanSleep = false;
         }
       }
@@ -607,6 +634,10 @@ namespace P64::CollNew {
     for(int i = 0; i < cachedConstraintCount_; ++i) {
       ContactConstraint &cc = cachedConstraints_[i];
       if(!cc.isActive) continue;
+
+      if(cc.isTrigger) {
+        continue;
+      }
 
       RigidBody *a = cc.rigidBodyA;
       RigidBody *b = cc.rigidBodyB;
@@ -690,8 +721,9 @@ namespace P64::CollNew {
     std::sort(orderedColliders.begin(), orderedColliders.end(), [this](Collider *lhs, Collider *rhs) {
       auto sleepKey = [this](Collider *c) {
         if(!c || !c->owner) return false;
+        if(c->isTrigger) return false;
         RigidBody *rb = findRigidBodyByOwner(c->owner);
-        return rb && rb->isSleeping && !rb->isTrigger;
+        return rb && rb->isSleeping;
       };
 
       const bool lhsSleeping = sleepKey(lhs);
@@ -707,7 +739,7 @@ namespace P64::CollNew {
 
       updateColliderWorldState(a);
       RigidBody *rbA = findRigidBodyByOwner(a->owner);
-      if(rbA && rbA->isSleeping && !rbA->isTrigger) continue;
+      if(rbA && rbA->isSleeping && !a->isTrigger) continue;
 
       for(std::size_t j = i + 1; j < orderedColliders.size(); ++j) {
         Collider *b = orderedColliders[j];
@@ -718,7 +750,7 @@ namespace P64::CollNew {
         if(!aabbOverlap(a->worldAABB, b->worldAABB)) continue;
 
         RigidBody *rbB = findRigidBodyByOwner(b->owner);
-        if(rbA && rbB && rbA->isSleeping && rbB->isSleeping) continue;
+        if(rbA && rbB && rbA->isSleeping && rbB->isSleeping && !a->isTrigger && !b->isTrigger) continue;
 
         collideDetectObjectToObject(a, rbA, b, rbB);
       }
@@ -735,9 +767,11 @@ namespace P64::CollNew {
         updateColliderWorldState(collider);
 
         RigidBody *rigidBody = findRigidBodyByOwner(collider->owner);
-        if(rigidBody && (rigidBody->isTrigger || rigidBody->isSleeping)) continue;
+        if (rigidBody && rigidBody->isSleeping && !collider->isTrigger)
+          continue;
 
-        if(!aabbOverlap(collider->worldAABB, mesh->worldBoundingBox)) continue;
+        if (!aabbOverlap(collider->worldAABB, mesh->worldBoundingBox))
+          continue;
 
         collideDetectObjectToMesh(collider, rigidBody, *mesh);
       }
@@ -1097,10 +1131,52 @@ namespace P64::CollNew {
 
   /// @brief Recalculate the world-space AABBs of all Mesh Colliders in the Collision Scene.
   void CollisionScene::updateMeshColliderWorldAABBs() {
+    std::vector<RigidBody *> wakeCandidates;
+    auto addWakeCandidate = [&](RigidBody *candidate) {
+      if(!candidate || !candidate->isSleeping) return;
+      if(std::find(wakeCandidates.begin(), wakeCandidates.end(), candidate) == wakeCandidates.end()) {
+        wakeCandidates.push_back(candidate);
+      }
+    };
+
+    std::vector<NodeProxy> queryResults;
+    queryResults.resize(rigidBodies_.size());
+
     for(std::size_t i = 0; i < meshColliders_.size(); ++i) {
       MeshCollider *mesh = meshColliders_[i];
       if(!mesh) continue;
+
+      const bool transformChanged = mesh->ownerTransformChanged();
+      if(!transformChanged && mesh->hasCachedOwnerTransform) continue;
+
+      const AABB previousBounds = mesh->worldBoundingBox;
       mesh->recalculateWorldAABB();
+      mesh->syncOwnerTransform();
+
+      if(!transformChanged && !aabbChanged(previousBounds, mesh->worldBoundingBox)) continue;
+
+      const AABB affectedBounds = mergeAABBs(previousBounds, mesh->worldBoundingBox);
+      if(queryResults.empty()) continue;
+
+      const int candidateCount = rigidBodyAABBTree.queryBounds(
+        affectedBounds,
+        queryResults.data(),
+        static_cast<int>(queryResults.size())
+      );
+
+      for(int resultIdx = 0; resultIdx < candidateCount; ++resultIdx) {
+        void *data = rigidBodyAABBTree.getNodeData(queryResults[resultIdx]);
+        if(!data) continue;
+
+        RigidBody *body = static_cast<RigidBody *>(data);
+        if(!body || !body->isSleeping) continue;
+        addWakeCandidate(body);
+        
+      }
+    }
+
+    for(RigidBody *candidate : wakeCandidates) {
+      wakeIsland(candidate);
     }
   }
 
@@ -1198,7 +1274,19 @@ namespace P64::CollNew {
         // if(!obj->collider) continue;
         if((obj->collisionLayers & ray.collisionLayers) == 0) continue;
         if((obj->collisionLayers & ray.ignoreLayers) != 0) continue;
-        if(obj->isTrigger && !ray.interactTrigger) continue;
+        if(!ray.interactTrigger) {
+          const std::vector<Collider *> *ownerColliders = findCollidersForOwner(obj->owner);
+          if(ownerColliders && !ownerColliders->empty()) {
+            bool hasSolidCollider = false;
+            for(const Collider *ownerCollider : *ownerColliders) {
+              if(ownerCollider && !ownerCollider->isTrigger) {
+                hasSolidCollider = true;
+                break;
+              }
+            }
+            if(!hasSolidCollider) continue;
+          }
+        }
 
         // Simple sphere approximation for ray-rigidBody test
         fm_vec3_t toObj = vec3Sub(obj->worldCenterOfMass, ray.origin);
@@ -1258,6 +1346,9 @@ namespace P64::CollNew {
     // TODO: maybe only update if transform is dirty?
     updateMeshColliderWorldAABBs();
 
+    // 0.5 Wake sleeping dynamic bodies that were moved or rotated externally.
+    wakeBodiesMovedExternally();
+
     // 1. Refresh collider world state
     for(Collider *collider : colliders_) {
       updateColliderWorldState(collider);
@@ -1289,6 +1380,8 @@ namespace P64::CollNew {
 
     // Refresh anchors from local-space points before solving.
     refreshContacts();
+
+    dispatchCollisionCallbacks();
 
     // 5. Pre-solve contacts (compute effective masses)
     preSolveContacts();
@@ -1380,7 +1473,7 @@ namespace P64::CollNew {
   /// Draws on the CPU which may cause significant slowdown
   /// @param showMeshColliders Whether to draw mesh colliders.
   /// @param showRigidBodies Whether to draw rigid bodies.
-  void P64::CollNew::CollisionScene::debugDraw(bool showMeshColliders, bool showRigidBodies)
+  void P64::Coll::CollisionScene::debugDraw(bool showMeshColliders, bool showRigidBodies)
   {
     if (showMeshColliders)
     {
@@ -1498,4 +1591,4 @@ namespace P64::CollNew {
     }
   }
 
-} // namespace P64::CollNew
+} // namespace P64::Coll

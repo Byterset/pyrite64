@@ -52,13 +52,13 @@ namespace P64::Comp
     data->rigid_body.gravityScalar = initData->gravityScalar;
     data->rigid_body.timeScalar = initData->timeScalar;
     data->rigid_body.angularDamping = initData->angularDamping;
-    data->rigid_body.constraints = CollNew::Constraint::None;
-    if(initData->constrainPosX) data->rigid_body.constraints = data->rigid_body.constraints | CollNew::Constraint::FreezePosX;
-    if(initData->constrainPosY) data->rigid_body.constraints = data->rigid_body.constraints | CollNew::Constraint::FreezePosY;
-    if(initData->constrainPosZ) data->rigid_body.constraints = data->rigid_body.constraints | CollNew::Constraint::FreezePosZ;
-    if(initData->constrainRotX) data->rigid_body.constraints = data->rigid_body.constraints | CollNew::Constraint::FreezeRotX;
-    if(initData->constrainRotY) data->rigid_body.constraints = data->rigid_body.constraints | CollNew::Constraint::FreezeRotY;
-    if(initData->constrainRotZ) data->rigid_body.constraints = data->rigid_body.constraints | CollNew::Constraint::FreezeRotZ;
+    data->rigid_body.constraints = Coll::Constraint::None;
+    if(initData->constrainPosX) data->rigid_body.constraints = data->rigid_body.constraints | Coll::Constraint::FreezePosX;
+    if(initData->constrainPosY) data->rigid_body.constraints = data->rigid_body.constraints | Coll::Constraint::FreezePosY;
+    if(initData->constrainPosZ) data->rigid_body.constraints = data->rigid_body.constraints | Coll::Constraint::FreezePosZ;
+    if(initData->constrainRotX) data->rigid_body.constraints = data->rigid_body.constraints | Coll::Constraint::FreezeRotX;
+    if(initData->constrainRotY) data->rigid_body.constraints = data->rigid_body.constraints | Coll::Constraint::FreezeRotY;
+    if(initData->constrainRotZ) data->rigid_body.constraints = data->rigid_body.constraints | Coll::Constraint::FreezeRotZ;
 
     if(obj.isEnabled()) {
       coll.addRigidBody(&data->rigid_body);

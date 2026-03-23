@@ -82,14 +82,14 @@ namespace Project::Component::CollBody
     ctx.fileObj.write(data.halfExtend.resolve(obj.propOverrides));
     ctx.fileObj.write(data.offset.resolve(obj.propOverrides));
 
-    uint8_t type = (uint8_t)P64::CollNew::ShapeType::Box;
+    uint8_t type = (uint8_t)P64::Coll::ShapeType::Box;
     switch (data.type.resolve(obj.propOverrides)) {
-      case TYPE_BOX: type = (uint8_t)P64::CollNew::ShapeType::Box; break;
-      case TYPE_SPHERE: type = (uint8_t)P64::CollNew::ShapeType::Sphere; break;
-      case TYPE_CYLINDER: type = (uint8_t)P64::CollNew::ShapeType::Cylinder; break;
-      case TYPE_CAPSULE: type = (uint8_t)P64::CollNew::ShapeType::Capsule; break;
-      case TYPE_CONE: type = (uint8_t)P64::CollNew::ShapeType::Cone; break;
-      case TYPE_PYRAMID: type = (uint8_t)P64::CollNew::ShapeType::Pyramid; break;
+      case TYPE_BOX: type = (uint8_t)P64::Coll::ShapeType::Box; break;
+      case TYPE_SPHERE: type = (uint8_t)P64::Coll::ShapeType::Sphere; break;
+      case TYPE_CYLINDER: type = (uint8_t)P64::Coll::ShapeType::Cylinder; break;
+      case TYPE_CAPSULE: type = (uint8_t)P64::Coll::ShapeType::Capsule; break;
+      case TYPE_CONE: type = (uint8_t)P64::Coll::ShapeType::Cone; break;
+      case TYPE_PYRAMID: type = (uint8_t)P64::Coll::ShapeType::Pyramid; break;
     }
     ctx.fileObj.write<uint8_t>(type);
     ctx.fileObj.write<uint8_t>(data.isTrigger.resolve(obj.propOverrides));

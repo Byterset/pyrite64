@@ -6,7 +6,7 @@
 
 #include "vec_math.h"
 
-namespace P64::CollNew {
+namespace P64::Coll {
 
   /// GJK support function: returns the furthest point on a convex shape in a given direction
   using GjkSupportFunction = void (*)(const void *data, const fm_vec3_t &direction, fm_vec3_t &output);
@@ -35,4 +35,4 @@ namespace P64::CollNew {
     const fm_vec3_t &firstDirection
   );
 
-} // namespace P64::CollNew
+} // namespace P64::Coll

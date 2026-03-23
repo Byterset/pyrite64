@@ -8,7 +8,7 @@
 #include "mesh_collider.h"
 #include "epa.h"
 
-namespace P64::CollNew {
+namespace P64::Coll {
 
   struct CollisionScene; // forward declare
 
@@ -17,8 +17,8 @@ namespace P64::CollNew {
   bool collideDetectObjectToTriangle(Collider *collider, RigidBody *rigidBody, const MeshCollider &mesh, int triangleIndex);
 
   ContactConstraint *collideCacheContactConstraint(
-    RigidBody *rigidBodyA, Collider *colliderA, Object *objectA,
-    RigidBody *rigidBodyB, Collider *colliderB, Object *objectB, const EpaResult &result,
+    RigidBody *rigidBodyA, Collider *colliderA, MeshCollider *meshColliderA, Object *objectA,
+    RigidBody *rigidBodyB, Collider *colliderB, MeshCollider *meshColliderB, Object *objectB, const EpaResult &result,
     float combinedFriction, float combinedBounce, bool isTrigger);
 
-} // namespace P64::CollNew
+} // namespace P64::Coll

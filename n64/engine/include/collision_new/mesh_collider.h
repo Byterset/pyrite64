@@ -10,7 +10,7 @@
 
 namespace P64 { class Object; }
 
-namespace P64::CollNew {
+namespace P64::Coll {
 
   struct MeshCollider; // forward declare
 
@@ -55,6 +55,10 @@ namespace P64::CollNew {
     NodeProxy aabbTreeNodeId{NULL_NODE}; ///< Node ID in the scene's dynamic AABB tree
     AABB localRootAABB{};                ///< Root AABB of the local triangle tree
     AABB worldBoundingBox{};             ///< Cached world-space AABB
+    fm_vec3_t lastOwnerPos{};
+    fm_quat_t lastOwnerRot{QUAT_IDENTITY};
+    fm_vec3_t lastOwnerScale{1.0f, 1.0f, 1.0f};
+    bool hasCachedOwnerTransform{false};
 
     /// Transform a local-space point to world space
     fm_vec3_t toWorldSpace(const fm_vec3_t &localPoint) const;
@@ -67,6 +71,10 @@ namespace P64::CollNew {
 
     /// Recompute worldBoundingBox from localRootAABB + current transform
     void recalculateWorldAABB();
+    /// Returns true if the owner's transform differs from the cached transform snapshot
+    bool ownerTransformChanged() const;
+    /// Updates the cached owner transform snapshot to the current owner transform
+    void syncOwnerTransform();
     /// Compute localRootAABB from the internal AABB tree root node
     void computeLocalRootAABB();
     /// Transform a world-space AABB into a conservative local-space AABB for tree queries
@@ -91,4 +99,4 @@ namespace P64::CollNew {
     void destroyData();
   };
 
-} // namespace P64::CollNew
+} // namespace P64::Coll

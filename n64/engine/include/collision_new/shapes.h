@@ -7,7 +7,7 @@
 #include "vec_math.h"
 #include <cmath>
 
-namespace P64::CollNew {
+namespace P64::Coll {
 
   struct AABB {
     fm_vec3_t min{};
@@ -104,4 +104,4 @@ namespace P64::CollNew {
     fm_vec3_t inertiaTensor(float mass) const;
   };
 
-} // namespace P64::CollNew
+} // namespace P64::Coll

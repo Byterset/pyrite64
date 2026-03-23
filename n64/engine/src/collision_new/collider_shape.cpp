@@ -4,7 +4,7 @@
  */
 #include "collision_new/collider_shape.h"
 
-using namespace P64::CollNew;
+using namespace P64::Coll;
 
 fm_vec3_t Collider::support(const fm_vec3_t &dir) const {
   switch(type) {
@@ -42,7 +42,7 @@ fm_vec3_t Collider::inertiaTensor(float mass) const {
   __builtin_unreachable();
 }
 
-void P64::CollNew::colliderGjkSupport(const void *data, const fm_vec3_t &direction, fm_vec3_t &output) {
+void P64::Coll::colliderGjkSupport(const void *data, const fm_vec3_t &direction, fm_vec3_t &output) {
   auto *collider = static_cast<const Collider *>(data);
   output = collider->support(direction);
 }
