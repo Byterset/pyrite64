@@ -78,8 +78,6 @@ namespace P64::CollNew {
     position = &object->pos;
     rotation = &object->rot;
     collisionGroup = 0;
-    activeContacts.clear();
-    activeContacts.reserve(8);
     aabbTreeNodeId = NULL_NODE;
     constraints = Constraint::None;
     sleepCounter = 0;

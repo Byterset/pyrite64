@@ -12,8 +12,6 @@ namespace P64::CollNew {
 
   struct CollisionScene; // forward declare
 
-  void collideAddContact(RigidBody *rigidBody, ContactConstraint *constraint, RigidBody *other);
-
   void collideDetectObjectToObject(Collider *colliderA, RigidBody *rigidBodyA, Collider *colliderB, RigidBody *rigidBodyB);
   void collideDetectObjectToMesh(Collider *collider, RigidBody *rigidBody, const MeshCollider &mesh);
   bool collideDetectObjectToTriangle(Collider *collider, RigidBody *rigidBody, const MeshCollider &mesh, int triangleIndex);

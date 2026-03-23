@@ -84,7 +84,6 @@ namespace P64::CollNew {
     // Collision
     AABB boundingBox{};
     fm_vec3_t centerOffset{};
-    std::vector<Contact> activeContacts{};
 
     // Cached transforms
     Matrix3x3 invWorldInertiaTensor{};

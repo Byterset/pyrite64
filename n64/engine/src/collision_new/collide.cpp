@@ -30,6 +30,29 @@ namespace P64::CollNew {
     return quatToMatrix3(colliderOrientation(collider));
   }
 
+  static ConstraintCacheKeyPart makeConstraintCacheKeyPart(Collider *collider, Object *object) {
+    if(collider) return ConstraintCacheKeyPart{collider, 1};
+    if(object) return ConstraintCacheKeyPart{object, 2};
+    return ConstraintCacheKeyPart{};
+  }
+
+  static bool shouldSwapConstraintOrder(Collider *colliderA, Object *objectA, Collider *colliderB, Object *objectB) {
+    const ConstraintCacheKeyPart keyA = makeConstraintCacheKeyPart(colliderA, objectA);
+    const ConstraintCacheKeyPart keyB = makeConstraintCacheKeyPart(colliderB, objectB);
+    return keyB < keyA;
+  }
+
+  static void swapConstraintOrder(
+    RigidBody *&rigidBodyA, Collider *&colliderA, Object *&objectA,
+    RigidBody *&rigidBodyB, Collider *&colliderB, Object *&objectB,
+    EpaResult &result) {
+    std::swap(rigidBodyA, rigidBodyB);
+    std::swap(colliderA, colliderB);
+    std::swap(objectA, objectB);
+    result.normal = vec3Negate(result.normal);
+    std::swap(result.contactA, result.contactB);
+  }
+
   static void colliderProxyGjkSupport(const void *data, const fm_vec3_t &direction, fm_vec3_t &output) {
     const auto *proxy = static_cast<const ColliderProxy *>(data);
     if(!proxy || !proxy->collider) {
@@ -171,13 +194,6 @@ namespace P64::CollNew {
     return true;
   }
 
-  // ── Contact management ────────────────────────────────────────────
-
-  void collideAddContact(RigidBody *rigidBody, ContactConstraint *constraint, RigidBody *other) {
-    if(!rigidBody || !constraint) return;
-    rigidBody->activeContacts.push_back(Contact{constraint, other});
-  }
-
 
   // ── Contact constraint caching ────────────────────────────────────
 
@@ -187,33 +203,34 @@ namespace P64::CollNew {
     float combinedFriction, float combinedBounce, bool isTrigger) {
 
     CollisionScene *scene = collisionSceneGetInstance();
-    P64::Scene &gameScene = P64::SceneManager::getCurrent();
+    EpaResult orderedResult = result;
+
+    if(shouldSwapConstraintOrder(colliderA, objectA, colliderB, objectB)) {
+      swapConstraintOrder(rigidBodyA, colliderA, objectA, rigidBodyB, colliderB, objectB, orderedResult);
+    }
 
     // Search for existing constraint with matching collider pair and similar normal
     ContactConstraint *existing = scene->findCachedConstraintByPair(
-      colliderA, colliderB, result.normal, 0.9f);
+      colliderA, objectA, colliderB, objectB, orderedResult.normal, 0.9f);
 
     if(existing) {
-      // Update existing constraint
-      bool wasAlreadyActive = existing->isActive;
-      existing->isActive = true;
-      existing->normal = result.normal;
-      vec3CalculateTangents(result.normal, existing->tangentU, existing->tangentV);
-
-      // Re-link contacts on first re-activation this frame
-      // (releaseObjectContacts freed the old Contact nodes at the start of step)
-      if(!wasAlreadyActive) {
-        if(rigidBodyA) collideAddContact(rigidBodyA, existing, rigidBodyB);
-        if(rigidBodyB) collideAddContact(rigidBodyB, existing, rigidBodyA);
+      if(existing->rigidBodyA != rigidBodyA || existing->colliderA != colliderA || existing->objectA != objectA ||
+         existing->rigidBodyB != rigidBodyB || existing->colliderB != colliderB || existing->objectB != objectB) {
+        return nullptr;
       }
+
+      // Update existing constraint
+      existing->isActive = true;
+      existing->normal = orderedResult.normal;
+      vec3CalculateTangents(orderedResult.normal, existing->tangentU, existing->tangentV);
 
       // Try to match new contact to an existing point by proximity
       constexpr float MATCH_DIST_SQ = 0.02f;
       int matchedIdx = -1;
       float bestDistSq = MATCH_DIST_SQ;
       for(int i = 0; i < existing->pointCount; ++i) {
-        float distA = vec3DistSqrd(existing->points[i].contactA, result.contactA);
-        float distB = vec3DistSqrd(existing->points[i].contactB, result.contactB);
+        float distA = vec3DistSqrd(existing->points[i].contactA, orderedResult.contactA);
+        float distB = vec3DistSqrd(existing->points[i].contactB, orderedResult.contactB);
         float minDist = fminf(distA, distB);
         if(minDist < bestDistSq) {
           bestDistSq = minDist;
@@ -242,7 +259,7 @@ namespace P64::CollNew {
             minPenIdx = i;
           }
         }
-        if(result.penetration > minPen) {
+        if(orderedResult.penetration > minPen) {
           target = &existing->points[minPenIdx];
           target->accumulatedNormalImpulse = 0.0f;
           target->accumulatedTangentImpulseU = 0.0f;
@@ -251,10 +268,10 @@ namespace P64::CollNew {
       }
 
       if(target) {
-        target->contactA = result.contactA;
-        target->contactB = result.contactB;
-        target->point = vec3Scale(vec3Add(result.contactA, result.contactB), 0.5f);
-        target->penetration = result.penetration;
+        target->contactA = orderedResult.contactA;
+        target->contactB = orderedResult.contactB;
+        target->point = vec3Scale(vec3Add(orderedResult.contactA, orderedResult.contactB), 0.5f);
+        target->penetration = orderedResult.penetration;
         target->active = true;
 
         if(rigidBodyA) {
@@ -297,8 +314,8 @@ namespace P64::CollNew {
       rigidBodyA, colliderA, objectA,
       rigidBodyB, colliderB, objectB);
     if(!cc) return nullptr;
-    cc->normal = result.normal;
-    vec3CalculateTangents(result.normal, cc->tangentU, cc->tangentV);
+    cc->normal = orderedResult.normal;
+    vec3CalculateTangents(orderedResult.normal, cc->tangentU, cc->tangentV);
     cc->combinedFriction = combinedFriction;
     cc->combinedBounce = combinedBounce;
     cc->isActive = true;
@@ -307,10 +324,10 @@ namespace P64::CollNew {
 
     ContactPoint &cp = cc->points[0];
     cp = ContactPoint{};
-    cp.contactA = result.contactA;
-    cp.contactB = result.contactB;
-    cp.point = vec3Scale(vec3Add(result.contactA, result.contactB), 0.5f);
-    cp.penetration = result.penetration;
+    cp.contactA = orderedResult.contactA;
+    cp.contactB = orderedResult.contactB;
+    cp.point = vec3Scale(vec3Add(orderedResult.contactA, orderedResult.contactB), 0.5f);
+    cp.penetration = orderedResult.penetration;
     cp.active = true;
 
     if(rigidBodyA) {
@@ -331,13 +348,6 @@ namespace P64::CollNew {
       cp.localPointB = cp.contactB;
     }
 
-    // Link contacts to rigid bodies
-    if(rigidBodyA) {
-      collideAddContact(rigidBodyA, cc, rigidBodyB);
-    }
-    if(rigidBodyB) {
-      collideAddContact(rigidBodyB, cc, rigidBodyA);
-    }
 
     return cc;
   }

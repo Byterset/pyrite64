@@ -12,9 +12,12 @@
 #include "raycast.h"
 #include <array>
 #include <deque>
+#include <functional>
 #include <map>
 #include <cstddef>
+#include <unordered_set>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace P64::CollNew {
@@ -37,6 +40,20 @@ namespace P64::CollNew {
     fm_vec3_t relativeVelocity{};
     // TODO: add array of contacts
   };
+
+  struct ConstraintCacheKeyPart {
+    const void *identity{nullptr};
+    uint8_t kind{0};
+
+    bool operator<(const ConstraintCacheKeyPart &other) const {
+      if(identity != other.identity) {
+        return std::less<const void *>{}(identity, other.identity);
+      }
+      return kind < other.kind;
+    }
+  };
+
+  using ConstraintCacheKey = std::pair<ConstraintCacheKeyPart, ConstraintCacheKeyPart>;
 
   class CollisionScene {
   public:
@@ -69,7 +86,8 @@ namespace P64::CollNew {
       RigidBody *rigidBodyA, Collider *colliderA, Object *objectA,
       RigidBody *rigidBodyB, Collider *colliderB, Object *objectB);
     ContactConstraint *findCachedConstraintByPair(
-      Collider *colliderA, Collider *colliderB,
+      Collider *colliderA, Object *objectA,
+      Collider *colliderB, Object *objectB,
       const fm_vec3_t &normal, float minNormalDot);
 
     bool raycast(Raycast &ray, RaycastHit &hit) const;
@@ -81,7 +99,7 @@ namespace P64::CollNew {
     std::vector<Collider *> colliders_{};
     std::unordered_map<const Object *, std::vector<Collider *>> ownerColliders_{};
     std::deque<ContactConstraint> cachedConstraints_{};
-    std::map<std::pair<Collider *, Collider *>, std::vector<int>> cachedConstraintPairs_{};
+    std::map<ConstraintCacheKey, std::vector<int>> cachedConstraintPairs_{};
 
     AABBTree rigidBodyAABBTree;
 
@@ -95,15 +113,19 @@ namespace P64::CollNew {
 
     int cachedConstraintCount_{0};
 
-    static std::pair<Collider *, Collider *> makeColliderPairKey(Collider *a, Collider *b);
+    static ConstraintCacheKeyPart makeConstraintCacheKeyPart(Collider *collider, Object *object);
+    static ConstraintCacheKey makeConstraintPairKey(Collider *colliderA, Object *objectA, Collider *colliderB, Object *objectB);
+    static bool shouldTrackSleepState(const RigidBody *rigidBody);
+    static bool rigidBodyCanSleep(const RigidBody *rigidBody);
     RigidBody *findRigidBodyByOwner(const Object *owner) const;
     const std::vector<Collider *> *findCollidersForOwner(const Object *owner) const;
     void updateColliderWorldState(Collider *collider) const;
     void updateCompoundProperties(RigidBody *rigidBody) const;
+    void collectConnectedIsland(RigidBody *seed, std::vector<RigidBody *> &island, std::unordered_set<RigidBody *> &visited) const;
 
-    void releaseObjectContacts(RigidBody *rigidBody);
     void rebuildCachedConstraintPairs();
     void wakeIsland(RigidBody *rigidBody);
+    void updateSleepStates();
     void refreshContacts();
     void removeInactiveContacts();
     void detectAllContacts();
