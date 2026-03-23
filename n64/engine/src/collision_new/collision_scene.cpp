@@ -110,6 +110,12 @@ namespace P64::Coll {
     return false;
   }
 
+  bool CollisionScene::rigidBodyCompoundPropertiesNeedUpdate(const RigidBody *rigidBody) {
+    if(!rigidBody || !rigidBody->owner) return false;
+    if(rigidBody->compoundPropertiesDirty) return true;
+    return vec3DistSqrd(rigidBody->compoundScale, rigidBody->owner->scale) > EPSILON_SQUARED;
+  }
+
   void CollisionScene::rebuildCachedConstraintPairs() {
     cachedConstraintPairs_.clear();
     for(int i = 0; i < cachedConstraintCount_; ++i) {
@@ -244,6 +250,15 @@ namespace P64::Coll {
     );
   }
 
+  void CollisionScene::syncCompoundProperties(RigidBody *rigidBody) const {
+    if(!rigidBody || !rigidBody->owner) return;
+    if(!rigidBodyCompoundPropertiesNeedUpdate(rigidBody)) return;
+
+    updateCompoundProperties(rigidBody);
+    rigidBody->compoundScale = rigidBody->owner->scale;
+    rigidBody->compoundPropertiesDirty = false;
+  }
+
   // ── Object management ─────────────────────────────────────────────
 
   void CollisionScene::addRigidBody(RigidBody *rigidBody) {
@@ -252,7 +267,8 @@ namespace P64::Coll {
     ownerRigidBodies_[rigidBody->owner] = rigidBody;
     
 
-    updateCompoundProperties(rigidBody);
+    rigidBody->compoundPropertiesDirty = true;
+    syncCompoundProperties(rigidBody);
     rigidBody->updateWorldInertia();
     const fm_vec3_t worldPos = rigidBody->position ? *rigidBody->position : vec3Zero();
     rigidBody->boundingBox = AABB{worldPos, worldPos};
@@ -316,7 +332,8 @@ namespace P64::Coll {
     RigidBody *rigidBody = findRigidBodyByOwner(collider->owner);
     if (rigidBody)
     {
-      updateCompoundProperties(rigidBody);
+      rigidBody->compoundPropertiesDirty = true;
+      syncCompoundProperties(rigidBody);
       rigidBody->updateWorldInertia();
     }
   }
@@ -348,7 +365,8 @@ namespace P64::Coll {
     if(owner) {
       RigidBody *rigidBody = findRigidBodyByOwner(owner);
       if(rigidBody) {
-        updateCompoundProperties(rigidBody);
+        rigidBody->compoundPropertiesDirty = true;
+        syncCompoundProperties(rigidBody);
         rigidBody->updateWorldInertia();
       }
     }
@@ -1372,24 +1390,23 @@ namespace P64::Coll {
       updateColliderWorldState(collider);
     }
 
-    // 2. Update compound COM/inertia and world inertia tensors.
+    // 2. Update compound COM/inertia on demand and refresh world inertia tensors.
     for (RigidBody *body : rigidBodies_){
-      RigidBody *obj = body;
-      if(!obj || obj->isSleeping) continue;
-      updateCompoundProperties(obj);
-      obj->updateWorldInertia();
+      if(!body) continue;
+      syncCompoundProperties(body);
+      if(body->isSleeping) continue;
+      body->updateWorldInertia();
     }
     ticksWorldUpdate = get_ticks() - stageStart;
 
     stageStart = get_ticks();
     // 3. Integrate velocities
     for(RigidBody *body : rigidBodies_) {
-      RigidBody *obj = body;
-      if(!obj) continue;
+      if(!body) continue;
 
-      if(!obj->isSleeping) {
-        obj->integrateVelocity(fixedDt_, gravity_);
-        obj->integrateAngularVelocity(fixedDt_);
+      if(!body->isSleeping) {
+        body->integrateVelocity(fixedDt_, gravity_);
+        body->integrateAngularVelocity(fixedDt_);
       }
     }
     ticksIntegrateVel = get_ticks() - stageStart;

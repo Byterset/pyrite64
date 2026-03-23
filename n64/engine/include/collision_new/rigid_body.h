@@ -97,6 +97,7 @@ namespace P64::Coll {
     fm_quat_t prevStepRot{};
     fm_vec3_t localInertiaTensor{};
     fm_vec3_t invLocalInertiaTensor{};
+    fm_vec3_t compoundScale{};
 
     P64::Object *owner{};
     NodeProxy aabbTreeNodeId{NULL_NODE};
@@ -108,6 +109,7 @@ namespace P64::Coll {
     bool hasGravity{true};
     bool isKinematic{false};
     bool isSleeping{false};
+    bool compoundPropertiesDirty{true};
 
     // Methods
     void init(P64::Object *object, float m);

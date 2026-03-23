@@ -89,6 +89,9 @@ namespace P64::Coll {
     angularVelocity = vec3Zero();
     acceleration = vec3Zero();
     torqueAccumulator = vec3Zero();
+    centerOffset = vec3Zero();
+    compoundScale = object->scale;
+    compoundPropertiesDirty = true;
 
     timeScalar = 1.0f;
     gravityScalar = 1.0f;
@@ -110,6 +113,7 @@ namespace P64::Coll {
     assert(newMass > 0.0f);
     mass_ = newMass;
     invMass = 1.0f / newMass;
+    compoundPropertiesDirty = true;
 
     // Initialize inertia tensor for a solid sphere as a simple default.
     // This can be overridden later by the colliders associated with the owner object.

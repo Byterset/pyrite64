@@ -128,10 +128,12 @@ namespace P64::Coll {
     static bool shouldTrackSleepState(const RigidBody *rigidBody);
     static bool rigidBodyTransformExceededSleepThreshold(const RigidBody *rigidBody);
     static bool rigidBodyVelocitiesExceededSleepThreshold(const RigidBody *rigidBody);
+    static bool rigidBodyCompoundPropertiesNeedUpdate(const RigidBody *rigidBody);
     RigidBody *findRigidBodyByOwner(const Object *owner) const;
     const std::vector<Collider *> *findCollidersForOwner(const Object *owner) const;
     void updateColliderWorldState(Collider *collider) const;
     void updateCompoundProperties(RigidBody *rigidBody) const;
+    void syncCompoundProperties(RigidBody *rigidBody) const;
     void collectConnectedIsland(RigidBody *seed, std::vector<RigidBody *> &island, std::unordered_set<RigidBody *> &visited) const;
     static void addWakeCandidate(std::vector<RigidBody *> &wakeCandidates, RigidBody *candidate, RigidBody *ignoredCandidate = nullptr);
     void wakeCandidateIslands(const std::vector<RigidBody *> &wakeCandidates);
