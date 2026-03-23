@@ -369,14 +369,14 @@ namespace P64::Coll {
     return cc;
   }
 
-  // ── Object-to-triangle (internal helper, returns EPA result) ────
+  // ── Object-to-triangle helpers ───────────────────────────────────
 
-  static bool testObjectToTriangle(Collider *collider, const MeshCollider &mesh,
-                                    int triangleIndex, EpaResult &epaResult) {
+  static bool overlapObjectToTriangle(Collider *collider, const MeshCollider &mesh,
+                                      int triangleIndex, MeshTriangle &tri, Simplex &simplex, ColliderProxy &colliderProxy) {
     if(!collider) return false;
     if(triangleIndex < 0 || triangleIndex >= mesh.triangleCount) return false;
 
-    MeshTriangle tri;
+    tri = MeshTriangle{};
     tri.vertices = mesh.vertices;
     tri.tri = mesh.triangles[triangleIndex];
     tri.normal = mesh.normals[triangleIndex];
@@ -396,22 +396,31 @@ namespace P64::Coll {
     fm_vec3_t firstDir = vec3Sub(collider->worldCenter, worldV0);
     if(vec3MagSqrd(firstDir) < EPSILON) firstDir = vec3Up();
 
-    ColliderProxy colliderProxy;
+    colliderProxy = ColliderProxy{};
     colliderProxy.collider = collider;
     colliderProxy.worldCenter = collider->worldCenter;
     colliderProxy.rotation = colliderRotationMatrix(collider);
     colliderProxy.rotationT = matrix3Transpose(colliderProxy.rotation);
 
-    Simplex simplex;
     simplex.nPoints = 0;
-    bool overlapping = gjkCheckForOverlap(
+    return gjkCheckForOverlap(
       simplex,
       &colliderProxy, colliderProxyGjkSupport,
       &tri, meshTriangleGjkSupport,
       firstDir
     );
+  }
 
-    if(!overlapping) return false;
+  // ── Object-to-triangle (internal helper, returns EPA result) ────
+
+  static bool testObjectToTriangle(Collider *collider, const MeshCollider &mesh,
+                                    int triangleIndex, EpaResult &epaResult) {
+    MeshTriangle tri;
+    Simplex simplex;
+    ColliderProxy colliderProxy;
+    if(!overlapObjectToTriangle(collider, mesh, triangleIndex, tri, simplex, colliderProxy)) {
+      return false;
+    }
 
     bool epaOk = epaSolve(
       simplex,
@@ -426,15 +435,43 @@ namespace P64::Coll {
   // ── Object-to-triangle (public, single-triangle test + cache) ────
 
   bool collideDetectObjectToTriangle(Collider *collider, RigidBody *rigidBody, const MeshCollider &mesh, int triangleIndex) {
+    const bool isTriggerContact = collider->isTrigger;
+
+    Object *objectA = collider->owner;
+    Object *objectB = mesh.owner;
+
+    if(isTriggerContact) {
+      MeshTriangle tri;
+      Simplex simplex;
+      ColliderProxy colliderProxy;
+      if(!overlapObjectToTriangle(collider, mesh, triangleIndex, tri, simplex, colliderProxy)) {
+        return false;
+      }
+
+      const fm_vec3_t v0 = tri.worldVertex(0);
+      const fm_vec3_t v1 = tri.worldVertex(1);
+      const fm_vec3_t v2 = tri.worldVertex(2);
+      const fm_vec3_t triCenter = vec3Scale(vec3Add(vec3Add(v0, v1), v2), 1.0f / 3.0f);
+
+      EpaResult dummyResult;
+      dummyResult.normal = makeSafeContactNormal(tri.normal, collider->worldCenter, triCenter);
+      dummyResult.penetration = 0.0f;
+      dummyResult.contactA = collider->worldCenter;
+      dummyResult.contactB = triCenter;
+
+      collideCacheContactConstraint(
+        rigidBody, collider, nullptr, objectA,
+        nullptr, nullptr, const_cast<MeshCollider *>(&mesh), objectB,
+        dummyResult, 0.0f, 0.0f, true);
+
+      return true;
+    }
+
     EpaResult epaResult;
     if(!testObjectToTriangle(collider, mesh, triangleIndex, epaResult)) return false;
 
     float combinedFriction = fmin(collider->friction, mesh.friction);
     float combinedBounce = fmax(collider->bounce, mesh.bounce);
-    const bool isTriggerContact = collider->isTrigger;
-
-    Object *objectA = collider->owner;
-    Object *objectB = mesh.owner;
 
     collideCacheContactConstraint(
       rigidBody, collider, nullptr, objectA,
@@ -465,7 +502,9 @@ namespace P64::Coll {
       void *data = mesh.aabbTree.getNodeData(candidates[i]);
       if(!data) continue;
       int triIndex = static_cast<int>(reinterpret_cast<intptr_t>(data)) - 1; // stored as index+1 to avoid nullptr
-      collideDetectObjectToTriangle(collider, rigidBody, mesh, triIndex);
+      if(collideDetectObjectToTriangle(collider, rigidBody, mesh, triIndex) && collider->isTrigger) {
+        return;
+      }
     }
   }
 
