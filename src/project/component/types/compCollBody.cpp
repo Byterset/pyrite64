@@ -15,7 +15,7 @@
 #include <glm/gtc/quaternion.hpp>
 #include <algorithm>
 
-#include "../../../../n64/engine/include/collision_new/types.h"
+#include "../../../../n64/engine/include/collision/types.h"
 
 namespace
 {

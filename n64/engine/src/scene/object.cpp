@@ -42,6 +42,10 @@ void P64::Object::setEnabled(bool isEnabled)
       });
     }
   }
+
+  if(hasChildren()) {
+    SceneManager::getCurrent().setGroupEnabled(id, this->isEnabled());
+  }
 }
 
 void P64::Object::remove()

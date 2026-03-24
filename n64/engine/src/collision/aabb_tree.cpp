@@ -2,7 +2,7 @@
  * @copyright 2024 - Max Bebök
  * @license MIT
  */
-#include "collision_new/aabb_tree.h"
+#include "collision/aabb_tree.h"
 
 #include <algorithm>
 #include <cmath>

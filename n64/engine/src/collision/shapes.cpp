@@ -2,7 +2,7 @@
  * @copyright 2024 - Max Bebök
  * @license MIT
  */
-#include "collision_new/shapes.h"
+#include "collision/shapes.h"
 
 #include <cmath>
 

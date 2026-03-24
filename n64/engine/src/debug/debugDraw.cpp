@@ -3,7 +3,7 @@
 * @license MIT
 */
 #include "debug/debugDraw.h"
-#include "collision_new/vec_math.h"
+#include "collision/vec_math.h"
 #include <t3d/t3d.h>
 #include <cmath>
 #include <vector>

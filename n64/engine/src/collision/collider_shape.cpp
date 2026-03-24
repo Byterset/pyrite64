@@ -2,7 +2,7 @@
  * @copyright 2024 - Max Bebök
  * @license MIT
  */
-#include "collision_new/collider_shape.h"
+#include "collision/collider_shape.h"
 
 using namespace P64::Coll;
 

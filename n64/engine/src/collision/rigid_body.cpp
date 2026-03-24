@@ -2,7 +2,7 @@
  * @copyright 2024 - Max Bebök
  * @license MIT
  */
-#include "collision_new/rigid_body.h"
+#include "collision/rigid_body.h"
 #include <cassert>
 #include <cmath>
 

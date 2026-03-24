@@ -11,7 +11,7 @@
  *   - The collision normal
  *   - Contact points on both objects
  */
-#include "collision_new/epa.h"
+#include "collision/epa.h"
 
 #include <cassert>
 

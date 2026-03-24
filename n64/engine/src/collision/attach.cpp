@@ -2,7 +2,7 @@
 * @copyright 2026 - Max Bebök
 * @license MIT
 */
-#include "collision_new/attach.h"
+#include "collision/attach.h"
 #include "scene/components/collMesh.h"
 #include "scene/scene.h"
 

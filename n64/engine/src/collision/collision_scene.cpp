@@ -2,9 +2,9 @@
  * @copyright 2024 - Max Bebök
  * @license MIT
  */
-#include "collision_new/collision_scene.h"
-#include "collision_new/collide.h"
-#include "collision_new/gjk.h"
+#include "collision/collision_scene.h"
+#include "collision/collide.h"
+#include "collision/gjk.h"
 #include "scene/scene.h"
 
 #include <cmath>
@@ -1675,7 +1675,6 @@ namespace P64::Coll {
     stageStart = get_ticks();
     for(uint8_t iter = 0; iter < positionSolverIterations_; ++iter) {
       if(!solvePositionConstraints()) {
-        debugf("Position solver converged after %d iterations\n", iter + 1);
         break;
       }
     }

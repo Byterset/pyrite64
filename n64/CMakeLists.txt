@@ -83,8 +83,8 @@ add_executable(n64_engine
         engine/src/renderer/particles/ptxSprites.cpp
         engine/src/lib/math.cpp
         engine/src/debug/overlay.cpp
-        engine/include/collision_new/attach.h
-        engine/src/collision_new/attach.cpp
+        engine/include/collision/attach.h
+        engine/src/collision/attach.cpp
         engine/src/scene/componentTable.cpp
         engine/src/scene/components/culling.cpp
         engine/include/renderer/material.h

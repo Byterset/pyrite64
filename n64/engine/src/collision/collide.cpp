@@ -2,9 +2,9 @@
  * @copyright 2024 - Max Bebök
  * @license MIT
  */
-#include "collision_new/collide.h"
-#include "collision_new/collision_scene.h"
-#include "collision_new/gjk.h"
+#include "collision/collide.h"
+#include "collision/collision_scene.h"
+#include "collision/gjk.h"
 
 #include <cmath>
 #include <cstdlib>

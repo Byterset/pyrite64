@@ -2,7 +2,7 @@
  * @copyright 2024 - Max Bebök
  * @license MIT
  */
-#include "collision_new/raycast.h"
+#include "collision/raycast.h"
 
 namespace P64::Coll {
 

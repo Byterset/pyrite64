@@ -10,7 +10,7 @@
 
 #include "scene/scene.h"
 #include "scene/globalState.h"
-#include "collision_new/mesh_collider.h"
+#include "collision/mesh_collider.h"
 #include "vi/swapChain.h"
 #include "lib/memory.h"
 #include "lib/logger.h"
@@ -34,6 +34,22 @@ namespace
   uint16_t nextId = 0xFF;
   constexpr uint32_t MAX_PHYSICS_STEPS = 5;
   constexpr float SEC_TO_USEC = 1000000.0f;
+
+  void dispatchObjectEnabledEvent(P64::Object &obj, bool enabled)
+  {
+    auto compRefs = obj.getCompRefs();
+    for (uint32_t i=0; i<obj.compCount; ++i) {
+      const auto &compDef = P64::COMP_TABLE[compRefs[i].type];
+      if(!compDef.onEvent) continue;
+
+      char* dataPtr = (char*)&obj + compRefs[i].offset;
+      compDef.onEvent(obj, dataPtr, {
+        .senderId = 0,
+        .type = enabled ? P64::EVENT_TYPE_ENABLE : P64::EVENT_TYPE_DISABLE,
+        .value = 0
+      });
+    }
+  }
 #if RSPQ_PROFILE
   uint32_t frameCount = 0;
 #endif
@@ -328,17 +344,27 @@ void P64::Scene::onObjectCollision(const Coll::CollEvent &event)
   auto objB = event.otherObject;
   if(!objA || !objB)return;
 
-  auto compRefsA = objA->getCompRefs();
-  for (uint32_t i=0; i<objA->compCount; ++i)
+  // Only generate event for the components of objA if the collider that generated the contact
+  // is set to be affected by the other collider's layer (maskRead & maskWrite != 0).
+  // alternatively, always generate event for objA if it collided with a mesh collider since they have no masks
+  bool objACollidedWitMesh = (event.hitMeshCollider != nullptr);
+  bool generateEventForA = objACollidedWitMesh || ((event.selfCollider && event.hitCollider) && (event.selfCollider->maskRead & event.hitCollider->maskWrite) != 0);
+  if (generateEventForA)
   {
-    const auto &compDef = COMP_TABLE[compRefsA[i].type];
-    if(compDef.onColl) {
-      char* dataPtr = (char*)objA + compRefsA[i].offset;
-      compDef.onColl(*objA, dataPtr, event);
+    auto compRefsA = objA->getCompRefs();
+    for (uint32_t i = 0; i < objA->compCount; ++i)
+    {
+      const auto &compDef = COMP_TABLE[compRefsA[i].type];
+      if (compDef.onColl)
+      {
+        char *dataPtr = (char *)objA + compRefsA[i].offset;
+        compDef.onColl(*objA, dataPtr, event);
+      }
     }
   }
 
   //if(!event.otherBCS)return;
+
 
   Coll::CollEvent eventOther{
     .selfCollider = event.hitCollider,
@@ -350,6 +376,11 @@ void P64::Scene::onObjectCollision(const Coll::CollEvent &event)
     .contactCount = event.contactCount,
     .otherObject = objA
   };
+
+  bool objBCollidedWitMesh = (eventOther.hitMeshCollider != nullptr);
+  bool generateEventForB = objBCollidedWitMesh || ((eventOther.selfCollider && eventOther.hitCollider) && (eventOther.selfCollider->maskRead & eventOther.hitCollider->maskWrite) != 0);
+
+  if(!generateEventForB)return;
 
   for(uint16_t i = 0; i < event.contactCount; ++i) {
     eventOther.contacts[i] = event.contacts[i];
@@ -412,16 +443,24 @@ void P64::Scene::setGroupEnabled(uint16_t groupId, bool enabled) const
 {
   if(groupId == 0)return;
 
-  for(auto obj : objects)
-  {
-    if (groupId == obj->id) {
-      obj->setFlag(ObjectFlags::SELF_ACTIVE, enabled);
+  std::function<void(uint16_t, bool)> applyToChildren = [&](uint16_t parentId, bool parentsActive) {
+    for(auto obj : objects)
+    {
+      if(obj->group != parentId) continue;
+
+      const bool wasEnabled = obj->isEnabled();
+      obj->setFlag(ObjectFlags::PARENTS_ACTIVE, parentsActive);
+      const bool isEnabledNow = obj->isEnabled();
+
+      if(wasEnabled != isEnabledNow) {
+        dispatchObjectEnabledEvent(*obj, isEnabledNow);
+      }
+
+      applyToChildren(obj->id, isEnabledNow);
     }
-    if (groupId == obj->group) {
-      //debugf("-> obj %d active = %d\n", obj->id, enabled);
-      obj->setFlag(ObjectFlags::PARENTS_ACTIVE, enabled);
-    }
-  }
+  };
+
+  applyToChildren(groupId, enabled);
 }
 
 P64::Lighting & P64::Scene::startLightingOverride(bool copyExisting)

@@ -6,7 +6,7 @@
 #include "scene/object.h"
 #include <t3d/t3dmodel.h>
 
-#include "collision_new/mesh_collider.h"
+#include "collision/mesh_collider.h"
 
 namespace P64::Comp
 {

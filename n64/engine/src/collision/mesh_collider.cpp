@@ -2,7 +2,7 @@
  * @copyright 2024 - Max Bebök
  * @license MIT
  */
-#include "collision_new/mesh_collider.h"
+#include "collision/mesh_collider.h"
 #include "scene/object.h"
 
 namespace P64::Coll {

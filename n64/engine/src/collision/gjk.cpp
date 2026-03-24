@@ -7,7 +7,7 @@
  * Efficiently determines if two convex shapes overlap by building a simplex (tetrahedron)
  * that contains the origin in Minkowski difference space.
  */
-#include "collision_new/gjk.h"
+#include "collision/gjk.h"
 
 using namespace P64::Coll;
 
