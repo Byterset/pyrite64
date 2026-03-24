@@ -49,6 +49,7 @@ nlohmann::json Project::SceneConf::serialize() const {
     .set(audioFreq)
     .set(physicsTickRate)
     .set(gravity)
+    .set(physicsScale)
     .set(velocitySolverIterations)
     .set(positionSolverIterations)
     .setArray<LayerConf>("layers3D", layers3D, writeLayer)
@@ -298,6 +299,7 @@ void Project::Scene::deserialize(const std::string &data)
     Utils::JSON::readProp(docConf, conf.audioFreq, 32000);
     Utils::JSON::readProp(docConf, conf.physicsTickRate, 50);
     Utils::JSON::readProp(docConf, conf.gravity, glm::vec3{0.0f, -9.8f * 16.0f, 0.0f});
+    Utils::JSON::readProp(docConf, conf.physicsScale, 16.0f);
     Utils::JSON::readProp(docConf, conf.velocitySolverIterations, 7);
     Utils::JSON::readProp(docConf, conf.positionSolverIterations, 6);
 

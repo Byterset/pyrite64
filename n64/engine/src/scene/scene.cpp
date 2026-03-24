@@ -96,7 +96,8 @@ P64::Scene::Scene(uint16_t sceneId, Scene** ref)
     conf.physicsTickRate > 0 ? (1.0f / static_cast<float>(conf.physicsTickRate)) : Coll::DEFAULT_FIXED_DT,
     conf.gravity,
     conf.velocitySolverIterations,
-    conf.positionSolverIterations
+    conf.positionSolverIterations,
+    conf.physicsScale
   );
   loadScene();
 

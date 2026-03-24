@@ -59,6 +59,14 @@ namespace P64::Coll {
     body->velocity = vec3Add(body->velocity, constrainLinearWorld(body, deltaLinearVelocity));
   }
 
+  static void applyConstrainedImpulseAtContact(RigidBody *body, const fm_vec3_t &impulse, const fm_vec3_t &toContact) {
+    if(!body || body->isKinematic) return;
+
+    applyConstrainedLinearVelocityDelta(body, vec3Scale(impulse, body->invMass));
+    fm_vec3_t angDelta = constrainAngularWorld(body, body->applyWorldInertia(vec3Cross(toContact, impulse)));
+    body->angularVelocity = vec3Add(body->angularVelocity, angDelta);
+  }
+
   static float constrainedLinearInvMassAlong(const RigidBody *body, const fm_vec3_t &direction) {
     if(!body || body->isKinematic) return 0.0f;
     if(body->invMass <= EPSILON) return 0.0f;
@@ -401,9 +409,10 @@ namespace P64::Coll {
     }
   }
 
-  void CollisionScene::configureSimulation(float fixedDt, const fm_vec3_t &gravity, uint8_t velocityIterations, uint8_t positionIterations) {
+  void CollisionScene::configureSimulation(float fixedDt, const fm_vec3_t &gravity, uint8_t velocityIterations, uint8_t positionIterations, float physicsScale) {
     fixedDt_ = fixedDt > 0.0f ? fixedDt : DEFAULT_FIXED_DT;
     gravity_ = gravity;
+    physicsScale_ = physicsScale > EPSILON ? physicsScale : DEFAULT_PHYSICS_SCALE;
     velocitySolverIterations_ = std::max<uint8_t>(1, velocityIterations);
     positionSolverIterations_ = std::max<uint8_t>(1, positionIterations);
   }
@@ -817,7 +826,7 @@ namespace P64::Coll {
   // ── Pre-solve ─────────────────────────────────────────────────────
 
   void CollisionScene::preSolveContacts() {
-    constexpr float RESTITUTION_SLOP = 0.5f;
+    const float restitutionSlop = 0.5f * physicsScale_;
 
     for(int i = 0; i < cachedConstraintCount_; ++i) {
       ContactConstraint &cc = cachedConstraints_[i];
@@ -884,7 +893,7 @@ namespace P64::Coll {
           relVel = vec3Sub(relVel, vec3Add(b->velocity, vec3Cross(b->angularVelocity, cp.bToContact)));
         }
         float relVelN = vec3Dot(relVel, cc.normal);
-        if(relVelN < -RESTITUTION_SLOP) {
+        if(relVelN < -restitutionSlop) {
           cp.velocityBias += cc.combinedBounce * relVelN;
         }
       }
@@ -958,16 +967,8 @@ namespace P64::Coll {
 
           fm_vec3_t impulseN = vec3Scale(cc.normal, dImpulseN);
 
-          if(a && !a->isKinematic) {
-            applyConstrainedLinearVelocityDelta(a, vec3Scale(impulseN, a->invMass));
-            fm_vec3_t angDeltaA = constrainAngularWorld(a, a->applyWorldInertia(vec3Cross(cp.aToContact, impulseN)));
-            a->angularVelocity = vec3Add(a->angularVelocity, angDeltaA);
-          }
-          if(b && !b->isKinematic) {
-            applyConstrainedLinearVelocityDelta(b, vec3Scale(impulseN, -b->invMass));
-            fm_vec3_t angDeltaB = constrainAngularWorld(b, b->applyWorldInertia(vec3Cross(cp.bToContact, impulseN)));
-            b->angularVelocity = vec3Sub(b->angularVelocity, angDeltaB);
-          }
+          applyConstrainedImpulseAtContact(a, impulseN, cp.aToContact);
+          applyConstrainedImpulseAtContact(b, vec3Negate(impulseN), cp.bToContact);
 
           // Friction with proper accumulation and Coulomb cone clamping.
           if(cc.combinedFriction > 0.0f) {
@@ -1011,44 +1012,13 @@ namespace P64::Coll {
             cp.accumulatedTangentImpulseU = newAccumU;
             cp.accumulatedTangentImpulseV = newAccumV;
 
-            if(fabsf(lambdaU) > EPSILON) {
-              fm_vec3_t impulseU = vec3Scale(cc.tangentU, lambdaU);
-              if(a && !a->isKinematic) {
-                fm_vec3_t linearImpulseA = vec3Scale(impulseU, a->invMass);
-                applyConstrainedLinearVelocityDelta(a, linearImpulseA);
-                if(a->rotation) {
-                  fm_vec3_t angDeltaA = constrainAngularWorld(a, a->applyWorldInertia(vec3Cross(cp.aToContact, impulseU)));
-                  a->angularVelocity = vec3Add(a->angularVelocity, angDeltaA);
-                }
-              }
-              if(b && !b->isKinematic) {
-                fm_vec3_t linearImpulseB = vec3Scale(impulseU, -b->invMass);
-                applyConstrainedLinearVelocityDelta(b, linearImpulseB);
-                if(b->rotation) {
-                  fm_vec3_t angDeltaB = constrainAngularWorld(b, b->applyWorldInertia(vec3Cross(cp.bToContact, impulseU)));
-                  b->angularVelocity = vec3Sub(b->angularVelocity, angDeltaB);
-                }
-              }
-            }
+            fm_vec3_t tangentImpulse = vec3Add(
+              vec3Scale(cc.tangentU, lambdaU),
+              vec3Scale(cc.tangentV, lambdaV));
 
-            if(fabsf(lambdaV) > EPSILON) {
-              fm_vec3_t impulseV = vec3Scale(cc.tangentV, lambdaV);
-              if(a && !a->isKinematic) {
-                fm_vec3_t linearImpulseA = vec3Scale(impulseV, a->invMass);
-                applyConstrainedLinearVelocityDelta(a, linearImpulseA);
-                if(a->rotation) {
-                  fm_vec3_t angDeltaA = constrainAngularWorld(a, a->applyWorldInertia(vec3Cross(cp.aToContact, impulseV)));
-                  a->angularVelocity = vec3Add(a->angularVelocity, angDeltaA);
-                }
-              }
-              if(b && !b->isKinematic) {
-                fm_vec3_t linearImpulseB = vec3Scale(impulseV, -b->invMass);
-                applyConstrainedLinearVelocityDelta(b, linearImpulseB);
-                if(b->rotation) {
-                  fm_vec3_t angDeltaB = constrainAngularWorld(b, b->applyWorldInertia(vec3Cross(cp.bToContact, impulseV)));
-                  b->angularVelocity = vec3Sub(b->angularVelocity, angDeltaB);
-                }
-              }
+            if(vec3MagSqrd(tangentImpulse) > EPSILON_SQUARED) {
+              applyConstrainedImpulseAtContact(a, tangentImpulse, cp.aToContact);
+              applyConstrainedImpulseAtContact(b, vec3Negate(tangentImpulse), cp.bToContact);
             }
           }
         }
@@ -1058,10 +1028,11 @@ namespace P64::Coll {
 
   // ── Position constraint solver ────────────────────────────────────
 
-  void CollisionScene::solvePositionConstraints() {
-    constexpr float SLOP = 0.01f;
-    constexpr float STEERING = 0.3f;
-    constexpr float MAX_CORRECTION = 0.04f;
+  bool CollisionScene::solvePositionConstraints() {
+    const float slop = 0.01f * physicsScale_;
+    const float steering = 0.3f * physicsScale_;
+    const float maxCorrection = 0.04f * physicsScale_;
+    bool appliedCorrection = false;
 
     for(int i = 0; i < cachedConstraintCount_; ++i) {
       ContactConstraint &cc = cachedConstraints_[i];
@@ -1098,9 +1069,9 @@ namespace P64::Coll {
         fm_vec3_t diff = vec3Sub(cp.contactA, cp.contactB);
         cp.penetration = -vec3Dot(diff, cc.normal);
 
-        if(cp.penetration < SLOP) continue;
+        if(cp.penetration < slop) continue;
 
-        float steeringForce = fminf(STEERING * (cp.penetration - SLOP), MAX_CORRECTION);
+        float steeringForce = fminf(steering * (cp.penetration - slop), maxCorrection);
         if(steeringForce <= 0.0f) continue;
 
         float invMassA = constrainedLinearInvMassAlong(a, cc.normal);
@@ -1121,6 +1092,7 @@ namespace P64::Coll {
 
         float correctionMag = steeringForce / invMassSum;
         fm_vec3_t impulse = vec3Scale(cc.normal, correctionMag);
+        appliedCorrection = true;
 
         // Apply linear + angular corrections to A
         if(a && !a->isKinematic && a->position) {
@@ -1159,6 +1131,8 @@ namespace P64::Coll {
         }
       }
     }
+
+    return appliedCorrection;
   }
 
   /// @brief Recalculate the world-space AABBs of all Mesh Colliders in the Collision Scene.
@@ -1476,7 +1450,10 @@ namespace P64::Coll {
     // 9. Position constraint solver
     stageStart = get_ticks();
     for(uint8_t iter = 0; iter < positionSolverIterations_; ++iter) {
-      solvePositionConstraints();
+      if(!solvePositionConstraints()) {
+        debugf("Position solver converged after %d iterations\n", iter + 1);
+        break;
+      }
     }
     ticksPositionSolve = get_ticks() - stageStart;
 

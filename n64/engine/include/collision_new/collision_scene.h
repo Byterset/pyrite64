@@ -23,6 +23,7 @@
 namespace P64::Coll {
   constexpr int MAX_OBJ_COLLISION_CANDIDATES = 15;
   constexpr float DEFAULT_FIXED_DT = 1.0f / 50.0f;
+  constexpr float DEFAULT_PHYSICS_SCALE = 16.0f;
   constexpr fm_vec3_t DEFAULT_GRAVITY = {0.0f, -9.8f * 16.0f, 0.0f}; //scaled with Pyrites default scale for assets
   constexpr uint8_t DEFAULT_VELOCITY_SOLVER_ITERATIONS = 7;
   constexpr uint8_t DEFAULT_POSITION_SOLVER_ITERATIONS = 6;
@@ -84,7 +85,7 @@ namespace P64::Coll {
     void addMeshCollider(MeshCollider *mesh);
     void removeMeshCollider(MeshCollider *mesh);
 
-    void configureSimulation(float fixedDt, const fm_vec3_t &gravity, uint8_t velocityIterations, uint8_t positionIterations);
+    void configureSimulation(float fixedDt, const fm_vec3_t &gravity, uint8_t velocityIterations, uint8_t positionIterations, float physicsScale);
     void wakeRigidBodyIsland(RigidBody *rigidBody);
 
     void step();
@@ -117,6 +118,7 @@ namespace P64::Coll {
     std::vector<MeshCollider *> meshColliders_{};
 
     float fixedDt_{DEFAULT_FIXED_DT};
+    float physicsScale_{DEFAULT_PHYSICS_SCALE};
     fm_vec3_t gravity_{DEFAULT_GRAVITY};
     uint8_t velocitySolverIterations_{DEFAULT_VELOCITY_SOLVER_ITERATIONS};
     uint8_t positionSolverIterations_{DEFAULT_POSITION_SOLVER_ITERATIONS};
@@ -154,7 +156,7 @@ namespace P64::Coll {
     void preSolveContacts();
     void warmStart();
     void solveVelocityConstraints();
-    void solvePositionConstraints();
+    bool solvePositionConstraints();
     void fixSweptCollisions();
     void updateMeshColliderWorldAABBs();
   };

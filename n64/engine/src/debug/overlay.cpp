@@ -30,11 +30,27 @@ namespace {
 
   constexpr color_t COLOR_COLL_DETECT{ 0x00, 0xAA, 0x22, 0xFF};
   constexpr color_t COLOR_COLL{0x22,0xFF,0x00, 0xFF};
+  constexpr color_t COLOR_COLL_WAKE{0x00, 0x88, 0xCC, 0xFF};
+  constexpr color_t COLOR_COLL_WORLD{0x00, 0xCC, 0x88, 0xFF};
+  constexpr color_t COLOR_COLL_INTEGRATE_VEL{0x66, 0xCC, 0x00, 0xFF};
+  constexpr color_t COLOR_COLL_REFRESH{0xCC, 0xCC, 0x00, 0xFF};
+  constexpr color_t COLOR_COLL_PRESOLVE{0xFF, 0xA0, 0x00, 0xFF};
+  constexpr color_t COLOR_COLL_WARM{0xFF, 0x66, 0x00, 0xFF};
+  constexpr color_t COLOR_COLL_VEL_SOLVE{0xFF, 0x22, 0x22, 0xFF};
+  constexpr color_t COLOR_COLL_INTEGRATE_POS{0xCC, 0x33, 0x88, 0xFF};
+  constexpr color_t COLOR_COLL_POS_SOLVE{0x88, 0x44, 0xCC, 0xFF};
+  constexpr color_t COLOR_COLL_FINALIZE{0x66, 0x66, 0x66, 0xFF};
   constexpr color_t COLOR_ACTOR_UPDATE{0xAA,0,0, 0xFF};
   constexpr color_t COLOR_GLOBAL_UPDATE{0x33,0x33,0x33, 0xFF};
   constexpr color_t COLOR_SCENE_DRAW{0xFF,0x80,0x10, 0xFF};
   constexpr color_t COLOR_GLOBAL_DRAW{0x33,0x33,0x33, 0xFF};
   constexpr color_t COLOR_AUDIO{0x43, 0x52, 0xFF, 0xFF};
+
+  struct CollTimingEntry {
+    const char *label{};
+    uint64_t ticks{};
+    color_t color{};
+  };
 
   enum class MenuItemType : uint8_t {
     BOOL,
@@ -264,6 +280,35 @@ void Debug::Overlay::draw(P64::Scene &scene, surface_t* surf)
     posY += 8;
   }
 
+  const CollTimingEntry collTimingEntries[] = {
+    {"Wake", collScene.ticksWakePrep, COLOR_COLL_WAKE},
+    {"World", collScene.ticksWorldUpdate, COLOR_COLL_WORLD},
+    {"IntV", collScene.ticksIntegrateVel, COLOR_COLL_INTEGRATE_VEL},
+    {"Detect", collScene.ticksDetect, COLOR_COLL_DETECT},
+    {"Refresh", collScene.ticksRefreshCallbacks, COLOR_COLL_REFRESH},
+    {"Pre", collScene.ticksPreSolve, COLOR_COLL_PRESOLVE},
+    {"Warm", collScene.ticksWarmStart, COLOR_COLL_WARM},
+    {"Vel", collScene.ticksVelocitySolve, COLOR_COLL_VEL_SOLVE},
+    {"IntP", collScene.ticksIntegratePos, COLOR_COLL_INTEGRATE_POS},
+    {"Pos", collScene.ticksPositionSolve, COLOR_COLL_POS_SOLVE},
+    {"Final", collScene.ticksFinalize, COLOR_COLL_FINALIZE},
+  };
+
+  posX = 140;
+  posY = 38;
+  for(size_t i = 0; i < std::size(collTimingEntries); ++i) {
+    const CollTimingEntry &entry = collTimingEntries[i];
+    if((i % 2) == 0 && i != 0) {
+      posY += 8;
+    }
+
+    float colX = (i % 2) == 0 ? 140.0f : 228.0f;
+    rdpq_set_prim_color(entry.color);
+    Debug::printf(colX, posY, "%s:%.2f", entry.label, (double)TICKS_TO_US(entry.ticks) / 1000.0);
+  }
+
+  rdpq_set_prim_color({0xFF,0xFF,0xFF, 0xFF});
+
   // audio channels
   posX = 24;
   posY = SCREEN_HEIGHT - 24;
@@ -305,11 +350,10 @@ void Debug::Overlay::draw(P64::Scene &scene, surface_t* surf)
   posY = 16;
 
   // Performance graph
-  uint64_t ticksCollRemainder = collScene.ticksTotal > collScene.ticksDetect
-    ? (collScene.ticksTotal - collScene.ticksDetect)
-    : 0;
-  float timeCollDetect = usToWidth(TICKS_TO_US(collScene.ticksDetect));
-  float timeColl = usToWidth(TICKS_TO_US(ticksCollRemainder));
+  float timeCollStages[std::size(collTimingEntries)];
+  for(size_t i = 0; i < std::size(collTimingEntries); ++i) {
+    timeCollStages[i] = usToWidth(TICKS_TO_US(collTimingEntries[i].ticks));
+  }
   float timeActorUpdate = usToWidth(TICKS_TO_US(scene.ticksActorUpdate));
   float timeGlobalUpdate = usToWidth(TICKS_TO_US(scene.ticksGlobalUpdate));
   float timeSceneDraw = usToWidth(TICKS_TO_US(scene.ticksDraw - scene.ticksGlobalDraw));
@@ -322,10 +366,12 @@ void Debug::Overlay::draw(P64::Scene &scene, surface_t* surf)
   rdpq_set_mode_fill({0x33,0x33,0x33, 0xFF});
   rdpq_fill_rectangle(posX-1 + (barWidth/2), posY-1, posX + barWidth+1, posY + barHeight+1);
 
-  rdpq_set_fill_color(COLOR_COLL_DETECT);
-  rdpq_fill_rectangle(posX, posY, posX + timeCollDetect, posY + barHeight); posX += timeCollDetect;
-  rdpq_set_fill_color(COLOR_COLL);
-  rdpq_fill_rectangle(posX, posY, posX + timeColl, posY + barHeight); posX += timeColl;
+  for(size_t i = 0; i < std::size(collTimingEntries); ++i) {
+    if(timeCollStages[i] <= 0.0f) continue;
+    rdpq_set_fill_color(collTimingEntries[i].color);
+    rdpq_fill_rectangle(posX, posY, posX + timeCollStages[i], posY + barHeight);
+    posX += timeCollStages[i];
+  }
   rdpq_set_fill_color(COLOR_ACTOR_UPDATE);
   rdpq_fill_rectangle(posX, posY, posX + timeActorUpdate, posY + barHeight); posX += timeActorUpdate;
   rdpq_set_fill_color(COLOR_GLOBAL_UPDATE);
