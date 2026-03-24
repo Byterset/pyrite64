@@ -67,6 +67,8 @@ namespace P64::Coll {
 
     bool isActive{false};
     bool isTrigger{false};
+    bool respondsA{true};
+    bool respondsB{true};
 
     ContactPoint points[MAX_CONTACT_POINTS_PER_PAIR]{};
   };

@@ -41,6 +41,14 @@ namespace P64::Coll {
     return keyB < keyA;
   }
 
+  static bool colliderReadsCollider(const Collider *reader, const Collider *writer) {
+    return reader && writer && ((reader->maskRead & writer->maskWrite) != 0);
+  }
+
+  static bool collidersShouldGenerateContact(const Collider *colliderA, const Collider *colliderB) {
+    return colliderReadsCollider(colliderA, colliderB) || colliderReadsCollider(colliderB, colliderA);
+  }
+
   static fm_vec3_t makeSafeContactNormal(const fm_vec3_t &normal, const fm_vec3_t &contactA, const fm_vec3_t &contactB) {
     if(vec3MagSqrd(normal) > EPSILON_SQUARED) {
       return vec3Normalize(normal);
@@ -213,7 +221,7 @@ namespace P64::Coll {
   ContactConstraint *collideCacheContactConstraint(
     RigidBody *rigidBodyA, Collider *colliderA, MeshCollider *meshColliderA, Object *objectA,
     RigidBody *rigidBodyB, Collider *colliderB, MeshCollider *meshColliderB, Object *objectB, const EpaResult &result,
-    float combinedFriction, float combinedBounce, bool isTrigger) {
+    float combinedFriction, float combinedBounce, bool isTrigger, bool respondsA, bool respondsB) {
 
     CollisionScene *scene = collisionSceneGetInstance();
     EpaResult orderedResult = result;
@@ -222,6 +230,7 @@ namespace P64::Coll {
 
     if(shouldSwapConstraintOrder(colliderA, objectA, colliderB, objectB)) {
       swapConstraintOrder(rigidBodyA, colliderA, meshColliderA, objectA, rigidBodyB, colliderB, meshColliderB, objectB, orderedResult);
+      std::swap(respondsA, respondsB);
     }
 
     // Search for existing constraint with matching collider pair and similar normal
@@ -240,6 +249,8 @@ namespace P64::Coll {
       existing->isActive = true;
       existing->normal = orderedResult.normal;
       vec3CalculateTangents(orderedResult.normal, existing->tangentU, existing->tangentV);
+      existing->respondsA = respondsA;
+      existing->respondsB = respondsB;
 
       // Try to match new contact to an existing point by proximity
       constexpr float MATCH_DIST_SQ = 0.02f;
@@ -337,6 +348,8 @@ namespace P64::Coll {
     cc->combinedBounce = combinedBounce;
     cc->isActive = true;
     cc->isTrigger = isTrigger;
+    cc->respondsA = respondsA;
+    cc->respondsB = respondsB;
     cc->pointCount = 1;
 
     ContactPoint &cp = cc->points[0];
@@ -462,7 +475,7 @@ namespace P64::Coll {
       collideCacheContactConstraint(
         rigidBody, collider, nullptr, objectA,
         nullptr, nullptr, const_cast<MeshCollider *>(&mesh), objectB,
-        dummyResult, 0.0f, 0.0f, true);
+        dummyResult, 0.0f, 0.0f, true, false, false);
 
       return true;
     }
@@ -476,7 +489,7 @@ namespace P64::Coll {
     collideCacheContactConstraint(
       rigidBody, collider, nullptr, objectA,
       nullptr, nullptr, const_cast<MeshCollider *>(&mesh), objectB,
-      epaResult, combinedFriction, combinedBounce, isTriggerContact);
+      epaResult, combinedFriction, combinedBounce, isTriggerContact, !isTriggerContact, false);
 
     return true;
   }
@@ -518,12 +531,14 @@ namespace P64::Coll {
     if(!colliderA || !colliderB) return;
 
     CollisionScene *scene = collisionSceneGetInstance();
+    const bool aReadsB = colliderReadsCollider(colliderA, colliderB);
+    const bool bReadsA = colliderReadsCollider(colliderB, colliderA);
 
     if(rbA && rbB && rbA->isSleeping && rbB->isSleeping && !colliderA->isTrigger && !colliderB->isTrigger) return;
 
     // If both have rigidbodies, evaluate rigidbody-level filters.
     if(colliderA && colliderB) {
-      if((colliderA->maskRead & colliderB->maskWrite) == 0) return;
+      if(!collidersShouldGenerateContact(colliderA, colliderB)) return;
       if(colliderA->isTrigger && colliderB->isTrigger) return;
     }
 
@@ -609,7 +624,8 @@ namespace P64::Coll {
         rbB, colliderB, nullptr, colliderB->owner,
         dummyResult,
         0.0f, 0.0f,
-        true
+        true,
+        false, false
       );
       return;
     }
@@ -627,8 +643,8 @@ namespace P64::Coll {
     }
 
     // Wake sleeping rigidBodies
-    if(rbA && rbA->isSleeping) scene->wakeRigidBodyIsland(rbA);
-    if(rbB && rbB->isSleeping) scene->wakeRigidBodyIsland(rbB);
+    if(aReadsB && rbA && rbA->isSleeping) scene->wakeRigidBodyIsland(rbA);
+    if(bReadsA && rbB && rbB->isSleeping) scene->wakeRigidBodyIsland(rbB);
 
     float combinedFriction = fmin(colliderA->friction, colliderB->friction);
     float combinedBounce = fmaxf(colliderA->bounce, colliderB->bounce);
@@ -637,7 +653,7 @@ namespace P64::Coll {
     collideCacheContactConstraint(
       rbA, colliderA, nullptr, colliderA->owner,
       rbB, colliderB, nullptr, colliderB->owner,
-      result, combinedFriction, combinedBounce, false);
+      result, combinedFriction, combinedBounce, false, aReadsB, bReadsA);
   }
 
 } // namespace P64::Coll

@@ -24,7 +24,7 @@ namespace P64::Coll {
   constexpr int MAX_OBJ_COLLISION_CANDIDATES = 15;
   constexpr float DEFAULT_FIXED_DT = 1.0f / 50.0f;
   constexpr float DEFAULT_PHYSICS_SCALE = 16.0f;
-  constexpr fm_vec3_t DEFAULT_GRAVITY = {0.0f, -9.8f * 16.0f, 0.0f}; //scaled with Pyrites default scale for assets
+  constexpr fm_vec3_t DEFAULT_GRAVITY = {0.0f, -9.8f, 0.0f}; //scaled with Pyrites default scale for assets
   constexpr uint8_t DEFAULT_VELOCITY_SOLVER_ITERATIONS = 7;
   constexpr uint8_t DEFAULT_POSITION_SOLVER_ITERATIONS = 6;
 
@@ -111,6 +111,7 @@ namespace P64::Coll {
     std::unordered_map<const Object *, std::vector<Collider *>> ownerColliders_{};
     std::deque<ContactConstraint> cachedConstraints_{};
     std::map<ConstraintCacheKey, std::vector<int>> cachedConstraintPairs_{};
+    std::vector<ContactConstraint *> solverConstraints_{};
 
     AABBTree rigidBodyAABBTree;
 
@@ -152,6 +153,7 @@ namespace P64::Coll {
     void updateSleepStates();
     void refreshContacts();
     void removeInactiveContacts();
+    void rebuildSolverConstraints();
     void detectAllContacts();
     void preSolveContacts();
     void warmStart();
