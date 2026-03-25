@@ -152,7 +152,7 @@ void Debug::Overlay::draw(P64::Scene &scene, surface_t* surf)
     didInit = true;
   }
 
-  auto &collScene = scene.getCollisionNew();
+  auto &collScene = scene.getCollision();
   uint64_t newTicksSelf = get_user_ticks();
   MEMORY_BARRIER();
 
@@ -239,7 +239,6 @@ void Debug::Overlay::draw(P64::Scene &scene, surface_t* surf)
   posX = Debug::printf(posX, posY, "Coll:%.2f", (double)TICKS_TO_US(collScene.ticksDetect) / 1000.0) + 4;
   rdpq_set_prim_color(COLOR_COLL);
   posX = Debug::printf(posX, posY, "%.2f", (double)TICKS_TO_US(collScene.ticksTotal) / 1000.0) + 8;
-  //posX = Debug::printf(posX, posY, "Ray:%d", collScene.raycastCount) + 8;
   rdpq_set_prim_color(COLOR_ACTOR_UPDATE);
   Debug::printf(posX, posY, "%.2f", (double)TICKS_TO_US(scene.ticksActorUpdate) / 1000.0);
     rdpq_set_prim_color(COLOR_GLOBAL_UPDATE);
@@ -349,11 +348,9 @@ void Debug::Overlay::draw(P64::Scene &scene, surface_t* surf)
   posX = 24;
   posY = 16;
 
-  // Performance graph
-  float timeCollStages[std::size(collTimingEntries)];
-  for(size_t i = 0; i < std::size(collTimingEntries); ++i) {
-    timeCollStages[i] = usToWidth(TICKS_TO_US(collTimingEntries[i].ticks));
-  }
+  // Performance graph (only detection and rest of physics)
+  float timeDetect = usToWidth(TICKS_TO_US(collScene.ticksDetect));
+  float timePhysicsRest = usToWidth(TICKS_TO_US(collScene.ticksTotal - collScene.ticksDetect));
   float timeActorUpdate = usToWidth(TICKS_TO_US(scene.ticksActorUpdate));
   float timeGlobalUpdate = usToWidth(TICKS_TO_US(scene.ticksGlobalUpdate));
   float timeSceneDraw = usToWidth(TICKS_TO_US(scene.ticksDraw - scene.ticksGlobalDraw));
@@ -366,11 +363,17 @@ void Debug::Overlay::draw(P64::Scene &scene, surface_t* surf)
   rdpq_set_mode_fill({0x33,0x33,0x33, 0xFF});
   rdpq_fill_rectangle(posX-1 + (barWidth/2), posY-1, posX + barWidth+1, posY + barHeight+1);
 
-  for(size_t i = 0; i < std::size(collTimingEntries); ++i) {
-    if(timeCollStages[i] <= 0.0f) continue;
-    rdpq_set_fill_color(collTimingEntries[i].color);
-    rdpq_fill_rectangle(posX, posY, posX + timeCollStages[i], posY + barHeight);
-    posX += timeCollStages[i];
+  // Draw detection time
+  if(timeDetect > 0.0f) {
+    rdpq_set_fill_color(COLOR_COLL_DETECT);
+    rdpq_fill_rectangle(posX, posY, posX + timeDetect, posY + barHeight);
+    posX += timeDetect;
+  }
+  // Draw rest of physics (total - detection)
+  if(timePhysicsRest > 0.0f) {
+    rdpq_set_fill_color(COLOR_COLL);
+    rdpq_fill_rectangle(posX, posY, posX + timePhysicsRest, posY + barHeight);
+    posX += timePhysicsRest;
   }
   rdpq_set_fill_color(COLOR_ACTOR_UPDATE);
   rdpq_fill_rectangle(posX, posY, posX + timeActorUpdate, posY + barHeight); posX += timeActorUpdate;

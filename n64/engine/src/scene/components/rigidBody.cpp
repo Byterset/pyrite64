@@ -4,7 +4,7 @@
 */
 #include "scene/object.h"
 #include "scene/components/rigidBody.h"
-
+#include "lib/logger.h"
 #include "scene/scene.h"
 #include "scene/sceneManager.h"
 #include <cmath>
@@ -33,7 +33,7 @@ namespace P64::Comp
   void RigidBody::initDelete([[maybe_unused]] Object& obj, RigidBody* data, void* initData_)
   {
     InitData* initData = static_cast<InitData*>(initData_);
-    auto &coll = SceneManager::getCurrent().getCollisionNew();
+    auto &coll = SceneManager::getCurrent().getCollision();
 
     if (initData == nullptr) {
       coll.removeRigidBody(&data->rigid_body);
@@ -42,10 +42,16 @@ namespace P64::Comp
       return;
     }
 
-    new(data) RigidBody();
+    //existing rigidBodies for this object in the scene? If yes don't add another one and log an error
+    auto existing = coll.findRigidBodyByObjectId(obj.id);
+    if(existing) {
+      P64::Log::error("Object '%d' already has a Rigidbody component, cannot add another one", obj.id);
+      return;
+    }
+
+    new (data) RigidBody();
 
     data->rigid_body = {};
-    //TODO: init
     data->rigid_body.init(&obj, initData->mass);
     data->rigid_body.isKinematic = initData->isKinematic;
     data->rigid_body.hasGravity = initData->hasGravity;
@@ -68,10 +74,10 @@ namespace P64::Comp
   void RigidBody::onEvent(Object &obj, RigidBody* data, const ObjectEvent &event)
   {
     if(event.type == EVENT_TYPE_DISABLE) {
-      return obj.getScene().getCollisionNew().removeRigidBody(&data->rigid_body);
+      return obj.getScene().getCollision().removeRigidBody(&data->rigid_body);
     }
     if(event.type == EVENT_TYPE_ENABLE) {
-      return obj.getScene().getCollisionNew().addRigidBody(&data->rigid_body);
+      return obj.getScene().getCollision().addRigidBody(&data->rigid_body);
     }
   }
 

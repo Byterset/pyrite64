@@ -5,6 +5,7 @@
 #include "collision/collide.h"
 #include "collision/collision_scene.h"
 #include "collision/gjk.h"
+#include "scene/scene.h"
 
 #include <cmath>
 #include <cstdlib>
@@ -396,7 +397,8 @@ namespace P64::Coll {
     tri.mesh = &mesh; // Enable world-space transforms in GJK support
 
     // Quick face-culling: skip if rigidBody is far behind the triangle (in world space)
-    float cullDist = 2.0f;
+    auto &coll = SceneManager::getCurrent().getCollision();
+    float cullDist = 2.0f * coll.getPhysicsScale();
     if(collider->type == ShapeType::Sphere) {
       cullDist = collider->sphere.radius * 2.0f;
     }
@@ -453,19 +455,24 @@ namespace P64::Coll {
     Object *objectA = collider->owner;
     Object *objectB = mesh.owner;
 
+    // If the collider is a trigger we only need to check for overlap
     if(isTriggerContact) {
       MeshTriangle tri;
       Simplex simplex;
       ColliderProxy colliderProxy;
+
+
       if(!overlapObjectToTriangle(collider, mesh, triangleIndex, tri, simplex, colliderProxy)) {
+        // no collision happened with this particular triangle
         return false;
       }
 
       const fm_vec3_t v0 = tri.worldVertex(0);
       const fm_vec3_t v1 = tri.worldVertex(1);
       const fm_vec3_t v2 = tri.worldVertex(2);
-      const fm_vec3_t triCenter = vec3Scale(vec3Add(vec3Add(v0, v1), v2), 1.0f / 3.0f);
+      const fm_vec3_t triCenter = (v0 + v1 + v2) / 3.0f;
 
+      // Cache a dummy contact constraint to report the trigger collision.
       EpaResult dummyResult;
       dummyResult.normal = makeSafeContactNormal(tri.normal, collider->worldCenter, triCenter);
       dummyResult.penetration = 0.0f;
@@ -481,11 +488,15 @@ namespace P64::Coll {
     }
 
     EpaResult epaResult;
-    if(!testObjectToTriangle(collider, mesh, triangleIndex, epaResult)) return false;
+    
+    // For non-Triggers we want a full test not just the overlap
+    if(!testObjectToTriangle(collider, mesh, triangleIndex, epaResult)) 
+      return false;
 
     float combinedFriction = fmin(collider->friction, mesh.friction);
     float combinedBounce = fmax(collider->bounce, mesh.bounce);
 
+    // Cache the contact constraint for this collision
     collideCacheContactConstraint(
       rigidBody, collider, nullptr, objectA,
       nullptr, nullptr, const_cast<MeshCollider *>(&mesh), objectB,
@@ -495,12 +506,8 @@ namespace P64::Coll {
   }
 
   // ── Object-to-mesh ──────────────────────────────────────────────
-  // Simple per-triangle detection matching the reference implementation.
 
   void collideDetectObjectToMesh(Collider *collider, RigidBody *rigidBody, const MeshCollider &mesh) {
-    if(!collider) return;
-    if(rigidBody && rigidBody->isSleeping && !collider->isTrigger) return;
-    if(mesh.triangleCount == 0) return;
 
     // Transform the collider's world AABB into the mesh's local space for tree query
     AABB queryAABB = mesh.hasTransform()
@@ -508,13 +515,17 @@ namespace P64::Coll {
       : collider->worldAABB;
 
     // Query local-space AABB tree for candidate triangles
-    NodeProxy candidates[64];
-    int count = mesh.aabbTree.queryBounds(queryAABB, candidates, 64);
+    NodeProxy candidates[20];
+    int count = mesh.aabbTree.queryBounds(queryAABB, candidates, 20);
 
+    // For every candidate triangle perform precise collision test
     for(int i = 0; i < count; ++i) {
       void *data = mesh.aabbTree.getNodeData(candidates[i]);
       if(!data) continue;
       int triIndex = static_cast<int>(reinterpret_cast<intptr_t>(data)) - 1; // stored as index+1 to avoid nullptr
+
+      // If the triangle is overlapping and the collider is a Trigger
+      // we can skip the rest of the candidates since triggers just need to report that a collision happened
       if(collideDetectObjectToTriangle(collider, rigidBody, mesh, triIndex) && collider->isTrigger) {
         return;
       }

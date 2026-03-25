@@ -35,7 +35,7 @@ namespace P64::Comp
     auto *initData = (InitData*)initData_;
     if (initData == nullptr) {
       if(data->meshCollider) {
-        obj.getScene().getCollisionNew().removeMeshCollider(data->meshCollider);
+        obj.getScene().getCollision().removeMeshCollider(data->meshCollider);
         data->meshCollider->destroyData();
         delete data->meshCollider;
         data->meshCollider = nullptr;
@@ -51,7 +51,7 @@ namespace P64::Comp
     void *rawData = AssetManager::getByIndex(initData->assetIdx);
     data->meshCollider = Coll::MeshCollider::createFromRawData(rawData, &obj);
     if(data->meshCollider && obj.isEnabled()) {
-      obj.getScene().getCollisionNew().addMeshCollider(data->meshCollider);
+      obj.getScene().getCollision().addMeshCollider(data->meshCollider);
     }
   }
 
@@ -59,13 +59,13 @@ namespace P64::Comp
   {
     if(event.type == EVENT_TYPE_DISABLE) {
       if(data->meshCollider) {
-        obj.getScene().getCollisionNew().removeMeshCollider(data->meshCollider);
+        obj.getScene().getCollision().removeMeshCollider(data->meshCollider);
       }
       return;
     }
     if(event.type == EVENT_TYPE_ENABLE) {
       if(data->meshCollider) {
-        obj.getScene().getCollisionNew().addMeshCollider(data->meshCollider);
+        obj.getScene().getCollision().addMeshCollider(data->meshCollider);
       }
     }
   }

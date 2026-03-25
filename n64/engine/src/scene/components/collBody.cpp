@@ -29,7 +29,7 @@ namespace P64::Comp
   void CollBody::initDelete([[maybe_unused]] Object& obj, CollBody* data, void* initData_)
   {
     InitData* initData = static_cast<InitData*>(initData_);
-    auto &coll = SceneManager::getCurrent().getCollisionNew();
+    auto &coll = SceneManager::getCurrent().getCollision();
 
     if (initData == nullptr) {
       coll.removeCollider(&data->collider);
@@ -89,10 +89,10 @@ namespace P64::Comp
   void CollBody::onEvent(Object &obj, CollBody* data, const ObjectEvent &event)
   {
     if(event.type == EVENT_TYPE_DISABLE) {
-      return obj.getScene().getCollisionNew().removeCollider(&data->collider);
+      return obj.getScene().getCollision().removeCollider(&data->collider);
     }
     if(event.type == EVENT_TYPE_ENABLE) {
-      return obj.getScene().getCollisionNew().addCollider(&data->collider);
+      return obj.getScene().getCollision().addCollider(&data->collider);
     }
   }
 

@@ -9,6 +9,7 @@
 
 #include <cmath>
 #include <cassert>
+#include <cinttypes>
 #include <functional>
 #include <algorithm>
 #include <limits>
@@ -20,6 +21,10 @@
 namespace P64::Coll {
 
   static CollisionScene g_scene;
+
+  static double ticksToMs(uint64_t ticks) {
+    return static_cast<double>(TICKS_TO_US(ticks)) / 1000.0;
+  }
 
   static bool aabbChanged(const AABB &lhs, const AABB &rhs) {
     return vec3DistSqrd(lhs.min, rhs.min) > EPSILON_SQUARED ||
@@ -51,6 +56,10 @@ namespace P64::Coll {
 
   static bool collidersShouldGenerateContact(const Collider *colliderA, const Collider *colliderB) {
     return colliderReadsCollider(colliderA, colliderB) || colliderReadsCollider(colliderB, colliderA);
+  }
+
+  static bool colliderShouldTestMesh(const Collider *collider) {
+    return collider && collider->maskWrite != 0;
   }
 
   static fm_vec3_t constrainAngularWorld(const RigidBody *body, const fm_vec3_t &worldAngular) {
@@ -183,6 +192,14 @@ namespace P64::Coll {
     ticksWorldUpdate = 0;
     ticksIntegrateVel = 0;
     ticksDetect = 0;
+    ticksDetectDeactivate = 0;
+    ticksDetectBuildOrder = 0;
+    ticksDetectBodyPairs = 0;
+    ticksDetectDetachedPairs = 0;
+    ticksDetectDetachedBodyPairs = 0;
+    ticksDetectDetachedDetachedPairs = 0;
+    ticksDetectMeshPairs = 0;
+    ticksDetectCleanup = 0;
     ticksRefreshCallbacks = 0;
     ticksPreSolve = 0;
     ticksWarmStart = 0;
@@ -191,6 +208,15 @@ namespace P64::Coll {
     ticksPositionSolve = 0;
     ticksFinalize = 0;
     ticksTotal = 0;
+    detectOrderedColliderCount = 0;
+    detectTriggerColliderCount = 0;
+    detectOrderedBodyCount = 0;
+    detectDetachedColliderCount = 0;
+    detectBodyCandidateCount = 0;
+    detectObjectPairCount = 0;
+    detectDetachedPairCount = 0;
+    detectMeshPairCount = 0;
+    detectDebugPrintCounter_ = 0;
 
     rigidBodyAABBTree.init(32); // Initial capacity (will grow as needed)
   }
@@ -787,10 +813,21 @@ namespace P64::Coll {
   // ── Contact detection ─────────────────────────────────────────────
 
   void CollisionScene::detectAllContacts() {
+    detectOrderedColliderCount = 0;
+    detectTriggerColliderCount = 0;
+    detectOrderedBodyCount = 0;
+    detectDetachedColliderCount = 0;
+    detectBodyCandidateCount = 0;
+    detectObjectPairCount = 0;
+    detectDetachedPairCount = 0;
+    detectMeshPairCount = 0;
+
+    uint64_t stageStart = get_ticks();
     // Mark all constraints as inactive; detection will re-activate them
     for(int i = 0; i < cachedConstraintCount_; ++i) {
       cachedConstraints_[i].isActive = false;
     }
+    ticksDetectDeactivate = get_ticks() - stageStart;
 
     struct OrderedColliderEntry {
       Collider *collider{nullptr};
@@ -817,12 +854,16 @@ namespace P64::Coll {
 
     // Build deterministic processing lists so broadphase traversal does not depend on
     // scene graph order or AABB tree query result order.
+    stageStart = get_ticks();
     std::vector<OrderedColliderEntry> orderedColliders;
     orderedColliders.reserve(colliders_.size());
     for(Collider *collider : colliders_) {
       if(!collider || !collider->owner) continue;
 
       RigidBody *rigidBody = findRigidBodyByOwner(collider->owner);
+      if(collider->isTrigger) {
+        ++detectTriggerColliderCount;
+      }
       orderedColliders.push_back(OrderedColliderEntry{
         collider,
         rigidBody,
@@ -884,7 +925,13 @@ namespace P64::Coll {
       bodyOrder[orderedBodies[i].rigidBody] = static_cast<int>(i);
     }
 
+    detectOrderedColliderCount = static_cast<uint32_t>(orderedColliders.size());
+    detectDetachedColliderCount = static_cast<uint32_t>(detachedColliders.size());
+    detectOrderedBodyCount = static_cast<uint32_t>(orderedBodies.size());
+    ticksDetectBuildOrder = get_ticks() - stageStart;
+
     // Collider-to-collider broad phase using the rigidbody AABB tree.
+    stageStart = get_ticks();
     std::vector<NodeProxy> candidateBodies;
     candidateBodies.resize(rigidBodies_.size());
     for(const OrderedBodyEntry &entryA : orderedBodies) {
@@ -919,6 +966,8 @@ namespace P64::Coll {
         orderedCandidates.push_back(rbB);
       }
 
+      detectBodyCandidateCount += static_cast<uint32_t>(orderedCandidates.size());
+
       std::sort(orderedCandidates.begin(), orderedCandidates.end(), [&bodyOrder](const RigidBody *lhs, const RigidBody *rhs) {
         const int lhsOrder = bodyOrder.at(lhs);
         const int rhsOrder = bodyOrder.at(rhs);
@@ -939,61 +988,135 @@ namespace P64::Coll {
             if(!aabbOverlap(colliderA->worldAABB, colliderB->worldAABB)) continue;
             if(rbA->isSleeping && rbB->isSleeping && !colliderA->isTrigger && !colliderB->isTrigger) continue;
 
+            ++detectObjectPairCount;
             collideDetectObjectToObject(colliderA, rbA, colliderB, rbB);
           }
         }
       }
     }
+    ticksDetectBodyPairs = get_ticks() - stageStart;
 
     // Fallback for colliders without a rigidbody owner.
+    stageStart = get_ticks();
+    std::vector<NodeProxy> detachedCandidateBodies;
+    detachedCandidateBodies.resize(rigidBodies_.size());
+
     for(const OrderedColliderEntry &entryA : detachedColliders) {
       Collider *colliderA = entryA.collider;
       if(!colliderA) continue;
 
-      auto orderAIt = colliderOrder.find(colliderA);
-      if(orderAIt == colliderOrder.end()) continue;
-      const int orderA = orderAIt->second;
+      if(!detachedCandidateBodies.empty()) {
+        const int candidateCount = rigidBodyAABBTree.queryBounds(
+          colliderA->worldAABB,
+          detachedCandidateBodies.data(),
+          static_cast<int>(detachedCandidateBodies.size())
+        );
 
-      for(const OrderedColliderEntry &entryB : orderedColliders) {
-        Collider *colliderB = entryB.collider;
-        if(!colliderB || colliderA == colliderB) continue;
-        if(colliderA->owner == colliderB->owner) continue;
+        std::vector<RigidBody *> orderedCandidates;
+        orderedCandidates.reserve(candidateCount);
+        for(int candidateIdx = 0; candidateIdx < candidateCount; ++candidateIdx) {
+          void *data = rigidBodyAABBTree.getNodeData(detachedCandidateBodies[candidateIdx]);
+          if(!data) continue;
 
-        auto orderBIt = colliderOrder.find(colliderB);
-        if(orderBIt == colliderOrder.end() || orderBIt->second <= orderA) continue;
+          RigidBody *rbB = static_cast<RigidBody *>(data);
+          if(!rbB || !rbB->owner) continue;
 
-        if(!collidersShouldGenerateContact(colliderA, colliderB)) continue;
-        if(!aabbOverlap(colliderA->worldAABB, colliderB->worldAABB)) continue;
+          auto orderBIt = bodyOrder.find(rbB);
+          if(orderBIt == bodyOrder.end()) continue;
+          orderedCandidates.push_back(rbB);
+        }
 
-        RigidBody *rbB = entryB.rigidBody;
-        const bool sleepingBodyNeedsWakeCheck = colliderReadsCollider(colliderB, colliderA);
-        if(rbB && rbB->isSleeping && !colliderA->isTrigger && !colliderB->isTrigger && !sleepingBodyNeedsWakeCheck) continue;
+        std::sort(orderedCandidates.begin(), orderedCandidates.end(), [&bodyOrder](const RigidBody *lhs, const RigidBody *rhs) {
+          const int lhsOrder = bodyOrder.at(lhs);
+          const int rhsOrder = bodyOrder.at(rhs);
+          if(lhsOrder != rhsOrder) return lhsOrder < rhsOrder;
+          return lhs < rhs;
+        });
 
-        collideDetectObjectToObject(colliderA, nullptr, colliderB, rbB);
+        for(RigidBody *rbB : orderedCandidates) {
+          const std::vector<Collider *> *ownerCollidersB = findCollidersForOwner(rbB->owner);
+          if(!ownerCollidersB || ownerCollidersB->empty()) continue;
+
+          for(Collider *colliderB : *ownerCollidersB) {
+            if(!colliderB) continue;
+            if(!collidersShouldGenerateContact(colliderA, colliderB)) continue;
+            if(!aabbOverlap(colliderA->worldAABB, colliderB->worldAABB)) continue;
+
+            const bool sleepingBodyNeedsWakeCheck = colliderReadsCollider(colliderB, colliderA);
+            if(rbB->isSleeping && !colliderA->isTrigger && !colliderB->isTrigger && !sleepingBodyNeedsWakeCheck) continue;
+
+            ++detectDetachedPairCount;
+            collideDetectObjectToObject(colliderA, nullptr, colliderB, rbB);
+          }
+        }
+      }
+    }
+    ticksDetectDetachedBodyPairs = get_ticks() - stageStart;
+
+    stageStart = get_ticks();
+    std::vector<const OrderedColliderEntry *> detachedSweep;
+    detachedSweep.reserve(detachedColliders.size());
+    for(const OrderedColliderEntry &entry : detachedColliders) {
+      if(entry.collider) {
+        detachedSweep.push_back(&entry);
       }
     }
 
+    std::sort(detachedSweep.begin(), detachedSweep.end(), [](const OrderedColliderEntry *lhs, const OrderedColliderEntry *rhs) {
+      if(lhs->collider->worldAABB.min.x != rhs->collider->worldAABB.min.x) {
+        return lhs->collider->worldAABB.min.x < rhs->collider->worldAABB.min.x;
+      }
+      return lhs->collider < rhs->collider;
+    });
+
+    for(std::size_t i = 0; i < detachedSweep.size(); ++i) {
+      Collider *colliderA = detachedSweep[i]->collider;
+      if(!colliderA) continue;
+
+      const float maxX = colliderA->worldAABB.max.x;
+      for(std::size_t j = i + 1; j < detachedSweep.size(); ++j) {
+        Collider *colliderB = detachedSweep[j]->collider;
+        if(!colliderB) continue;
+        if(colliderB->worldAABB.min.x > maxX) break;
+        if(colliderA->owner == colliderB->owner) continue;
+        if(!collidersShouldGenerateContact(colliderA, colliderB)) continue;
+        if(!aabbOverlap(colliderA->worldAABB, colliderB->worldAABB)) continue;
+
+        ++detectDetachedPairCount;
+        collideDetectObjectToObject(colliderA, nullptr, colliderB, nullptr);
+      }
+    }
+    ticksDetectDetachedDetachedPairs = get_ticks() - stageStart;
+    ticksDetectDetachedPairs = ticksDetectDetachedBodyPairs + ticksDetectDetachedDetachedPairs;
+
     // Collider-to-mesh tests.
+    stageStart = get_ticks();
     for(std::size_t m = 0; m < meshColliders_.size(); ++m) {
       MeshCollider *mesh = meshColliders_[m];
-      if(!mesh || mesh->triangleCount == 0) continue;
+      if(!mesh || mesh->triangleCount <= 0) continue;
 
       for(const OrderedColliderEntry &entry : orderedColliders) {
         Collider *collider = entry.collider;
         RigidBody *rigidBody = entry.rigidBody;
+        if(!collider || !colliderShouldTestMesh(collider))
+          continue;
         if(rigidBody && rigidBody->isSleeping && !collider->isTrigger)
           continue;
 
         if(!aabbOverlap(collider->worldAABB, mesh->worldBoundingBox))
           continue;
 
+        ++detectMeshPairCount;
         collideDetectObjectToMesh(collider, rigidBody, *mesh);
       }
     }
+    ticksDetectMeshPairs = get_ticks() - stageStart;
 
     //TODO: possibly offer mesh-mesh collision detection in the future, but not needed for current use cases
 
+    stageStart = get_ticks();
     removeInactiveContacts();
+    ticksDetectCleanup = get_ticks() - stageStart;
   }
 
   // ── Pre-solve ─────────────────────────────────────────────────────
@@ -1612,6 +1735,33 @@ namespace P64::Coll {
     const uint64_t detectStart = get_ticks();
     detectAllContacts();
     ticksDetect = get_ticks() - detectStart;
+    if(++detectDebugPrintCounter_ >= 30) {
+      detectDebugPrintCounter_ = 0;
+      debugf(
+        "Coll detect %.3fms | inactive %.3f | order %.3f | bodies %.3f | detached %.3f (body %.3f + detached %.3f) | mesh %.3f | cleanup %.3f\n",
+        ticksToMs(ticksDetect),
+        ticksToMs(ticksDetectDeactivate),
+        ticksToMs(ticksDetectBuildOrder),
+        ticksToMs(ticksDetectBodyPairs),
+        ticksToMs(ticksDetectDetachedPairs),
+        ticksToMs(ticksDetectDetachedBodyPairs),
+        ticksToMs(ticksDetectDetachedDetachedPairs),
+        ticksToMs(ticksDetectMeshPairs),
+        ticksToMs(ticksDetectCleanup)
+      );
+      debugf(
+        "  colliders=%" PRIu32 " triggers=%" PRIu32 " bodies=%" PRIu32 " detached=%" PRIu32
+        " bodyCandidates=%" PRIu32 " objPairs=%" PRIu32 " detachedPairs=%" PRIu32 " meshPairs=%" PRIu32 "\n",
+        detectOrderedColliderCount,
+        detectTriggerColliderCount,
+        detectOrderedBodyCount,
+        detectDetachedColliderCount,
+        detectBodyCandidateCount,
+        detectObjectPairCount,
+        detectDetachedPairCount,
+        detectMeshPairCount
+      );
+    }
 
     stageStart = get_ticks();
     // Refresh anchors from local-space points before solving.

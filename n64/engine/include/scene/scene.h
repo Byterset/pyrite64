@@ -140,7 +140,7 @@ namespace P64
       [[nodiscard]] Camera* getCamera(uint32_t index = 0) { return cameras[index]; }
       [[nodiscard]] Camera& getActiveCamera() { return *camMain; }
 
-      Coll::CollisionScene &getCollisionNew() { return *Coll::collisionSceneGetInstance(); }
+      Coll::CollisionScene &getCollision() { return *Coll::collisionSceneGetInstance(); }
 
       void onObjectCollision(const Coll::CollEvent &event);
 
