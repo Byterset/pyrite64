@@ -13,7 +13,7 @@
 namespace P64::Coll {
 
   struct ColliderProxy {
-    const Collider *collider{nullptr};
+    Collider *collider{nullptr};
     fm_vec3_t worldCenter{};
     Matrix3x3 rotation{};
     Matrix3x3 rotationT{};
@@ -23,7 +23,7 @@ namespace P64::Coll {
     if(collider && collider->owner) {
       return collider->owner->rot;
     }
-    return fm_quat_t{0.0f, 0.0f, 0.0f, 1.0f};
+    return QUAT_IDENTITY;
   }
 
   static Matrix3x3 colliderRotationMatrix(const Collider *collider) {
@@ -51,16 +51,20 @@ namespace P64::Coll {
   }
 
   static fm_vec3_t makeSafeContactNormal(const fm_vec3_t &normal, const fm_vec3_t &contactA, const fm_vec3_t &contactB) {
-    if(vec3MagSqrd(normal) > EPSILON_SQUARED) {
-      return vec3Normalize(normal);
+    if(fm_vec3_len2(&normal) > FM_EPSILON * FM_EPSILON) {
+      fm_vec3_t normalized;
+      fm_vec3_norm(&normalized, &normal);
+      return normalized;
     }
 
-    fm_vec3_t fallback = vec3Sub(contactA, contactB);
-    if(vec3MagSqrd(fallback) > EPSILON_SQUARED) {
-      return vec3Normalize(fallback);
+    fm_vec3_t fallback = contactA - contactB;
+    if(fm_vec3_len2(&fallback) > FM_EPSILON * FM_EPSILON) {
+      fm_vec3_t normalized;
+      fm_vec3_norm(&normalized, &fallback);
+      return normalized;
     }
 
-    return vec3Up();
+    return VEC3_UP;
   }
 
   static void swapConstraintOrder(
@@ -71,20 +75,20 @@ namespace P64::Coll {
     std::swap(colliderA, colliderB);
     std::swap(meshColliderA, meshColliderB);
     std::swap(objectA, objectB);
-    result.normal = vec3Negate(result.normal);
+    result.normal = -result.normal;
     std::swap(result.contactA, result.contactB);
   }
 
   static void colliderProxyGjkSupport(const void *data, const fm_vec3_t &direction, fm_vec3_t &output) {
     const auto *proxy = static_cast<const ColliderProxy *>(data);
     if(!proxy || !proxy->collider) {
-      output = vec3Zero();
+      output = VEC3_ZERO;
       return;
     }
 
     fm_vec3_t localDir = matrix3Vec3Mul(proxy->rotationT, direction);
     fm_vec3_t localSupport = proxy->collider->support(localDir);
-    output = vec3Add(matrix3Vec3Mul(proxy->rotation, localSupport), proxy->worldCenter);
+    output = matrix3Vec3Mul(proxy->rotation, localSupport) + proxy->worldCenter;
   }
 
   // ── Analytical collision helpers ──────────────────────────────────
@@ -97,24 +101,24 @@ namespace P64::Coll {
     float rB = b->sphere.radius;
     float combinedRadius = rA + rB;
 
-    fm_vec3_t diff = vec3Sub(a->worldCenter, b->worldCenter);
-    float distSq = vec3MagSqrd(diff);
+    fm_vec3_t diff = a->worldCenter - b->worldCenter;
+    float distSq = fm_vec3_len2(&diff);
 
     if(distSq >= combinedRadius * combinedRadius) return false;
 
     float dist = sqrtf(distSq);
-    if(dist < EPSILON) {
-      result.normal = vec3Up();
+    if(dist < FM_EPSILON) {
+      result.normal = VEC3_UP;
       result.penetration = combinedRadius;
-      result.contactA = vec3Sub(a->worldCenter, vec3Scale(result.normal, rA));
-      result.contactB = vec3Add(b->worldCenter, vec3Scale(result.normal, rB));
+      result.contactA = a->worldCenter - result.normal * rA;
+      result.contactB = b->worldCenter + result.normal * rB;
       return true;
     }
 
-    result.normal = vec3Scale(diff, 1.0f / dist);
+    result.normal = diff * (1.0f / dist);
     result.penetration = combinedRadius - dist;
-    result.contactA = vec3Sub(a->worldCenter, vec3Scale(result.normal, rA));
-    result.contactB = vec3Add(b->worldCenter, vec3Scale(result.normal, rB));
+    result.contactA = a->worldCenter - result.normal * rA;
+    result.contactB = b->worldCenter + result.normal * rB;
     return true;
   }
 
@@ -128,47 +132,47 @@ namespace P64::Coll {
     // Transform sphere center to box local space
     Matrix3x3 boxRot = colliderRotationMatrix(box);
     Matrix3x3 boxRotT = matrix3Transpose(boxRot);
-    fm_vec3_t localCenter = vec3Sub(sphere->worldCenter, box->worldCenter);
+    fm_vec3_t localCenter = sphere->worldCenter - box->worldCenter;
     fm_vec3_t localSpherePos = matrix3Vec3Mul(boxRotT, localCenter);
 
     // Clamp to box surface
-    fm_vec3_t closest = vec3(
+    fm_vec3_t closest = fm_vec3_t{{ 
       fmaxf(-halfSize.x, fminf(localSpherePos.x, halfSize.x)),
       fmaxf(-halfSize.y, fminf(localSpherePos.y, halfSize.y)),
       fmaxf(-halfSize.z, fminf(localSpherePos.z, halfSize.z))
-    );
+    }};
 
-    fm_vec3_t diff = vec3Sub(localSpherePos, closest);
-    float distSq = vec3MagSqrd(diff);
+    fm_vec3_t diff = localSpherePos - closest;
+    float distSq = fm_vec3_len2(&diff);
 
     if(distSq >= radius * radius) return false;
 
     float dist = sqrtf(distSq);
     fm_vec3_t localNormal;
-    if(dist < EPSILON) {
+    if(dist < FM_EPSILON) {
       // Sphere center is inside box — find shortest escape axis
       float dx = halfSize.x - fabsf(localSpherePos.x);
       float dy = halfSize.y - fabsf(localSpherePos.y);
       float dz = halfSize.z - fabsf(localSpherePos.z);
       if(dx <= dy && dx <= dz) {
-        localNormal = vec3(copysignf(1.0f, localSpherePos.x), 0.0f, 0.0f);
+        localNormal = fm_vec3_t{{copysignf(1.0f, localSpherePos.x), 0.0f, 0.0f}};
         result.penetration = dx + radius;
       } else if(dy <= dz) {
-        localNormal = vec3(0.0f, copysignf(1.0f, localSpherePos.y), 0.0f);
+        localNormal = fm_vec3_t{{0.0f, copysignf(1.0f, localSpherePos.y), 0.0f}};
         result.penetration = dy + radius;
       } else {
-        localNormal = vec3(0.0f, 0.0f, copysignf(1.0f, localSpherePos.z));
+        localNormal = fm_vec3_t{{0.0f, 0.0f, copysignf(1.0f, localSpherePos.z)}};
         result.penetration = dz + radius;
       }
     } else {
-      localNormal = vec3Scale(diff, 1.0f / dist);
+      localNormal = fm_vec3_t{{diff.x * (1.0f / dist), diff.y * (1.0f / dist), diff.z * (1.0f / dist)}};
       result.penetration = radius - dist;
     }
 
     result.normal = matrix3Vec3Mul(boxRot, localNormal);
-    fm_vec3_t worldClosest = vec3Add(matrix3Vec3Mul(boxRot, closest), box->worldCenter);
+    fm_vec3_t worldClosest = matrix3Vec3Mul(boxRot, closest) + box->worldCenter;
     result.contactB = worldClosest;
-    result.contactA = vec3Sub(sphere->worldCenter, vec3Scale(result.normal, radius));
+    result.contactA = sphere->worldCenter - result.normal * radius;
     return true;
   }
 
@@ -181,40 +185,56 @@ namespace P64::Coll {
     float hh = capsule->capsule.innerHalfHeight;
 
     // Capsule axis endpoints in world space
-    fm_vec3_t localUp = vec3(0.0f, hh, 0.0f);
+    fm_vec3_t localUp = fm_vec3_t{{0.0f, hh, 0.0f}};
     const fm_quat_t capsuleRot = colliderOrientation(capsule);
-    fm_vec3_t capTop = vec3Add(capsule->worldCenter, quatRotateVec(capsuleRot, localUp));
-    fm_vec3_t capBot = vec3Sub(capsule->worldCenter, quatRotateVec(capsuleRot, localUp));
+    fm_vec3_t rotUp = quatRotateVec(capsuleRot, localUp);
+    fm_vec3_t capTop = capsule->worldCenter + rotUp;
+    fm_vec3_t capBot = capsule->worldCenter - rotUp;
 
     // Closest point on capsule segment to sphere center
-    fm_vec3_t seg = vec3Sub(capTop, capBot);
-    float segLenSq = vec3MagSqrd(seg);
+    fm_vec3_t seg = capTop - capBot;
+    float segLenSq = fm_vec3_len2(&seg);
     float t = 0.5f;
-    if(segLenSq > EPSILON) {
-      t = vec3Dot(vec3Sub(sphere->worldCenter, capBot), seg) / segLenSq;
+    if(segLenSq > FM_EPSILON) {
+      fm_vec3_t capToSphere = sphere->worldCenter - capBot;
+      t = fm_vec3_dot(&capToSphere, &seg) / segLenSq;
       if(t < 0.0f) t = 0.0f;
       if(t > 1.0f) t = 1.0f;
     }
-    fm_vec3_t closestOnSeg = vec3Add(capBot, vec3Scale(seg, t));
+    fm_vec3_t closestOnSeg = capBot + seg * t;
 
     float combinedRadius = rS + rC;
-    fm_vec3_t diff = vec3Sub(sphere->worldCenter, closestOnSeg);
-    float distSq = vec3MagSqrd(diff);
+    fm_vec3_t diff = sphere->worldCenter - closestOnSeg;
+    float distSq = fm_vec3_len2(&diff);
 
     if(distSq >= combinedRadius * combinedRadius) return false;
 
     float dist = sqrtf(distSq);
-    if(dist < EPSILON) {
-      result.normal = vec3Up();
+    if(dist < FM_EPSILON) {
+      result.normal = VEC3_UP;
     } else {
-      result.normal = vec3Scale(diff, 1.0f / dist);
+      result.normal = diff * (1.0f / dist);
     }
 
     result.penetration = combinedRadius - dist;
-    result.contactA = vec3Sub(sphere->worldCenter, vec3Scale(result.normal, rS));
-    result.contactB = vec3Add(closestOnSeg, vec3Scale(result.normal, rC));
+    result.contactA = sphere->worldCenter - result.normal * rS;
+    result.contactB = closestOnSeg + result.normal * rC;
     return true;
   }
+
+
+  // static bool analyticalSphereTriangle(const Collider *sphere, const Collider *meshCollider, int triangleIndex, EpaResult &result) {
+  //   if(!sphere || !meshCollider) return false;
+  //   if(sphere->type != ShapeType::Sphere) return false;
+  //   if(meshCollider->type != ShapeType::Mesh) return false;
+
+  //    MeshTriangle tri;
+  //    tri.vertices = meshCollider->mesh.vertices;
+  //    tri.tri = meshCollider->mesh.triangles[triangleIndex];
+  //    tri.normal = meshCollider->mesh.normals[triangleIndex];
+  //    tri.mesh = &meshCollider->mesh;
+
+  // }
 
 
   // ── Contact constraint caching ────────────────────────────────────
@@ -258,8 +278,10 @@ namespace P64::Coll {
       int matchedIdx = -1;
       float bestDistSq = MATCH_DIST_SQ;
       for(int i = 0; i < existing->pointCount; ++i) {
-        float distA = vec3DistSqrd(existing->points[i].contactA, orderedResult.contactA);
-        float distB = vec3DistSqrd(existing->points[i].contactB, orderedResult.contactB);
+        fm_vec3_t diff = existing->points[i].contactA - orderedResult.contactA;
+        float distA = fm_vec3_len2(&diff);
+        diff = existing->points[i].contactB - orderedResult.contactB;
+        float distB = fm_vec3_len2(&diff);
         float minDist = fminf(distA, distB);
         if(minDist < bestDistSq) {
           bestDistSq = minDist;
@@ -299,12 +321,12 @@ namespace P64::Coll {
       if(target) {
         target->contactA = orderedResult.contactA;
         target->contactB = orderedResult.contactB;
-        target->point = vec3Scale(vec3Add(orderedResult.contactA, orderedResult.contactB), 0.5f);
+        target->point = (orderedResult.contactA + orderedResult.contactB) * 0.5f;
         target->penetration = orderedResult.penetration;
         target->active = true;
 
         if(rigidBodyA) {
-          fm_vec3_t relA = vec3Sub(target->contactA, *rigidBodyA->position);
+          fm_vec3_t relA = target->contactA - *rigidBodyA->position;
           target->localPointA = rigidBodyA->rotation
             ? quatRotateVec(quatConjugate(*rigidBodyA->rotation), relA)
             : relA;
@@ -312,7 +334,7 @@ namespace P64::Coll {
           target->localPointA = target->contactA;
         }
         if(rigidBodyB) {
-          fm_vec3_t relB = vec3Sub(target->contactB, *rigidBodyB->position);
+          fm_vec3_t relB = target->contactB - *rigidBodyB->position;
           target->localPointB = rigidBodyB->rotation
             ? quatRotateVec(quatConjugate(*rigidBodyB->rotation), relB)
             : relB;
@@ -327,8 +349,8 @@ namespace P64::Coll {
         ContactPoint &cp = existing->points[i];
         if(cp.active) continue; // already processed
 
-        fm_vec3_t diff = vec3Sub(cp.contactA, cp.contactB);
-        float pen = -vec3Dot(diff, existing->normal);
+        fm_vec3_t diff = cp.contactA - cp.contactB;
+        float pen = -fm_vec3_dot(&diff, &existing->normal);
         if(pen > -0.05f) {
           cp.penetration = pen;
           cp.active = true;
@@ -357,12 +379,12 @@ namespace P64::Coll {
     cp = ContactPoint{};
     cp.contactA = orderedResult.contactA;
     cp.contactB = orderedResult.contactB;
-    cp.point = vec3Scale(vec3Add(orderedResult.contactA, orderedResult.contactB), 0.5f);
+    cp.point = (orderedResult.contactA + orderedResult.contactB) * 0.5f;
     cp.penetration = orderedResult.penetration;
     cp.active = true;
 
     if(rigidBodyA) {
-      fm_vec3_t relA = vec3Sub(cp.contactA, *rigidBodyA->position);
+      fm_vec3_t relA = cp.contactA - *rigidBodyA->position;
       cp.localPointA = rigidBodyA->rotation
         ? quatRotateVec(quatConjugate(*rigidBodyA->rotation), relA)
         : relA;
@@ -370,9 +392,9 @@ namespace P64::Coll {
       cp.localPointA = cp.contactA;
     }
     if(rigidBodyB) {
-      fm_vec3_t relB = vec3Sub(cp.contactB, *rigidBodyB->position);
+      fm_vec3_t relB = cp.contactB - *rigidBodyB->position;
       cp.localPointB = rigidBodyB->rotation
-        ? quatRotateVec(quatConjugate(*rigidBodyB->rotation), relB)
+        ? matrix3Vec3Mul(matrix3Transpose(rigidBodyB->rotationMatrix), relB)
         : relB;
     } else {
       // Mesh contact: store world-space contact point directly
@@ -383,90 +405,46 @@ namespace P64::Coll {
     return cc;
   }
 
-  // ── Object-to-triangle helpers ───────────────────────────────────
+  uint64_t ticks_gjk_obj_mesh = 0;
+  uint64_t ticks_epa_obj_mesh = 0;
 
-  static bool overlapObjectToTriangle(Collider *collider, const MeshCollider &mesh,
-                                      int triangleIndex, MeshTriangle &tri, Simplex &simplex, ColliderProxy &colliderProxy) {
-    if(!collider) return false;
-    if(triangleIndex < 0 || triangleIndex >= mesh.triangleCount) return false;
+  /// @brief Performs a collision test between a collider and a single Mesh triangle. Used as a subroutine for object-to-mesh collision detection.
+  ///
+  /// Hint: This function is designed to be called with the collider already transformed into the mesh's local space.
+  /// @param colliderProxyMeshSpace Collider proxy containing the original collider and additional mesh space data (world center, rotation) for GJK support function.
+  /// @param rigidBody Pointer to the rigid body associated with the collider, if any.
+  /// @param mesh Reference to the mesh collider.
+  /// @param triangleIndex Index of the triangle within the mesh to test against.
+  /// @return True if a collision is detected, false otherwise.
+  bool collideDetectObjectToTriangle(ColliderProxy *colliderProxyMeshSpace, RigidBody *rigidBody, const MeshCollider &mesh, int triangleIndex) {
+    const bool isTriggerContact = colliderProxyMeshSpace->collider->isTrigger;
 
-    tri = MeshTriangle{};
+    Object *objectA = colliderProxyMeshSpace->collider->owner;
+    Object *objectB = mesh.owner;
+
+    MeshTriangle tri;
     tri.vertices = mesh.vertices;
     tri.tri = mesh.triangles[triangleIndex];
     tri.normal = mesh.normals[triangleIndex];
-    tri.mesh = &mesh; // Enable world-space transforms in GJK support
+    tri.mesh = &mesh;
 
-    // Quick face-culling: skip if rigidBody is far behind the triangle (in world space)
-    auto &coll = SceneManager::getCurrent().getCollision();
-    float cullDist = 2.0f * coll.getPhysicsScale();
-    if(collider->type == ShapeType::Sphere) {
-      cullDist = collider->sphere.radius * 2.0f;
-    }
-    if(tri.comparePoint(collider->worldCenter) < -cullDist) {
-      return false;
-    }
+    Simplex simplex;
+    fm_vec3_t firstDir = VEC3_RIGHT;
 
-    // GJK overlap test (MeshTriangle now returns world-space vertices via gjkSupport)
-    fm_vec3_t worldV0 = tri.worldVertex(0);
-    fm_vec3_t firstDir = vec3Sub(collider->worldCenter, worldV0);
-    if(vec3MagSqrd(firstDir) < EPSILON) firstDir = vec3Up();
-
-    colliderProxy = ColliderProxy{};
-    colliderProxy.collider = collider;
-    colliderProxy.worldCenter = collider->worldCenter;
-    colliderProxy.rotation = colliderRotationMatrix(collider);
-    colliderProxy.rotationT = matrix3Transpose(colliderProxy.rotation);
-
-    simplex.nPoints = 0;
-    return gjkCheckForOverlap(
+    uint64_t startTicks = get_ticks();
+    bool gjkOverlap = gjkCheckForOverlap(
       simplex,
-      &colliderProxy, colliderProxyGjkSupport,
+      colliderProxyMeshSpace, colliderProxyGjkSupport,
       &tri, meshTriangleGjkSupport,
       firstDir
     );
-  }
+    ticks_gjk_obj_mesh += get_ticks() - startTicks;
+    if(!gjkOverlap) return false;
 
-  // ── Object-to-triangle (internal helper, returns EPA result) ────
-
-  static bool testObjectToTriangle(Collider *collider, const MeshCollider &mesh,
-                                    int triangleIndex, EpaResult &epaResult) {
-    MeshTriangle tri;
-    Simplex simplex;
-    ColliderProxy colliderProxy;
-    if(!overlapObjectToTriangle(collider, mesh, triangleIndex, tri, simplex, colliderProxy)) {
-      return false;
-    }
-
-    bool epaOk = epaSolve(
-      simplex,
-      &colliderProxy, colliderProxyGjkSupport,
-      &tri, meshTriangleGjkSupport,
-      epaResult
-    );
-
-    return epaOk && epaResult.penetration > EPSILON;
-  }
-
-  // ── Object-to-triangle (public, single-triangle test + cache) ────
-
-  bool collideDetectObjectToTriangle(Collider *collider, RigidBody *rigidBody, const MeshCollider &mesh, int triangleIndex) {
-    const bool isTriggerContact = collider->isTrigger;
-
-    Object *objectA = collider->owner;
-    Object *objectB = mesh.owner;
 
     // If the collider is a trigger we only need to check for overlap
-    if(isTriggerContact) {
-      MeshTriangle tri;
-      Simplex simplex;
-      ColliderProxy colliderProxy;
-
-
-      if(!overlapObjectToTriangle(collider, mesh, triangleIndex, tri, simplex, colliderProxy)) {
-        // no collision happened with this particular triangle
-        return false;
-      }
-
+    if (isTriggerContact)
+    {
       const fm_vec3_t v0 = tri.worldVertex(0);
       const fm_vec3_t v1 = tri.worldVertex(1);
       const fm_vec3_t v2 = tri.worldVertex(2);
@@ -474,35 +452,47 @@ namespace P64::Coll {
 
       // Cache a dummy contact constraint to report the trigger collision.
       EpaResult dummyResult;
-      dummyResult.normal = makeSafeContactNormal(tri.normal, collider->worldCenter, triCenter);
+      dummyResult.normal = makeSafeContactNormal(tri.normal, colliderProxyMeshSpace->collider->worldCenter, triCenter);
       dummyResult.penetration = 0.0f;
-      dummyResult.contactA = collider->worldCenter;
+      dummyResult.contactA = colliderProxyMeshSpace->collider->worldCenter;
       dummyResult.contactB = triCenter;
 
       collideCacheContactConstraint(
-        rigidBody, collider, nullptr, objectA,
-        nullptr, nullptr, const_cast<MeshCollider *>(&mesh), objectB,
-        dummyResult, 0.0f, 0.0f, true, false, false);
+          rigidBody, colliderProxyMeshSpace->collider, nullptr, objectA,
+          nullptr, nullptr, const_cast<MeshCollider *>(&mesh), objectB,
+          dummyResult, 0.0f, 0.0f, true, false, false);
 
       return true;
     }
 
-    EpaResult epaResult;
-    
-    // For non-Triggers we want a full test not just the overlap
-    if(!testObjectToTriangle(collider, mesh, triangleIndex, epaResult)) 
-      return false;
+    struct EpaResult epaResult;
 
-    float combinedFriction = fmin(collider->friction, mesh.friction);
-    float combinedBounce = fmax(collider->bounce, mesh.bounce);
+    startTicks = get_ticks();
+    bool epaSuccess = epaSolve(
+            simplex,
+            colliderProxyMeshSpace, colliderProxyGjkSupport,
+            &tri, meshTriangleGjkSupport,
+            epaResult);
+    ticks_epa_obj_mesh += get_ticks() - startTicks;
+    if (epaSuccess)
+    {
+      // Transform the EPA result back to world space
+      epaResult.normal = mesh.rotateToWorld(epaResult.normal);
+      epaResult.contactA = mesh.toWorldSpace(epaResult.contactA);
+      epaResult.contactB = mesh.toWorldSpace(epaResult.contactB);
 
-    // Cache the contact constraint for this collision
-    collideCacheContactConstraint(
-      rigidBody, collider, nullptr, objectA,
-      nullptr, nullptr, const_cast<MeshCollider *>(&mesh), objectB,
-      epaResult, combinedFriction, combinedBounce, isTriggerContact, !isTriggerContact, false);
+      float combinedFriction = fmin(colliderProxyMeshSpace->collider->friction, mesh.friction);
+      float combinedBounce = fmax(colliderProxyMeshSpace->collider->bounce, mesh.bounce);
 
-    return true;
+      // Cache the contact constraint for this collision
+      collideCacheContactConstraint(
+          rigidBody, colliderProxyMeshSpace->collider, nullptr, objectA,
+          nullptr, nullptr, const_cast<MeshCollider *>(&mesh), objectB,
+          epaResult, combinedFriction, combinedBounce, isTriggerContact, !isTriggerContact, false);
+
+      return true;
+    }
+    return false;
   }
 
   // ── Object-to-mesh ──────────────────────────────────────────────
@@ -514,9 +504,24 @@ namespace P64::Coll {
       ? mesh.worldAABBToLocal(collider->worldAABB)
       : collider->worldAABB;
 
-    // Query local-space AABB tree for candidate triangles
-    NodeProxy candidates[20];
-    int count = mesh.aabbTree.queryBounds(queryAABB, candidates, 20);
+    // Query local-space mesh AABB tree for candidate triangles
+    constexpr int MAX_CANDIDATES = 20;
+    NodeProxy candidates[MAX_CANDIDATES];
+    int count = mesh.aabbTree.queryBounds(queryAABB, candidates, MAX_CANDIDATES);
+
+    if(count <= 0) return;
+
+    // Precompute collider proxy in mesh local space for reuse across candidates
+    ColliderProxy colliderInMeshSpace;
+    colliderInMeshSpace.collider = collider;
+    bool meshHasTransform = mesh.hasTransform();
+    colliderInMeshSpace.worldCenter = meshHasTransform ? mesh.toLocalSpace(collider->worldCenter) : collider->worldCenter;
+    // apply mesh rotation to collider's orientation so GJK can work in mesh local space
+    colliderInMeshSpace.rotation = meshHasTransform
+                                       ? matrix3Mul(mesh.inverseRotation, colliderRotationMatrix(collider))
+                                       : colliderRotationMatrix(collider);
+    colliderInMeshSpace.rotationT = matrix3Transpose(colliderInMeshSpace.rotation);
+
 
     // For every candidate triangle perform precise collision test
     for(int i = 0; i < count; ++i) {
@@ -526,10 +531,15 @@ namespace P64::Coll {
 
       // If the triangle is overlapping and the collider is a Trigger
       // we can skip the rest of the candidates since triggers just need to report that a collision happened
-      if(collideDetectObjectToTriangle(collider, rigidBody, mesh, triIndex) && collider->isTrigger) {
+      if(collideDetectObjectToTriangle(&colliderInMeshSpace, rigidBody, mesh, triIndex) && collider->isTrigger) {
         return;
       }
     }
+
+    debugf("Object-to-mesh collision: GJK time = %llu tks, EPA time = %llu tks, candidates = %d\n", ticks_gjk_obj_mesh, ticks_epa_obj_mesh, count);
+
+    ticks_epa_obj_mesh = 0;
+    ticks_gjk_obj_mesh = 0;
   }
 
   
@@ -572,7 +582,7 @@ namespace P64::Coll {
       hasAnalyticalPath = true;
       analyticalHit = analyticalSphereBox(colliderB, colliderA, result);
       if(analyticalHit) {
-        result.normal = vec3Negate(result.normal);
+        result.normal = -result.normal;
         fm_vec3_t tmp = result.contactA;
         result.contactA = result.contactB;
         result.contactB = tmp;
@@ -581,7 +591,7 @@ namespace P64::Coll {
       hasAnalyticalPath = true;
       analyticalHit = analyticalSphereCapsule(colliderB, colliderA, result);
       if(analyticalHit) {
-        result.normal = vec3Negate(result.normal);
+        result.normal = -result.normal;
         fm_vec3_t tmp = result.contactA;
         result.contactA = result.contactB;
         result.contactB = tmp;
@@ -596,8 +606,8 @@ namespace P64::Coll {
 
     if(!hasAnalyticalPath) {
       // Fall back to GJK + EPA
-      fm_vec3_t firstDir = vec3Sub(colliderA->worldCenter, colliderB->worldCenter);
-      if(vec3MagSqrd(firstDir) < EPSILON) firstDir = vec3Up();
+      fm_vec3_t firstDir = colliderA->worldCenter - colliderB->worldCenter;
+      if(fm_vec3_len2(&firstDir) < FM_EPSILON) firstDir = VEC3_UP;
 
       proxyA.collider = colliderA;
       proxyA.worldCenter = colliderA->worldCenter;
@@ -625,7 +635,7 @@ namespace P64::Coll {
     // Trigger pairs only need overlap confirmation, not a full contact manifold.
     if ((colliderA && colliderA->isTrigger) || (colliderB && colliderB->isTrigger)) {
       EpaResult dummyResult;
-      dummyResult.normal = makeSafeContactNormal(vec3Zero(), colliderA->worldCenter, colliderB->worldCenter);
+      dummyResult.normal = makeSafeContactNormal(VEC3_ZERO, colliderA->worldCenter, colliderB->worldCenter);
       dummyResult.penetration = 0.0f;
       dummyResult.contactA = colliderA->worldCenter;
       dummyResult.contactB = colliderB->worldCenter;
@@ -649,7 +659,7 @@ namespace P64::Coll {
           &proxyB, colliderProxyGjkSupport,
           result);
 
-      if (!epaOk || result.penetration < EPSILON)
+      if (!epaOk || result.penetration < FM_EPSILON)
         return;
     }
 

@@ -10,28 +10,6 @@
 
 using namespace P64::Coll;
 
-// ── Ray-AABB slab intersection ──────────────────────────────────────
-
-bool P64::Coll::aabbIntersectsRay(const AABB &box, const fm_vec3_t &origin,
-                                     const fm_vec3_t &invDir, float maxDist)
-{
-  float t1x = (box.min.x - origin.x) * invDir.x;
-  float t2x = (box.max.x - origin.x) * invDir.x;
-  float t1y = (box.min.y - origin.y) * invDir.y;
-  float t2y = (box.max.y - origin.y) * invDir.y;
-  float t1z = (box.min.z - origin.z) * invDir.z;
-  float t2z = (box.max.z - origin.z) * invDir.z;
-
-  float tmin = fminf(t1x, t2x);
-  float tmax = fmaxf(t1x, t2x);
-  tmin = fmaxf(tmin, fminf(t1y, t2y));
-  tmax = fminf(tmax, fmaxf(t1y, t2y));
-  tmin = fmaxf(tmin, fminf(t1z, t2z));
-  tmax = fminf(tmax, fmaxf(t1z, t2z));
-
-  return tmax >= fmaxf(0.0f, tmin) && tmin < maxDist;
-}
-
 // ── Lifecycle ───────────────────────────────────────────────────────
 
 AABBTree::~AABBTree() {
@@ -125,10 +103,10 @@ void AABBTree::freeNode(NodeProxy node) {
 
 NodeProxy AABBTree::createNode(const AABB &bounds, void *data) {
   NodeProxy id = allocateNode();
-  // Fatten the AABB by the margin so small moves don't cause reinsertion.
-  fm_vec3_t margin = vec3(AABB_NODE_BOUNDS_MARGIN, AABB_NODE_BOUNDS_MARGIN, AABB_NODE_BOUNDS_MARGIN);
-  nodes_[id].bounds.min = vec3Sub(bounds.min, margin);
-  nodes_[id].bounds.max = vec3Add(bounds.max, margin);
+  // Fatten the AABB by some margin so small moves don't cause reinsertion.
+  fm_vec3_t extent = (bounds.max - bounds.min) * 0.1f;
+  nodes_[id].bounds.min = bounds.min - extent;
+  nodes_[id].bounds.max = bounds.max + extent;
   nodes_[id].data = data;
   insertLeaf(id);
   return id;
@@ -146,12 +124,12 @@ bool AABBTree::moveNode(NodeProxy node, const AABB &aabb, const fm_vec3_t &displ
   removeLeaf(node, false);
 
   // Recompute fattened bounds.
-  fm_vec3_t margin = vec3(AABB_NODE_BOUNDS_MARGIN, AABB_NODE_BOUNDS_MARGIN, AABB_NODE_BOUNDS_MARGIN);
-  nodes_[node].bounds.min = vec3Sub(aabb.min, margin);
-  nodes_[node].bounds.max = vec3Add(aabb.max, margin);
+  fm_vec3_t extent = (aabb.max - aabb.min) * 0.1f;
+  nodes_[node].bounds.min = aabb.min - extent;
+  nodes_[node].bounds.max = aabb.max + extent;
 
   // Extend in the direction of movement.
-  fm_vec3_t disp = vec3Scale(displacement, AABB_DISPLACEMENT_MULTIPLIER);
+  fm_vec3_t disp = displacement * AABB_DISPLACEMENT_MULTIPLIER;
   aabbExtendDirection(nodes_[node].bounds, disp, nodes_[node].bounds);
 
   insertLeaf(node);

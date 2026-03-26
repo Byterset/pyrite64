@@ -1,6 +1,7 @@
 /**
- * @copyright 2024 - Max Bebök
- * @license MIT
+ * @file contact.h
+ * @author Kevin Reier (Byterset)
+ * @brief Defines Contact Points as well as Contact Constraints
  */
 #pragma once
 

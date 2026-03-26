@@ -19,11 +19,11 @@ namespace P64::Coll {
   // ── Matrix utilities ──────────────────────────────────────────────
 
   fm_vec3_t matrix3Vec3Mul(const Matrix3x3 &mat, const fm_vec3_t &v) {
-    return vec3(
+    return fm_vec3_t{{
       mat.m[0][0] * v.x + mat.m[0][1] * v.y + mat.m[0][2] * v.z,
       mat.m[1][0] * v.x + mat.m[1][1] * v.y + mat.m[1][2] * v.z,
       mat.m[2][0] * v.x + mat.m[2][1] * v.y + mat.m[2][2] * v.z
-    );
+    }};
   }
 
   Matrix3x3 matrix3Mul(const Matrix3x3 &a, const Matrix3x3 &b) {
@@ -85,11 +85,11 @@ namespace P64::Coll {
     isKinematic = false;
     hasGravity = true;
 
-    velocity = vec3Zero();
-    angularVelocity = vec3Zero();
-    acceleration = vec3Zero();
-    torqueAccumulator = vec3Zero();
-    centerOffset = vec3Zero();
+    velocity = VEC3_ZERO;
+    angularVelocity = VEC3_ZERO;
+    acceleration = VEC3_ZERO;
+    torqueAccumulator = VEC3_ZERO;
+    centerOffset = VEC3_ZERO;
     compoundScale = object->scale;
     compoundPropertiesDirty = true;
 
@@ -118,21 +118,21 @@ namespace P64::Coll {
     // Initialize inertia tensor for a solid sphere as a simple default.
     // This can be overridden later by the colliders associated with the owner object.
     float inertia = 0.4f * mass_;
-    localInertiaTensor = vec3(inertia, inertia, inertia);
+    localInertiaTensor = fm_vec3_t{{inertia, inertia, inertia}};
 
-    invLocalInertiaTensor = vec3(
-      localInertiaTensor.x > EPSILON ? 1.0f / localInertiaTensor.x : 0.0f,
-      localInertiaTensor.y > EPSILON ? 1.0f / localInertiaTensor.y : 0.0f,
-      localInertiaTensor.z > EPSILON ? 1.0f / localInertiaTensor.z : 0.0f
-    );
+    invLocalInertiaTensor = fm_vec3_t{{
+      localInertiaTensor.x > FM_EPSILON ? 1.0f / localInertiaTensor.x : 0.0f,
+      localInertiaTensor.y > FM_EPSILON ? 1.0f / localInertiaTensor.y : 0.0f,
+      localInertiaTensor.z > FM_EPSILON ? 1.0f / localInertiaTensor.z : 0.0f
+    }};
   }
 
   void RigidBody::integrateVelocity(float fixedDt, const fm_vec3_t &gravity) {
     if(isKinematic || isSleeping) return;
 
     if(hasFlag(constraints, Constraint::FreezePosAll)) {
-      velocity = vec3Zero();
-      acceleration = vec3Zero();
+      velocity = VEC3_ZERO;
+      acceleration = VEC3_ZERO;
       return;
     }
 
@@ -145,13 +145,13 @@ namespace P64::Coll {
 
     // Add user acceleration
     velocity = velocity + (acceleration * dt);
-    acceleration = vec3Zero();
+    acceleration = VEC3_ZERO;
 
     // Apply position constraints
     velocity = constrainLinearByFlags(constraints, velocity);
 
     // Clamp to terminal speed
-    float speedSq = vec3MagSqrd(velocity);
+    float speedSq = fm_vec3_len2(&velocity);
     if(speedSq > TERMINAL_SPEED * TERMINAL_SPEED) {
       velocity = velocity * (TERMINAL_SPEED / sqrtf(speedSq));
     }
@@ -159,11 +159,11 @@ namespace P64::Coll {
 
   void RigidBody::integrateAngularVelocity(float fixedDt) {
     if(isKinematic || isSleeping) return;
-    if(invMass < EPSILON) return;
+    if(invMass < FM_EPSILON) return;
 
     if(hasFlag(constraints, Constraint::FreezeRotAll)) {
-      angularVelocity = vec3Zero();
-      torqueAccumulator = vec3Zero();
+      angularVelocity = VEC3_ZERO;
+      torqueAccumulator = VEC3_ZERO;
       return;
     }
 
@@ -173,11 +173,11 @@ namespace P64::Coll {
     if(!vec3IsZero(torqueAccumulator)) {
       fm_vec3_t angAccel = applyWorldInertia(torqueAccumulator);
       angularVelocity = angularVelocity + (angAccel * dt * timeScalar);
-      torqueAccumulator = vec3Zero();
+      torqueAccumulator = VEC3_ZERO;
     }
 
     // Clamp angular speed
-    float angSpeedSq = vec3MagSqrd(angularVelocity);
+    float angSpeedSq = fm_vec3_len2(&angularVelocity);
     if(angSpeedSq > TERMINAL_ANGULAR_SPEED_SQ) {
       angularVelocity = angularVelocity * (TERMINAL_ANGULAR_SPEED / sqrtf(angSpeedSq));
       angSpeedSq = TERMINAL_ANGULAR_SPEED_SQ;
@@ -194,11 +194,11 @@ namespace P64::Coll {
 
     // Angular damping — amplify near rest
     float dampFactor = angularDamping;
-    if(angSpeedSq < AMPLIFY_ANG_DAMPING_THRESHOLD_SQ && angSpeedSq > EPSILON) {
+    if(angSpeedSq < AMPLIFY_ANG_DAMPING_THRESHOLD_SQ && angSpeedSq > FM_EPSILON) {
       float ratio = angSpeedSq * AMPLIFY_ANG_DAMPING_THRESHOLD_SQ_INV;
       dampFactor = angularDamping + (1.0f - angularDamping) * (1.0f - ratio);
     }
-    angularVelocity = vec3Scale(angularVelocity, 1.0f - dampFactor);
+    angularVelocity = angularVelocity * (1.0f - dampFactor);
   }
 
   void RigidBody::integratePosition(float fixedDt) {
@@ -207,7 +207,7 @@ namespace P64::Coll {
 
     float dt = fixedDt * timeScalar;
     prevStepPos = *position;
-    *position = vec3Add(*position, vec3Scale(velocity, dt));
+    *position = *position + (velocity * dt);
   }
 
   void RigidBody::integrateRotation(float fixedDt) {
@@ -220,20 +220,20 @@ namespace P64::Coll {
     prevStepRot = *rotation;
 
     // Store old world center of mass for offset correction
-    fm_vec3_t oldWorldCOM = vec3Add(*position, quatRotateVec(*rotation, centerOffset));
+    fm_vec3_t oldWorldCOM = *position + quatRotateVec(*rotation, centerOffset);
 
     *rotation = quatApplyAngularVelocity(*rotation, angularVelocity, dt);
 
     // Correct position so that the center of mass stays in place
     if(!vec3IsZero(centerOffset)) {
-      fm_vec3_t newWorldCOM = vec3Add(*position, quatRotateVec(*rotation, centerOffset));
-      fm_vec3_t correction = vec3Sub(oldWorldCOM, newWorldCOM);
-      *position = vec3Add(*position, correction);
+      fm_vec3_t newWorldCOM = *position + quatRotateVec(*rotation, centerOffset);
+      fm_vec3_t correction = oldWorldCOM - newWorldCOM;
+      *position = *position + correction;
     }
   }
 
   void RigidBody::accelerate(const fm_vec3_t &accel) {
-    acceleration = vec3Add(acceleration, accel);
+    acceleration = acceleration + accel;
     if(isSleeping) wake();
   }
 
@@ -244,20 +244,20 @@ namespace P64::Coll {
 
   void RigidBody::applyLinearImpulse(const fm_vec3_t &impulse) {
     if(isKinematic) return;
-    fm_vec3_t deltaV = constrainLinearByFlags(constraints, vec3Scale(impulse, invMass));
-    velocity = vec3Add(velocity, deltaV);
+    fm_vec3_t deltaV = constrainLinearByFlags(constraints, impulse * invMass);
+    velocity = velocity + deltaV;
     if(isSleeping) wake();
   }
 
   void RigidBody::applyTorque(const fm_vec3_t &torque) {
     if(isKinematic) return;
-    torqueAccumulator = vec3Add(torqueAccumulator, torque);
+    torqueAccumulator = torqueAccumulator + torque;
     if(isSleeping) wake();
   }
 
   void RigidBody::applyAngularImpulse(const fm_vec3_t &angImpulse) {
     if(isKinematic) return;
-    angularVelocity = vec3Add(angularVelocity, applyWorldInertia(angImpulse));
+    angularVelocity = angularVelocity + applyWorldInertia(angImpulse);
     if(isSleeping) wake();
   }
 
@@ -269,8 +269,10 @@ namespace P64::Coll {
   void RigidBody::applyForceAtPoint(const fm_vec3_t &force, const fm_vec3_t &worldPoint) {
     if(isKinematic) return;
     applyLinearImpulse(force);
-    fm_vec3_t r = vec3Sub(worldPoint, worldCenterOfMass);
-    applyAngularImpulse(vec3Cross(r, force));
+    fm_vec3_t r = worldPoint - worldCenterOfMass;
+    fm_vec3_t torque;
+    fm_vec3_cross(&torque, &r, &force);
+    applyAngularImpulse(torque);
   }
 
   void RigidBody::updateWorldInertia() {
@@ -281,7 +283,7 @@ namespace P64::Coll {
       invWorldInertiaTensor.m[1][1] = invLocalInertiaTensor.y;
       invWorldInertiaTensor.m[2][2] = invLocalInertiaTensor.z;
       rotationMatrix = Matrix3x3::identity();
-      worldCenterOfMass = position ? *position : vec3Zero();
+      worldCenterOfMass = position ? *position : VEC3_ZERO;
       return;
     }
 
@@ -297,7 +299,7 @@ namespace P64::Coll {
     invWorldInertiaTensor = matrix3Mul(matrix3Mul(rotationMatrix, localInv), rTranspose);
 
     if(position) {
-      worldCenterOfMass = vec3Add(*position, quatRotateVec(*rotation, centerOffset));
+      worldCenterOfMass = *position + quatRotateVec(*rotation, centerOffset);
     }
   }
 

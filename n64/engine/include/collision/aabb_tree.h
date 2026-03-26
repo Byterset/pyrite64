@@ -1,6 +1,7 @@
 /**
- * @copyright 2024 - Max Bebök
- * @license MIT
+ * @file collide.h
+ * @author Kevin Reier (Byterset)
+ * @brief Dynamic AABB tree BVH Implementation
  */
 #pragma once
 
@@ -15,51 +16,10 @@ namespace P64::Coll {
   using NodeProxy = int16_t;
   constexpr NodeProxy NULL_NODE = -1;
   constexpr float AABB_DISPLACEMENT_MULTIPLIER = 10.0f;
-  constexpr float AABB_NODE_BOUNDS_MARGIN = 1.2f;
   constexpr int AABB_QUERY_STACK_SIZE = 256;
 
   // Forward declare Raycast for ray queries
   struct Raycast;
-
-  // ── AABB utility functions ────────────────────────────────────────
-
-  inline bool aabbOverlap(const AABB &a, const AABB &b) {
-    return (a.max.x >= b.min.x) && (a.min.x <= b.max.x)
-        && (a.max.y >= b.min.y) && (a.min.y <= b.max.y)
-        && (a.max.z >= b.min.z) && (a.min.z <= b.max.z);
-  }
-
-  inline bool aabbContains(const AABB &outer, const AABB &inner) {
-    return (outer.min.x <= inner.min.x) && (outer.max.x >= inner.max.x)
-        && (outer.min.y <= inner.min.y) && (outer.max.y >= inner.max.y)
-        && (outer.min.z <= inner.min.z) && (outer.max.z >= inner.max.z);
-  }
-
-  inline bool aabbContainsPoint(const AABB &box, const fm_vec3_t &p) {
-    return (p.x >= box.min.x) && (p.x <= box.max.x)
-        && (p.y >= box.min.y) && (p.y <= box.max.y)
-        && (p.z >= box.min.z) && (p.z <= box.max.z);
-  }
-
-  inline AABB aabbUnion(const AABB &a, const AABB &b) {
-    return {vec3Min(a.min, b.min), vec3Max(a.max, b.max)};
-  }
-
-  inline float aabbArea(const AABB &box) {
-    float dx = box.max.x - box.min.x;
-    float dy = box.max.y - box.min.y;
-    float dz = box.max.z - box.min.z;
-    return 2.0f * (dx*dy + dy*dz + dz*dx);
-  }
-
-  inline void aabbExtendDirection(const AABB &in, const fm_vec3_t &dir, AABB &out) {
-    out = in;
-    if(dir.x > 0.0f) out.max.x += dir.x; else out.min.x += dir.x;
-    if(dir.y > 0.0f) out.max.y += dir.y; else out.min.y += dir.y;
-    if(dir.z > 0.0f) out.max.z += dir.z; else out.min.z += dir.z;
-  }
-
-  bool aabbIntersectsRay(const AABB &box, const fm_vec3_t &origin, const fm_vec3_t &invDir, float maxDist);
 
   // ── Tree node ─────────────────────────────────────────────────────
 

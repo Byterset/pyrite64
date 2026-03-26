@@ -1,6 +1,7 @@
 /**
- * @copyright 2024 - Max Bebök
- * @license MIT
+ * @file rigid_body.h
+ * @author Kevin Reier (Byterset)
+ * @brief Contains the rigidBody definition, constants and related functions
  */
 #pragma once
 
@@ -30,6 +31,7 @@ namespace P64::Coll {
   constexpr float AMPLIFY_ANG_DAMPING_THRESHOLD_SQ_INV = 1.0f / AMPLIFY_ANG_DAMPING_THRESHOLD_SQ;
   constexpr int SLEEP_STEPS = 120;
 
+  /// @brief Defines the different positional and rotational constraints that can be imposed on a rigidbody
   enum class Constraint : uint16_t {
     None = 0,
     FreezePosX   = (1 << 0),
@@ -134,7 +136,7 @@ namespace P64::Coll {
     void applyPositionConstraints();
 
     void wake() { isSleeping = false; sleepCounter = 0; }
-    void sleep() { isSleeping = true; velocity = vec3Zero(); angularVelocity = vec3Zero(); }
+    void sleep() { isSleeping = true; velocity = VEC3_ZERO; angularVelocity = VEC3_ZERO; }
 
     fm_vec3_t applyWorldInertia(const fm_vec3_t &in) const {
       return matrix3Vec3Mul(invWorldInertiaTensor, in);

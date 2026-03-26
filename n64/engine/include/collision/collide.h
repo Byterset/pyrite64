@@ -1,6 +1,7 @@
 /**
- * @copyright 2024 - Max Bebök
- * @license MIT
+ * @file collide.h
+ * @author Kevin Reier (Byterset)
+ * @brief Functions to detect collisions between different shapes and objects and record them
  */
 #pragma once
 
@@ -11,10 +12,11 @@
 namespace P64::Coll {
 
   struct CollisionScene; // forward declare
+  struct ColliderProxy; // forward declare
 
   void collideDetectObjectToObject(Collider *colliderA, RigidBody *rigidBodyA, Collider *colliderB, RigidBody *rigidBodyB);
   void collideDetectObjectToMesh(Collider *collider, RigidBody *rigidBody, const MeshCollider &mesh);
-  bool collideDetectObjectToTriangle(Collider *collider, RigidBody *rigidBody, const MeshCollider &mesh, int triangleIndex);
+  bool collideDetectObjectToTriangle(ColliderProxy *colliderProxy, RigidBody *rigidBody, const MeshCollider &mesh, int triangleIndex);
 
   ContactConstraint *collideCacheContactConstraint(
     RigidBody *rigidBodyA, Collider *colliderA, MeshCollider *meshColliderA, Object *objectA,

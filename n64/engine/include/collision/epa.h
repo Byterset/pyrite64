@@ -1,6 +1,18 @@
 /**
- * @copyright 2024 - Max Bebök
- * @license MIT
+ * @file epa.h
+ * @author Kevin Reier (Byterset)
+ * @brief Expanding Polytope Algorithm (EPA) implementation for collision detection.
+ *
+ * EPA refines the penetration information after GJK determines that two convex shapes intersect.
+ * GJK efficiently detects collision but only provides a simplex containing the origin.
+ * EPA expands this simplex into a polytope to find:
+ *   - The exact penetration depth
+ *   - The collision normal
+ *   - Contact points on both objects
+ *
+ * The algorithm works by iteratively expanding the polytope toward the origin, finding the
+ * face closest to the origin. This closest face defines the minimum translation vector needed
+ * to separate the objects.
  */
 #pragma once
 

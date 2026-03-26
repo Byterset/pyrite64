@@ -1,6 +1,7 @@
 /**
- * @copyright 2024 - Max Bebök
- * @license MIT
+ * @file collider_shape.h
+ * @author Kevin Reier (Byterset)
+ * @brief Defines the Basic (non-mesh) Colliders 
  */
 #pragma once
 

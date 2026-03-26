@@ -34,7 +34,7 @@ AABB BoxShape::boundingBox(const fm_quat_t *q) const {
     ez = halfSize.x*fabsf(r20) + halfSize.y*fabsf(r21) + halfSize.z*fabsf(r22);
   }
 
-  return {vec3(-ex, -ey, -ez), vec3(ex, ey, ez)};
+  return {fm_vec3_t{{-ex, -ey, -ez}}, fm_vec3_t{{ex, ey, ez}}};
 }
 
 fm_vec3_t BoxShape::inertiaTensor(float mass) const {
@@ -56,7 +56,7 @@ AABB CapsuleShape::boundingBox(const fm_quat_t *q) const {
   fm_vec3_t r{};
 
   if(!q) {
-    r = vec3(0.0f, innerHalfHeight, 0.0f);
+    r = fm_vec3_t{{0.0f, innerHalfHeight, 0.0f}};
   } else {
     float x = q->x, y = q->y, z = q->z, w = q->w;
     float xx = x*x, yy = y*y, zz = z*z;
@@ -77,8 +77,8 @@ AABB CapsuleShape::boundingBox(const fm_quat_t *q) const {
   float absZ = fabsf(r.z);
 
   return {
-    vec3(-absX - radius, -absY - radius, -absZ - radius),
-    vec3( absX + radius,  absY + radius,  absZ + radius)
+    fm_vec3_t{{-absX - radius, -absY - radius, -absZ - radius}},
+    fm_vec3_t{{ absX + radius,  absY + radius,  absZ + radius}}
   };
 }
 
@@ -142,7 +142,7 @@ AABB CylinderShape::boundingBox(const fm_quat_t *q) const {
   float ex = radius, ey = halfHeight, ez = radius;
 
   if(!q) {
-    return {vec3(-ex, -ey, -ez), vec3(ex, ey, ez)};
+    return {fm_vec3_t{{-ex, -ey, -ez}}, fm_vec3_t{{ex, ey, ez}}};
   }
 
   float x = q->x, y = q->y, z = q->z, w = q->w;
@@ -164,7 +164,7 @@ AABB CylinderShape::boundingBox(const fm_quat_t *q) const {
   float wye = fabsf(r10)*ex + fabsf(r11)*ey + fabsf(r12)*ez;
   float wze = fabsf(r20)*ex + fabsf(r21)*ey + fabsf(r22)*ez;
 
-  return {vec3(-wxe, -wye, -wze), vec3(wxe, wye, wze)};
+  return {fm_vec3_t{{-wxe, -wye, -wze}}, fm_vec3_t{{wxe, wye, wze}}};
 }
 
 fm_vec3_t CylinderShape::inertiaTensor(float mass) const {
@@ -192,20 +192,20 @@ fm_vec3_t ConeShape::support(const fm_vec3_t &dir) const {
   float d2 = dy2 + sigma2;
 
   if(dy > 0.0f && dy2 > d2 * sin2) {
-    return vec3(0.0f, halfHeight, 0.0f);
+    return fm_vec3_t{{0.0f, halfHeight, 0.0f}};
   }
 
   if(sigma2 > 0.0f) {
     float invSigma = 1.0f / sqrtf(sigma2);
-    return vec3(radius * dx * invSigma, -halfHeight, radius * dz * invSigma);
+    return fm_vec3_t{{radius * dx * invSigma, -halfHeight, radius * dz * invSigma}};
   }
 
-  return vec3(0.0f, -halfHeight, 0.0f);
+  return fm_vec3_t{{0.0f, -halfHeight, 0.0f}};
 }
 
 AABB ConeShape::boundingBox(const fm_quat_t *q) const {
   if(!q) {
-    return {vec3(-radius, -halfHeight, -radius), vec3(radius, halfHeight, radius)};
+    return {fm_vec3_t{{-radius, -halfHeight, -radius}}, fm_vec3_t{{radius, halfHeight, radius}}};
   }
 
   float x = q->x, y = q->y, z = q->z, w = q->w;
@@ -218,11 +218,11 @@ AABB ConeShape::boundingBox(const fm_quat_t *q) const {
   float r20 = 2*(xz-wy), r21 = 2*(yz+wx), r22 = 1 - 2*(xx+yy);
 
   auto rotate = [&](float px, float py, float pz) -> fm_vec3_t {
-    return vec3(
+    return fm_vec3_t{{
       r00*px + r01*py + r02*pz,
       r10*px + r11*py + r12*pz,
       r20*px + r21*py + r22*pz
-    );
+    }};
   };
 
   auto apex = rotate(0.0f, halfHeight, 0.0f);
@@ -261,14 +261,14 @@ fm_vec3_t PyramidShape::support(const fm_vec3_t &dir) const {
   float baseDot = fabsf(dir.x) * baseHalfWidthX + fabsf(dir.z) * baseHalfWidthZ - halfHeight * dir.y;
 
   if(apexDot > baseDot) {
-    return vec3(0.0f, halfHeight, 0.0f);
+    return fm_vec3_t{{0.0f, halfHeight, 0.0f}};
   }
 
-  return vec3(
+  return fm_vec3_t{{
     copysignf(baseHalfWidthX, dir.x),
     -halfHeight,
     copysignf(baseHalfWidthZ, dir.z)
-  );
+  }};
 }
 
 AABB PyramidShape::boundingBox(const fm_quat_t *q) const {
@@ -291,7 +291,7 @@ AABB PyramidShape::boundingBox(const fm_quat_t *q) const {
     ez = baseHalfWidthX*fabsf(r20) + halfHeight*fabsf(r21) + baseHalfWidthZ*fabsf(r22);
   }
 
-  return {vec3(-ex, -ey, -ez), vec3(ex, ey, ez)};
+  return {fm_vec3_t{{-ex, -ey, -ez}}, fm_vec3_t{{ex, ey, ez}}};
 }
 
 fm_vec3_t PyramidShape::inertiaTensor(float mass) const {

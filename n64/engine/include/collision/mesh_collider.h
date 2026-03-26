@@ -1,11 +1,13 @@
 /**
- * @copyright 2024 - Max Bebök
- * @license MIT
+ * @file mesh_collider.h
+ * @author Kevin Reier (Byterset)
+ * @brief Mesh Collider definitions and functions
  */
 #pragma once
 
 #include "vec_math.h"
 #include "aabb_tree.h"
+#include "rigid_body.h"
 #include <cstdint>
 
 namespace P64 { class Object; }
@@ -59,6 +61,8 @@ namespace P64::Coll {
     fm_quat_t lastOwnerRot{QUAT_IDENTITY};
     fm_vec3_t lastOwnerScale{1.0f, 1.0f, 1.0f};
     bool hasCachedOwnerTransform{false};
+
+    Matrix3x3 inverseRotation{}; ///< Cached inverse of owner's rotation for fast local-space queries
 
     /// Transform a local-space point to world space
     fm_vec3_t toWorldSpace(const fm_vec3_t &localPoint) const;

@@ -1,6 +1,7 @@
 /**
- * @copyright 2024 - Max Bebök
- * @license MIT
+ * @file raycast.h
+ * @author Kevin Reier (Byterset)
+ * @brief Raycast definitions and functions
  */
 #pragma once
 

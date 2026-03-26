@@ -40,28 +40,28 @@ namespace P64::Coll {
   }
 
   void MeshTriangle::gjkSupport(const fm_vec3_t &direction, fm_vec3_t &output) const {
-    fm_vec3_t w0 = worldVertex(0);
-    fm_vec3_t w1 = worldVertex(1);
-    fm_vec3_t w2 = worldVertex(2);
+    fm_vec3_t v0 = vertices[tri.indices[0]];
+    fm_vec3_t v1 = vertices[tri.indices[1]];
+    fm_vec3_t v2 = vertices[tri.indices[2]];
 
-    float d0 = vec3Dot(w0, direction);
-    float d1 = vec3Dot(w1, direction);
-    float d2 = vec3Dot(w2, direction);
+    float d0 = fm_vec3_dot(&v0, &direction);
+    float d1 = fm_vec3_dot(&v1, &direction);
+    float d2 = fm_vec3_dot(&v2, &direction);
 
     if(d0 >= d1 && d0 >= d2) {
-      output = w0;
+      output = v0;
     } else if(d1 >= d2) {
-      output = w1;
+      output = v1;
     } else {
-      output = w2;
+      output = v2;
     }
   }
 
   float MeshTriangle::comparePoint(const fm_vec3_t &point) const {
     fm_vec3_t w0 = worldVertex(0);
     fm_vec3_t wn = worldNormal();
-    fm_vec3_t diff = vec3Sub(point, w0);
-    return vec3Dot(wn, diff);
+    fm_vec3_t diff = point - w0;
+    return fm_vec3_dot(&wn, &diff);
   }
 
   void meshTriangleGjkSupport(const void *data, const fm_vec3_t &direction, fm_vec3_t &output) {
@@ -72,15 +72,15 @@ namespace P64::Coll {
   // ── MeshCollider transform ────────────────────────────────────────
 
   fm_vec3_t MeshCollider::toWorldSpace(const fm_vec3_t &localPoint) const {
-    fm_vec3_t position = owner ? owner->pos : vec3Zero();
+    fm_vec3_t position = owner ? owner->pos : VEC3_ZERO;
     fm_quat_t rotation = owner ? owner->rot : QUAT_IDENTITY;
-    fm_vec3_t scale = owner ? owner->scale : vec3(1.0f, 1.0f, 1.0f);
-    fm_vec3_t scaled = vec3(localPoint.x * scale.x, localPoint.y * scale.y, localPoint.z * scale.z);
+    fm_vec3_t scale = owner ? owner->scale : fm_vec3_t{{1.0f, 1.0f, 1.0f}};
+    fm_vec3_t scaled = fm_vec3_t{{localPoint.x * scale.x, localPoint.y * scale.y, localPoint.z * scale.z}};
     if(!quatIsIdentical(&rotation, &QUAT_IDENTITY)) {
       scaled = quatRotateVec(rotation, scaled);
     }
-    if(vec3MagSqrd(position) > EPSILON_SQUARED) {
-      scaled = vec3Add(scaled, position);
+    if(fm_vec3_len2(&position) > FM_EPSILON * FM_EPSILON) {
+      scaled = scaled + position;
     }
     return scaled;
   }
@@ -88,17 +88,17 @@ namespace P64::Coll {
   fm_vec3_t MeshCollider::toLocalSpace(const fm_vec3_t &worldPoint) const {
     fm_vec3_t p = worldPoint;
     fm_quat_t rotation = owner ? owner->rot : QUAT_IDENTITY;
-    fm_vec3_t scale = owner ? owner->scale : vec3(1.0f, 1.0f, 1.0f);
+    fm_vec3_t scale = owner ? owner->scale : fm_vec3_t{{1.0f, 1.0f, 1.0f}};
     if(hasPosition()) {
       p = p - owner->pos;
     }
     if(hasRotation()) {
-      p = quatConjugate(rotation) * p;
+      p = matrix3Vec3Mul(inverseRotation, p);
     }
     if(hasScale()) {
-      if(fabsf(scale.x) > EPSILON) p.x /= scale.x;
-      if(fabsf(scale.y) > EPSILON) p.y /= scale.y;
-      if(fabsf(scale.z) > EPSILON) p.z /= scale.z;
+      if(fabsf(scale.x) > FM_EPSILON) p.x /= scale.x;
+      if(fabsf(scale.y) > FM_EPSILON) p.y /= scale.y;
+      if(fabsf(scale.z) > FM_EPSILON) p.z /= scale.z;
     }
     return p;
   }
@@ -110,7 +110,7 @@ namespace P64::Coll {
 
   fm_vec3_t MeshCollider::rotateToLocal(const fm_vec3_t &worldDir) const {
     if(!hasRotation()) return worldDir;
-    return quatConjugate(owner->rot) * worldDir;
+    return matrix3Vec3Mul(inverseRotation, worldDir);
   }
 
   bool MeshCollider::hasTransform() const {
@@ -124,35 +124,36 @@ namespace P64::Coll {
 
   bool MeshCollider::hasPosition() const {
     if(!owner) return false;
-    return vec3MagSqrd(owner->pos) > EPSILON_SQUARED;
+    return fm_vec3_len2(&owner->pos) > FM_EPSILON * FM_EPSILON;
   }
 
   bool MeshCollider::hasScale() const {
     if(!owner) return false;
-    return (fabsf(owner->scale.x - 1.0f) > EPSILON) || (fabsf(owner->scale.y - 1.0f) > EPSILON) || (fabsf(owner->scale.z - 1.0f) > EPSILON);
+    return (fabsf(owner->scale.x - 1.0f) > FM_EPSILON) || (fabsf(owner->scale.y - 1.0f) > FM_EPSILON) || (fabsf(owner->scale.z - 1.0f) > FM_EPSILON);
   }
 
   bool MeshCollider::ownerTransformChanged() const {
     if(!owner) return false;
     if(!hasCachedOwnerTransform) return true;
 
-    if(vec3DistSqrd(owner->pos, lastOwnerPos) > EPSILON_SQUARED) return true;
-    if(vec3DistSqrd(owner->scale, lastOwnerScale) > EPSILON_SQUARED) return true;
+    if(fm_vec3_distance2(&owner->pos, &lastOwnerPos) > FM_EPSILON * FM_EPSILON) return true;
+    if(fm_vec3_distance2(&owner->scale, &lastOwnerScale) > FM_EPSILON * FM_EPSILON) return true;
 
     const float rotSim = fabsf(quatDot(owner->rot, lastOwnerRot));
-    return rotSim < (1.0f - EPSILON);
+    return rotSim < (1.0f - FM_EPSILON);
   }
 
   void MeshCollider::syncOwnerTransform() {
     if(!owner) {
-      lastOwnerPos = vec3Zero();
+      lastOwnerPos = VEC3_ZERO;
       lastOwnerRot = QUAT_IDENTITY;
-      lastOwnerScale = vec3(1.0f, 1.0f, 1.0f);
+      lastOwnerScale = fm_vec3_t{{1.0f, 1.0f, 1.0f}};
     } else {
       lastOwnerPos = owner->pos;
       lastOwnerRot = owner->rot;
       lastOwnerScale = owner->scale;
     }
+    inverseRotation = quatToMatrix3(quatConjugate(lastOwnerRot));
     hasCachedOwnerTransform = true;
   }
 
@@ -178,14 +179,14 @@ namespace P64::Coll {
   void MeshCollider::recalculateWorldAABB() {
     // Transform all 8 corners of the local AABB to world space and take the enclosing AABB
     fm_vec3_t corners[8] = {
-      vec3(localRootAABB.min.x, localRootAABB.min.y, localRootAABB.min.z),
-      vec3(localRootAABB.max.x, localRootAABB.min.y, localRootAABB.min.z),
-      vec3(localRootAABB.min.x, localRootAABB.max.y, localRootAABB.min.z),
-      vec3(localRootAABB.max.x, localRootAABB.max.y, localRootAABB.min.z),
-      vec3(localRootAABB.min.x, localRootAABB.min.y, localRootAABB.max.z),
-      vec3(localRootAABB.max.x, localRootAABB.min.y, localRootAABB.max.z),
-      vec3(localRootAABB.min.x, localRootAABB.max.y, localRootAABB.max.z),
-      vec3(localRootAABB.max.x, localRootAABB.max.y, localRootAABB.max.z),
+      fm_vec3_t{{localRootAABB.min.x, localRootAABB.min.y, localRootAABB.min.z}},
+      fm_vec3_t{{localRootAABB.max.x, localRootAABB.min.y, localRootAABB.min.z}},
+      fm_vec3_t{{localRootAABB.min.x, localRootAABB.max.y, localRootAABB.min.z}},
+      fm_vec3_t{{localRootAABB.max.x, localRootAABB.max.y, localRootAABB.min.z}},
+      fm_vec3_t{{localRootAABB.min.x, localRootAABB.min.y, localRootAABB.max.z}},
+      fm_vec3_t{{localRootAABB.max.x, localRootAABB.min.y, localRootAABB.max.z}},
+      fm_vec3_t{{localRootAABB.min.x, localRootAABB.max.y, localRootAABB.max.z}},
+      fm_vec3_t{{localRootAABB.max.x, localRootAABB.max.y, localRootAABB.max.z}},
     };
 
     fm_vec3_t worldMin = toWorldSpace(corners[0]);
@@ -201,14 +202,14 @@ namespace P64::Coll {
   AABB MeshCollider::worldAABBToLocal(const AABB &worldAABB) const {
     // Transform all 8 corners of the world AABB into local space
     fm_vec3_t corners[8] = {
-      vec3(worldAABB.min.x, worldAABB.min.y, worldAABB.min.z),
-      vec3(worldAABB.max.x, worldAABB.min.y, worldAABB.min.z),
-      vec3(worldAABB.min.x, worldAABB.max.y, worldAABB.min.z),
-      vec3(worldAABB.max.x, worldAABB.max.y, worldAABB.min.z),
-      vec3(worldAABB.min.x, worldAABB.min.y, worldAABB.max.z),
-      vec3(worldAABB.max.x, worldAABB.min.y, worldAABB.max.z),
-      vec3(worldAABB.min.x, worldAABB.max.y, worldAABB.max.z),
-      vec3(worldAABB.max.x, worldAABB.max.y, worldAABB.max.z),
+      fm_vec3_t{{worldAABB.min.x, worldAABB.min.y, worldAABB.min.z}},
+      fm_vec3_t{{worldAABB.max.x, worldAABB.min.y, worldAABB.min.z}},
+      fm_vec3_t{{worldAABB.min.x, worldAABB.max.y, worldAABB.min.z}},
+      fm_vec3_t{{worldAABB.max.x, worldAABB.max.y, worldAABB.min.z}},
+      fm_vec3_t{{worldAABB.min.x, worldAABB.min.y, worldAABB.max.z}},
+      fm_vec3_t{{worldAABB.max.x, worldAABB.min.y, worldAABB.max.z}},
+      fm_vec3_t{{worldAABB.min.x, worldAABB.max.y, worldAABB.max.z}},
+      fm_vec3_t{{worldAABB.max.x, worldAABB.max.y, worldAABB.max.z}},
     };
 
     fm_vec3_t localMin = toLocalSpace(corners[0]);
@@ -266,11 +267,11 @@ namespace P64::Coll {
     constexpr float NORM_SCALE = 1.0f / 32767.0f;
     collider->normals = new fm_vec3_t[header->triCount];
     for(uint32_t t = 0; t < header->triCount; ++t) {
-      collider->normals[t] = vec3(
+      collider->normals[t] = fm_vec3_t{{
         static_cast<float>(normalData[t].v[0]) * NORM_SCALE,
         static_cast<float>(normalData[t].v[1]) * NORM_SCALE,
         static_cast<float>(normalData[t].v[2]) * NORM_SCALE
-      );
+      }};
     }
 
     // Bind to owner object

@@ -12,6 +12,7 @@
  *   - Contact points on both objects
  */
 #include "collision/epa.h"
+#include "collision/collision_scene.h"
 
 #include <cassert>
 
@@ -19,13 +20,13 @@ using namespace P64::Coll;
 
 namespace {
 
-  constexpr int EPA_MAX_ITERATIONS = 16;
+  constexpr int EPA_MAX_ITERATIONS = 8;
   constexpr int EPA_MAX_SIMPLEX_POINTS = 4 + EPA_MAX_ITERATIONS;
   constexpr int EPA_MAX_SIMPLEX_TRIANGLES = 4 + EPA_MAX_ITERATIONS * 2;
   constexpr int MAX_SWEPT_ITERATIONS = 15;
 
-  constexpr float EPA_CONVERGENCE_TOLERANCE = 0.001f;
-  constexpr float SWEPT_DISTANCE_TOLERANCE = -0.001f;
+  constexpr float EPA_CONVERGENCE_TOLERANCE = 0.005f;
+  constexpr float SWEPT_DISTANCE_TOLERANCE = -0.01f;
   constexpr float SWEPT_OFFSET_MARGIN = 0.1f;
   constexpr float SWEPT_CONTACT_EPSILON = 0.001f;
 
@@ -146,21 +147,22 @@ namespace {
   // --- Triangle operations ---
 
   inline void triangleInitNormal(ExpandingSimplex &es, SimplexTriangle &tri) {
-    auto edgeB = vec3Sub(es.points[tri.indexData.indices[1]], es.points[tri.indexData.indices[0]]);
-    auto edgeC = vec3Sub(es.points[tri.indexData.indices[2]], es.points[tri.indexData.indices[0]]);
-    tri.normal = vec3Cross(edgeB, edgeC);
+    auto edgeB = es.points[tri.indexData.indices[1]] - es.points[tri.indexData.indices[0]];
+    auto edgeC = es.points[tri.indexData.indices[2]] - es.points[tri.indexData.indices[0]];
+    fm_vec3_cross(&tri.normal, &edgeB, &edgeC);
   }
 
   bool triangleCheckEdge(ExpandingSimplex &es, SimplexTriangle &tri, int index) {
     auto &pointA = es.points[tri.indexData.indices[index]];
-    auto edge = vec3Sub(es.points[tri.indexData.indices[nextFace(static_cast<unsigned char>(index))]], pointA);
-    auto toOrigin = vec3Negate(pointA);
+    auto edge = es.points[tri.indexData.indices[nextFace(static_cast<unsigned char>(index))]] - pointA;
+    auto toOrigin = -pointA;
 
-    auto crossCheck = vec3Cross(edge, toOrigin);
-    if(vec3Dot(crossCheck, tri.normal) >= 0.0f) return false;
+    fm_vec3_t crossCheck;
+    fm_vec3_cross(&crossCheck, &edge, &toOrigin);
+    if(fm_vec3_dot(&crossCheck, &tri.normal) >= 0.0f) return false;
 
-    float edgeLerp = vec3Dot(toOrigin, edge);
-    float edgeMagSq = vec3MagSqrd(edge);
+    float edgeLerp = fm_vec3_dot(&toOrigin, &edge);
+    float edgeMagSq = fm_vec3_len2(&edge);
 
     if(edgeLerp < 0.0f) {
       edgeLerp = 0.0f;
@@ -170,18 +172,18 @@ namespace {
       edgeLerp /= edgeMagSq;
     }
 
-    auto nearest = vec3AddScaled(pointA, edge, edgeLerp);
-    tri.distanceToOrigin = vec3Mag(nearest);
+    auto nearest = pointA + edge * edgeLerp;
+    tri.distanceToOrigin = fm_vec3_len(&nearest);
     return true;
   }
 
   void triangleDetermineDistance(ExpandingSimplex &es, SimplexTriangle &tri) {
-    tri.normal = vec3Normalize(tri.normal);
+    fm_vec3_norm(&tri.normal, &tri.normal);
 
     for(int i = 0; i < 3; ++i) {
       if(triangleCheckEdge(es, tri, i)) return;
     }
-    tri.distanceToOrigin = vec3Dot(tri.normal, es.points[tri.indexData.indices[0]]);
+    tri.distanceToOrigin = fm_vec3_dot(&tri.normal, &es.points[tri.indexData.indices[0]]);
   }
 
   void triangleInit(ExpandingSimplex &es, TriangleIndexData &data, SimplexTriangle &tri) {
@@ -204,9 +206,17 @@ namespace {
     siftDown(es, idx);
   }
 
-  inline SimplexTriangle &closestFace(ExpandingSimplex &es) {
-    return es.triangles[es.triangleHeap[0]];
-  }
+  // inline SimplexTriangle &closestFace(ExpandingSimplex &es) {
+  //   return es.triangles[es.triangleHeap[0]];
+  // }
+
+  inline SimplexTriangle& closestFace(ExpandingSimplex& es) {
+    int best = 0;
+    for (int i = 1; i < es.triangleCount; ++i)
+        if (es.triangles[i].distanceToOrigin < es.triangles[best].distanceToOrigin)
+            best = i;
+    return es.triangles[best];
+}
 
   // --- Edge rotation for convexity ---
 
@@ -260,8 +270,8 @@ namespace {
     auto &oppPoint = es.points[adj.indexData.indices[tri.indexData.oppositePoints[0]]];
     auto &firstPoint = es.points[tri.indexData.indices[0]];
 
-    auto offset = vec3Sub(oppPoint, firstPoint);
-    if(vec3Dot(offset, tri.normal) > 0.0f) {
+    auto offset = oppPoint - firstPoint;
+    if(fm_vec3_dot(&offset, &tri.normal) > 0.0f) {
       rotateEdge(es, tri, triIndex, heapIndex);
     } else if(!(es.flags & FlagsSkipDistance)) {
       triangleDetermineDistance(es, tri);
@@ -356,7 +366,7 @@ namespace {
       es.aPoints[face.indexData.indices[2]],
       bary
     );
-    result.contactB = vec3AddScaled(result.contactA, result.normal, result.penetration);
+    result.contactB = result.contactA + result.normal * result.penetration;
   }
 
   // --- Swept EPA face finder ---
@@ -370,12 +380,10 @@ namespace {
       unsigned char nf = nextFace(currentFace);
       auto &tri = es.triangles[triIndex];
 
-      auto normal = vec3Cross(
-        es.points[tri.indexData.indices[currentFace]],
-        es.points[tri.indexData.indices[nf]]
-      );
+      fm_vec3_t normal;
+      fm_vec3_cross(&normal, &es.points[tri.indexData.indices[currentFace]], &es.points[tri.indexData.indices[nf]]);
 
-      if(vec3Dot(normal, direction) < 0.0f) {
+      if(fm_vec3_dot(&normal, &direction) < 0.0f) {
         triIndex = tri.indexData.adjacentFaces[currentFace];
         faceEdge = nextFace(tri.indexData.oppositePoints[currentFace]);
         nf = nextFace(static_cast<unsigned char>(faceEdge));
@@ -402,6 +410,7 @@ bool P64::Coll::epaSolve(
 
   SimplexTriangle *closest = nullptr;
   float projection = 0.0f;
+  float epaTolerance = EPA_CONVERGENCE_TOLERANCE * collisionSceneGetInstance()->getPhysicsScale();
 
   for(int i = 0; i < EPA_MAX_ITERATIONS; ++i) {
     closest = &closestFace(es);
@@ -411,22 +420,22 @@ bool P64::Coll::epaSolve(
     fm_vec3_t bPoint{};
 
     rigidBodyASupport(rigidBodyA, closest->normal, aPoint);
-    auto reverseNormal = vec3Negate(closest->normal);
+    fm_vec3_t reverseNormal = -closest->normal;
     rigidBodyBSupport(rigidBodyB, reverseNormal, bPoint);
 
-    es.points[nextIdx] = vec3Sub(aPoint, bPoint);
-    projection = vec3Dot(es.points[nextIdx], closest->normal);
+    es.points[nextIdx] = aPoint - bPoint;
+    projection = fm_vec3_dot(&es.points[nextIdx], &closest->normal);
 
-    if((projection - closest->distanceToOrigin) < EPA_CONVERGENCE_TOLERANCE) break;
+    if((projection - closest->distanceToOrigin) < epaTolerance) break;
 
     ++es.pointCount;
     expandPolytope(es, nextIdx, es.triangleHeap[0]);
   }
 
   if(closest) {
-    result.normal = vec3Negate(closest->normal);
+    result.normal = -closest->normal;
     result.penetration = projection;
-    auto planePos = vec3Scale(closest->normal, closest->distanceToOrigin);
+    fm_vec3_t planePos = closest->normal * closest->distanceToOrigin;
     calculateContact(es, *closest, planePos, result);
     return true;
   }
@@ -448,7 +457,8 @@ bool P64::Coll::epaSolveSwept(
   float projection = 0.0f;
   int currentTriangle = 0;
   int currentEdge = 0;
-  auto raycastDir = vec3Sub(bStart, bEnd);
+  auto raycastDir = bStart - bEnd;
+  float epaTolerance = EPA_CONVERGENCE_TOLERANCE * collisionSceneGetInstance()->getPhysicsScale();
 
   for(int i = 0; i < EPA_MAX_ITERATIONS; ++i) {
     sweptFindFace(es, raycastDir, currentTriangle, currentEdge);
@@ -459,34 +469,34 @@ bool P64::Coll::epaSolveSwept(
     fm_vec3_t bPoint{};
 
     rigidBodyASupport(rigidBodyA, closest->normal, aPoint);
-    auto reverseNormal = vec3Negate(closest->normal);
+    fm_vec3_t reverseNormal = -closest->normal;
     rigidBodyBSupport(rigidBodyB, reverseNormal, bPoint);
 
-    es.points[nextIdx] = vec3Sub(aPoint, bPoint);
-    projection = vec3Dot(es.points[nextIdx], closest->normal);
-    closest->distanceToOrigin = vec3Dot(es.points[closest->indexData.indices[0]], closest->normal);
+    es.points[nextIdx] = aPoint - bPoint;
+    projection = fm_vec3_dot(&es.points[nextIdx], &closest->normal);
+    closest->distanceToOrigin = fm_vec3_dot(&es.points[closest->indexData.indices[0]], &closest->normal);
 
-    if((projection - closest->distanceToOrigin) < EPA_CONVERGENCE_TOLERANCE) break;
+    if((projection - closest->distanceToOrigin) < epaTolerance) break;
 
     ++es.pointCount;
     expandPolytope(es, nextIdx, currentTriangle);
   }
 
   if(closest) {
-    raycastDir = vec3Normalize(raycastDir);
-    result.normal = vec3Normalize(closest->normal);
+    fm_vec3_norm(&raycastDir, &raycastDir);
+    fm_vec3_norm(&result.normal, &closest->normal);
 
     auto facePlane = planeFromNormalAndPoint(result.normal, es.points[closest->indexData.indices[0]]);
 
     float distance = 0.0f;
-    float moveOffset = vec3DistSqrd(bStart, bEnd);
-    bool hasIntersection = planeRayIntersection(facePlane, vec3Zero(), raycastDir, distance);
+    float moveOffset = fm_vec3_distance2(&bStart, &bEnd);
+    bool hasIntersection = planeRayIntersection(facePlane, VEC3_ZERO, raycastDir, distance);
 
     if(!hasIntersection || distance < SWEPT_DISTANCE_TOLERANCE || distance * distance >= moveOffset + SWEPT_OFFSET_MARGIN) {
       result.penetration = 0.0f;
       bEnd = bStart;
 
-      auto planePos = vec3Scale(closest->normal, closest->distanceToOrigin);
+      fm_vec3_t planePos = closest->normal * closest->distanceToOrigin;
       calculateContact(es, *closest, planePos, result);
       return true;
     }
@@ -494,8 +504,8 @@ bool P64::Coll::epaSolveSwept(
     distance += SWEPT_CONTACT_EPSILON;
     result.penetration = 0.0f;
 
-    auto planePos = vec3Scale(raycastDir, distance);
-    bEnd = vec3Add(bEnd, planePos);
+    auto planePos = raycastDir * distance;
+    bEnd = bEnd + planePos;
     calculateContact(es, *closest, planePos, result);
   }
 

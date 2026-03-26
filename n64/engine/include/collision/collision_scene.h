@@ -1,6 +1,7 @@
 /**
- * @copyright 2024 - Max Bebök
- * @license MIT
+ * @file contact.h
+ * @author Kevin Reier (Byterset)
+ * @brief Defines the Collision Scene which keeps track of physics participants and updates them
  */
 #pragma once
 

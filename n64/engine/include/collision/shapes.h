@@ -1,32 +1,31 @@
 /**
- * @copyright 2024 - Max Bebök
- * @license MIT
+ * @file shapes.h
+ * @author Kevin Reier (Byterset)
+ * @brief Defines the Properties and helper functions of the different basic Collider shapes
  */
 #pragma once
 
 #include "vec_math.h"
 #include <cmath>
+#include "aabb.h"
 
 namespace P64::Coll {
 
-  struct AABB {
-    fm_vec3_t min{};
-    fm_vec3_t max{};
-  };
-
   // ── Sphere ──────────────────────────────────────────────────────────
 
+  /// @brief Defines the Sphere Collider Type
   struct SphereShape {
-    float radius;
+    float radius; // Radius of the Sphere
 
     fm_vec3_t support(const fm_vec3_t &dir) const {
-      fm_vec3_t unit = vec3Normalize(dir);
-      if(vec3IsZero(unit)) unit = vec3Up();
+      fm_vec3_t unit;
+      fm_vec3_norm(&unit, &dir);
+      if(vec3IsZero(unit)) unit = VEC3_UP;
       return fm_vec3_t{{unit.x * radius, unit.y * radius, unit.z * radius}};
     }
 
     AABB boundingBox(const fm_quat_t * /*rotation*/) const {
-      return {vec3(-radius, -radius, -radius), vec3(radius, radius, radius)};
+      return {fm_vec3_t{{-radius, -radius, -radius}}, fm_vec3_t{{radius, radius, radius}}};
     }
 
     fm_vec3_t inertiaTensor(float mass) const {
@@ -37,8 +36,9 @@ namespace P64::Coll {
 
   // ── Box ─────────────────────────────────────────────────────────────
 
+  /// @brief Defines the Box (OBB) Collider Type
   struct BoxShape {
-    fm_vec3_t halfSize;
+    fm_vec3_t halfSize; // Vector describing half the size in every axis
 
     fm_vec3_t support(const fm_vec3_t &dir) const {
       return fm_vec3_t{{
@@ -54,13 +54,15 @@ namespace P64::Coll {
 
   // ── Capsule ─────────────────────────────────────────────────────────
 
+  /// @brief Defines the Capsule Collider Type
   struct CapsuleShape {
-    float radius;
-    float innerHalfHeight;
+    float radius; // The radius of the capsule
+    float innerHalfHeight; // Half the height of the cylindrical part of the capsule (without the hemisphere ends)
 
     fm_vec3_t support(const fm_vec3_t &dir) const {
-      fm_vec3_t unit = vec3Normalize(dir);
-      if(vec3IsZero(unit)) unit = vec3Up();
+      fm_vec3_t unit;
+      fm_vec3_norm(&unit, &dir);
+      if(vec3IsZero(unit)) unit = VEC3_UP;
 
       float y = copysignf(innerHalfHeight, unit.y);
       return fm_vec3_t{{unit.x * radius, unit.y * radius + y, unit.z * radius}};
@@ -72,9 +74,10 @@ namespace P64::Coll {
 
   // ── Cylinder ────────────────────────────────────────────────────────
 
+  /// @brief Defines the Cylinder Collider Type
   struct CylinderShape {
-    float radius;
-    float halfHeight;
+    float radius; // The radius of the cylinder
+    float halfHeight; // Half of the height of the cylinder
 
     fm_vec3_t support(const fm_vec3_t &dir) const;
     AABB boundingBox(const fm_quat_t *q) const;
@@ -83,9 +86,11 @@ namespace P64::Coll {
 
   // ── Cone ────────────────────────────────────────────────────────────
 
+  /// @brief Defines the Cone Collider Type
+
   struct ConeShape {
-    float radius;
-    float halfHeight;
+    float radius; // The radius of the base of the cone
+    float halfHeight; // Half of the height of the cone from base to top
 
     fm_vec3_t support(const fm_vec3_t &dir) const;
     AABB boundingBox(const fm_quat_t *q) const;
@@ -94,6 +99,9 @@ namespace P64::Coll {
 
   // ── Pyramid ─────────────────────────────────────────────────────────
 
+  /// @brief Defines the Pyramid Collider Type
+  ///
+  /// Hint: The Base of a Pyramid Collider does not need to be square
   struct PyramidShape {
     float baseHalfWidthX;
     float baseHalfWidthZ;

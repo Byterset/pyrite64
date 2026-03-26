@@ -22,12 +22,13 @@ namespace {
 
 fm_vec3_t *P64::Coll::simplexAddPoint(Simplex &simplex, const fm_vec3_t &aPoint, const fm_vec3_t &bPoint) {
   if(simplex.nPoints == GJK_MAX_SIMPLEX_SIZE) {
+    //this normally shouldn't happen
     return nullptr;
   }
 
   int index = simplex.nPoints;
   simplex.rigidBodyAPoint[index] = aPoint;
-  simplex.points[index] = vec3Sub(aPoint, bPoint);
+  simplex.points[index] = aPoint - bPoint;
   ++simplex.nPoints;
 
   return &simplex.points[index];
@@ -35,26 +36,28 @@ fm_vec3_t *P64::Coll::simplexAddPoint(Simplex &simplex, const fm_vec3_t &aPoint,
 
 bool P64::Coll::simplexCheck(Simplex &simplex, fm_vec3_t &nextDirection) {
   auto &lastAdded = simplex.points[simplex.nPoints - 1];
-  auto aToOrigin = vec3Negate(lastAdded);
+  auto aToOrigin = -lastAdded;
 
   if(simplex.nPoints == 2) {
-    auto lastAddedToOther = vec3Sub(simplex.points[0], lastAdded);
+    auto lastAddedToOther = simplex.points[0] - lastAdded;
     nextDirection = vec3TripleProduct(lastAddedToOther, aToOrigin, lastAddedToOther);
 
-    if(vec3MagSqrd(nextDirection) <= 0.0000001f) {
+    if(fm_vec3_len2(&nextDirection) <= FM_EPSILON * FM_EPSILON) {
       nextDirection = vec3Perpendicular(lastAddedToOther);
     }
     return false;
 
   } else if(simplex.nPoints == 3) {
-    auto ab = vec3Sub(simplex.points[1], lastAdded);
-    auto ac = vec3Sub(simplex.points[0], lastAdded);
-    auto normal = vec3Cross(ab, ac);
+    auto ab = simplex.points[1] - lastAdded;
+    auto ac = simplex.points[0] - lastAdded;
+    fm_vec3_t normal;
+    fm_vec3_cross(&normal, &ab, &ac);
 
-    auto dirCheck = vec3Cross(ab, normal);
-    if(vec3Dot(dirCheck, aToOrigin) > 0.0f) {
+    fm_vec3_t dirCheck;
+    fm_vec3_cross(&dirCheck, &ab, &normal);
+    if(fm_vec3_dot(&dirCheck, &aToOrigin) > 0.0f) {
       nextDirection = vec3TripleProduct(ab, aToOrigin, ab);
-      if(vec3MagSqrd(nextDirection) <= 0.0000001f) {
+      if(fm_vec3_len2(&nextDirection) <= FM_EPSILON * FM_EPSILON) {
         nextDirection = normal;
       }
       // remove c
@@ -64,10 +67,10 @@ bool P64::Coll::simplexCheck(Simplex &simplex, fm_vec3_t &nextDirection) {
       return false;
     }
 
-    dirCheck = vec3Cross(normal, ac);
-    if(vec3Dot(dirCheck, aToOrigin) > 0.0f) {
+    fm_vec3_cross(&dirCheck, &normal, &ac);
+    if(fm_vec3_dot(&dirCheck, &aToOrigin) > 0.0f) {
       nextDirection = vec3TripleProduct(ac, aToOrigin, ac);
-      if(vec3MagSqrd(nextDirection) <= 0.0000001f) {
+      if(fm_vec3_len2(&nextDirection) <= FM_EPSILON * FM_EPSILON) {
         nextDirection = normal;
       }
       // remove b
@@ -76,7 +79,7 @@ bool P64::Coll::simplexCheck(Simplex &simplex, fm_vec3_t &nextDirection) {
       return false;
     }
 
-    if(vec3Dot(normal, aToOrigin) > 0.0f) {
+    if(fm_vec3_dot(&normal, &aToOrigin) > 0.0f) {
       nextDirection = normal;
       return false;
     }
@@ -85,7 +88,7 @@ bool P64::Coll::simplexCheck(Simplex &simplex, fm_vec3_t &nextDirection) {
     simplexMovePoint(simplex, 3, 0);
     simplexMovePoint(simplex, 0, 1);
     simplexMovePoint(simplex, 1, 3);
-    nextDirection = vec3Negate(normal);
+    nextDirection = -normal;
 
   } else if(simplex.nPoints == 4) {
     int lastBehindIndex = -1;
@@ -95,14 +98,11 @@ bool P64::Coll::simplexCheck(Simplex &simplex, fm_vec3_t &nextDirection) {
     fm_vec3_t normals[3];
 
     for(int i = 0; i < 3; ++i) {
-      auto firstEdge = vec3Sub(lastAdded, simplex.points[i]);
-      auto secondEdge = vec3Sub(
-        (i == 2) ? simplex.points[0] : simplex.points[i + 1],
-        simplex.points[i]
-      );
-      normals[i] = vec3Cross(firstEdge, secondEdge);
+      auto firstEdge = lastAdded - simplex.points[i];
+      auto secondEdge = (i == 2) ? simplex.points[0] - simplex.points[i] : simplex.points[i + 1] - simplex.points[i];
+      fm_vec3_cross(&normals[i], &firstEdge, &secondEdge);
 
-      if(vec3Dot(aToOrigin, normals[i]) > 0.0f) {
+      if(fm_vec3_dot(&aToOrigin, &normals[i]) > 0.0f) {
         ++isFrontCount;
         lastInFrontIndex = i;
       } else {
@@ -132,9 +132,9 @@ bool P64::Coll::simplexCheck(Simplex &simplex, fm_vec3_t &nextDirection) {
       simplexMovePoint(simplex, 1, 3);
       simplex.nPoints = 2;
 
-      auto ab = vec3Sub(simplex.points[0], simplex.points[1]);
+      auto ab = simplex.points[0] - simplex.points[1];
       nextDirection = vec3TripleProduct(ab, aToOrigin, ab);
-      if(vec3MagSqrd(nextDirection) <= 0.0000001f) {
+      if(fm_vec3_len2(&nextDirection) <= FM_EPSILON * FM_EPSILON) {
         nextDirection = vec3Perpendicular(ab);
       }
     } else {
@@ -150,8 +150,8 @@ bool P64::Coll::simplexCheck(Simplex &simplex, fm_vec3_t &nextDirection) {
 
 bool P64::Coll::gjkCheckForOverlap(
   Simplex &simplex,
-  const void *rigidBodyA, GjkSupportFunction rigidBodyASupport,
-  const void *rigidBodyB, GjkSupportFunction rigidBodyBSupport,
+  const void *colliderA, GjkSupportFunction colliderASupport,
+  const void *colliderB, GjkSupportFunction colliderBSupport,
   const fm_vec3_t &firstDirection
 ) {
   fm_vec3_t aPoint{};
@@ -162,23 +162,23 @@ bool P64::Coll::gjkCheckForOverlap(
   simplex.nPoints = 0;
 
   if(vec3IsZero(dir)) {
-    dir = vec3Right();
+    dir = VEC3_RIGHT;
   }
 
-  rigidBodyASupport(rigidBodyA, dir, aPoint);
-  nextDirection = vec3Negate(dir);
-  rigidBodyBSupport(rigidBodyB, nextDirection, bPoint);
+  colliderASupport(colliderA, dir, aPoint);
+  nextDirection = -dir;
+  colliderBSupport(colliderB, nextDirection, bPoint);
   simplexAddPoint(simplex, aPoint, bPoint);
 
   for(int iteration = 0; iteration < GJK_MAX_ITERATIONS; ++iteration) {
-    auto reverseDirection = vec3Negate(nextDirection);
-    rigidBodyASupport(rigidBodyA, nextDirection, aPoint);
-    rigidBodyBSupport(rigidBodyB, reverseDirection, bPoint);
+    auto reverseDirection = -nextDirection;
+    colliderASupport(colliderA, nextDirection, aPoint);
+    colliderBSupport(colliderB, reverseDirection, bPoint);
 
     auto *addedPoint = simplexAddPoint(simplex, aPoint, bPoint);
     if(!addedPoint) return false;
 
-    if(vec3Dot(*addedPoint, nextDirection) <= 0.0f) return false;
+    if(fm_vec3_dot(addedPoint, &nextDirection) <= 0.0f) return false;
 
     if(simplexCheck(simplex, nextDirection)) return true;
   }

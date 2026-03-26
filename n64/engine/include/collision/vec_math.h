@@ -1,105 +1,37 @@
 /**
- * @copyright 2024 - Max Bebök
- * @license MIT
+ * @file vec_math.h
+ * @author Kevin Reier (Byterset)
+ * @brief Additional Vector Math Functions and Operators for Collision Detection
  */
 #pragma once
 
 #include <cmath>
 #include <t3d/t3dmath.h>
+#include "lib/math.h"
 
+using namespace P64::Math;
 namespace P64::Coll {
 
-  constexpr float EPSILON = 0.000001f;
-  constexpr float EPSILON_SQUARED = EPSILON * EPSILON;
-  constexpr fm_quat_t QUAT_IDENTITY = {0.0f, 0.0f, 0.0f, 1.0f};
-
-  inline fm_vec3_t vec3(float x, float y, float z) {
-    return fm_vec3_t{{x, y, z}};
-  }
-
-  inline fm_vec3_t vec3Zero() {
-    return fm_vec3_t{{0.0f, 0.0f, 0.0f}};
-  }
-
-  inline fm_vec3_t vec3Right() {
-    return fm_vec3_t{{1.0f, 0.0f, 0.0f}};
-  }
-
-  inline fm_vec3_t vec3Up() {
-    return fm_vec3_t{{0.0f, 1.0f, 0.0f}};
-  }
-
-  inline fm_vec3_t vec3Forward() {
-    return fm_vec3_t{{0.0f, 0.0f, 1.0f}};
-  }
-
-  inline float vec3Dot(const fm_vec3_t &a, const fm_vec3_t &b) {
-    return a.x * b.x + a.y * b.y + a.z * b.z;
-  }
-
-  inline float vec3MagSqrd(const fm_vec3_t &v) {
-    return vec3Dot(v, v);
-  }
-
-  inline float vec3Mag(const fm_vec3_t &v) {
-    return sqrtf(vec3MagSqrd(v));
-  }
-
-  inline float vec3DistSqrd(const fm_vec3_t &a, const fm_vec3_t &b) {
-    float dx = a.x - b.x;
-    float dy = a.y - b.y;
-    float dz = a.z - b.z;
-    return dx * dx + dy * dy + dz * dz;
-  }
-
-  inline fm_vec3_t vec3Negate(const fm_vec3_t &v) {
-    return fm_vec3_t{{-v.x, -v.y, -v.z}};
-  }
-
-  inline fm_vec3_t vec3Scale(const fm_vec3_t &v, float s) {
-    return fm_vec3_t{{v.x * s, v.y * s, v.z * s}};
-  }
-
-  inline fm_vec3_t vec3Add(const fm_vec3_t &a, const fm_vec3_t &b) {
-    return fm_vec3_t{{a.x + b.x, a.y + b.y, a.z + b.z}};
-  }
-
-  inline fm_vec3_t vec3Sub(const fm_vec3_t &a, const fm_vec3_t &b) {
-    return fm_vec3_t{{a.x - b.x, a.y - b.y, a.z - b.z}};
-  }
-
-  inline fm_vec3_t vec3AddScaled(const fm_vec3_t &a, const fm_vec3_t &b, float scale) {
-    return fm_vec3_t{{a.x + b.x * scale, a.y + b.y * scale, a.z + b.z * scale}};
-  }
-
-  inline fm_vec3_t vec3Cross(const fm_vec3_t &a, const fm_vec3_t &b) {
-    return fm_vec3_t{{
-      a.y * b.z - a.z * b.y,
-      a.z * b.x - a.x * b.z,
-      a.x * b.y - a.y * b.x
-    }};
-  }
-
-  inline fm_vec3_t vec3Normalize(const fm_vec3_t &v) {
-    float magSq = vec3MagSqrd(v);
-    if(magSq < EPSILON * EPSILON) {
-      return vec3Zero();
-    }
-    float invMag = 1.0f / sqrtf(magSq);
-    return vec3Scale(v, invMag);
-  }
+  // ----- Additional vector utilities -----
 
   inline fm_vec3_t vec3Perpendicular(const fm_vec3_t &a) {
+    fm_vec3_t temp;
     if(fabsf(a.x) > fabsf(a.z)) {
-      return vec3Cross(a, vec3Forward());
+      fm_vec3_cross(&temp, &a, &VEC3_FORWARD);
+      return temp;
     }
-    return vec3Cross(a, vec3Right());
+    fm_vec3_cross(&temp, &a, &VEC3_RIGHT);
+    return temp;
   }
-
-  /// Computes the vector triple product: (a × b) × c = b(a·c) - a(b·c)
+  
+  /// @brief Computes The vector triple product: (a × b) × c = b(a·c) - a(b·c)
+  /// @param a 
+  /// @param b 
+  /// @param c 
+  /// @return The result of the vector triple product
   inline fm_vec3_t vec3TripleProduct(const fm_vec3_t &a, const fm_vec3_t &b, const fm_vec3_t &c) {
-    float ac = vec3Dot(a, c);
-    float bc = vec3Dot(b, c);
+    float ac = fm_vec3_dot(&a, &c);
+    float bc = fm_vec3_dot(&b, &c);
     return fm_vec3_t{{
       b.x * ac - a.x * bc,
       b.y * ac - a.y * bc,
@@ -107,48 +39,98 @@ namespace P64::Coll {
     }};
   }
 
+  /// @brief Checks if a vector is the zero vector (0, 0, 0).
+  /// @param v 
+  /// @return 
   inline bool vec3IsZero(const fm_vec3_t &v) {
     return v.x == 0.0f && v.y == 0.0f && v.z == 0.0f;
   }
 
+  /// @brief Returns a vector containing the component-wise minimum of two vectors.
+  /// @param a 
+  /// @param b 
+  /// @return 
   inline fm_vec3_t vec3Min(const fm_vec3_t &a, const fm_vec3_t &b) {
     return fm_vec3_t{{fminf(a.x, b.x), fminf(a.y, b.y), fminf(a.z, b.z)}};
   }
 
+  /// @brief Returns a vector containing the component-wise maximum of two vectors.
+  /// @param a 
+  /// @param b 
+  /// @return 
   inline fm_vec3_t vec3Max(const fm_vec3_t &a, const fm_vec3_t &b) {
     return fm_vec3_t{{fmaxf(a.x, b.x), fmaxf(a.y, b.y), fmaxf(a.z, b.z)}};
   }
 
-  inline fm_vec3_t vec3Abs(const fm_vec3_t &v) {
-    return fm_vec3_t{{fabsf(v.x), fabsf(v.y), fabsf(v.z)}};
+
+  /// @brief Projects vector v onto vector onto.
+  /// @param v The vector to be projected.
+  /// @param onto The vector onto which v is projected.
+  /// @return The projected vector.
+  inline fm_vec3_t vec3Project(const fm_vec3_t &v, const fm_vec3_t &onto)
+  {
+    float d = fm_vec3_dot(&v, &onto);
+    float m = fm_vec3_len2(&onto);
+    if (m < FM_EPSILON)
+      return VEC3_ZERO;
+    return onto * (d / m);
+  }
+
+
+  /// @brief Clamps the magnitude of a vector to a maximum value.
+  /// @param v The vector to be clamped.
+  /// @param maxMag The maximum allowed magnitude.
+  /// @return The clamped vector.
+  inline fm_vec3_t vec3ClampMag(const fm_vec3_t &v, float maxMag) {
+    float magSq = fm_vec3_len2(&v);
+    if(magSq > maxMag * maxMag) {
+      return v * (maxMag / sqrtf(magSq));
+    }
+    return v;
+  }
+
+
+  /// @brief Calculates two tangent vectors orthogonal to a given normal vector.
+  /// @param normal The normal vector.
+  /// @param tangentU The first tangent vector (output).
+  /// @param tangentV The second tangent vector (output).
+  inline void vec3CalculateTangents(const fm_vec3_t &normal, fm_vec3_t &tangentU, fm_vec3_t &tangentV) {
+    if(fabsf(normal.x) > fabsf(normal.z)) {
+      float invLen = 1.0f / sqrtf(normal.x * normal.x + normal.y * normal.y);
+      tangentU = fm_vec3_t{{-normal.y * invLen, normal.x * invLen, 0.0f}};
+    } else {
+      float invLen = 1.0f / sqrtf(normal.y * normal.y + normal.z * normal.z);
+      tangentU = fm_vec3_t{{0.0f, -normal.z * invLen, normal.y * invLen}};
+    }
+    fm_vec3_cross(&tangentV, &normal, &tangentU);
   }
 
   // ----- Barycentric Coordinates -----
 
   inline float calculateLerp(const fm_vec3_t &a, const fm_vec3_t &b, const fm_vec3_t &point) {
-    auto v0 = vec3Sub(b, a);
-    float denom = vec3MagSqrd(v0);
-    if(denom < EPSILON * EPSILON) return 0.5f;
-    auto offset = vec3Sub(point, a);
-    return vec3Dot(offset, v0) / denom;
+    auto v0 = b - a;
+    float denom = fm_vec3_len2(&v0);
+    if(denom < FM_EPSILON * FM_EPSILON) return 0.5f;
+    auto offset = point - a;
+    return fm_vec3_dot(&offset, &v0) / denom;
   }
 
   inline fm_vec3_t calculateBarycentricCoords(
     const fm_vec3_t &a, const fm_vec3_t &b, const fm_vec3_t &c, const fm_vec3_t &point
   ) {
-    auto v0 = vec3Sub(b, a);
-    auto v1 = vec3Sub(c, a);
-    auto v2 = vec3Sub(point, a);
+    auto v0 = b - a;
+    auto v1 = c - a;
+    auto v2 = point - a;
 
-    float d00 = vec3Dot(v0, v0);
-    float d01 = vec3Dot(v0, v1);
-    float d11 = vec3Dot(v1, v1);
-    float d20 = vec3Dot(v2, v0);
-    float d21 = vec3Dot(v2, v1);
+    float d00 = fm_vec3_dot(&v0, &v0);
+    float d01 = fm_vec3_dot(&v0, &v1);
+    float d11 = fm_vec3_dot(&v1, &v1);
+    float d20 = fm_vec3_dot(&v2, &v0);
+    float d21 = fm_vec3_dot(&v2, &v1);
 
     float denom = d00 * d11 - d01 * d01;
 
-    if(fabsf(denom) < EPSILON) {
+    if(fabsf(denom) < FM_EPSILON) {
       fm_vec3_t result;
       if(d00 > d11) {
         result.y = calculateLerp(a, b, point);
@@ -173,108 +155,92 @@ namespace P64::Coll {
   inline fm_vec3_t evaluateBarycentricCoords(
     const fm_vec3_t &a, const fm_vec3_t &b, const fm_vec3_t &c, const fm_vec3_t &bary
   ) {
-    auto result = vec3Scale(a, bary.x);
-    result = vec3AddScaled(result, b, bary.y);
-    result = vec3AddScaled(result, c, bary.z);
+    auto result = a * bary.x;
+    result = result + (b * bary.y);
+    result = result + (c * bary.z);
     return result;
   }
 
   // ----- Plane -----
 
+  /// @brief Represents a plane in 3D space defined by a normal vector and a distance from the origin.
   struct Plane {
     fm_vec3_t normal{};
     float d{0.0f};
   };
 
+
+  /// @brief Creates a plane from a normal vector and a point on the plane.
+  /// @param normal The normal vector of the plane.
+  /// @param point A point on the plane.
+  /// @return The constructed plane.
   inline Plane planeFromNormalAndPoint(const fm_vec3_t &normal, const fm_vec3_t &point) {
-    return Plane{normal, -vec3Dot(normal, point)};
+    return Plane{normal, -fm_vec3_dot(&normal, &point)};
   }
 
+
+  /// @brief Tests for intersection between a ray and a plane, returning the distance along the ray to the intersection point if it exists.
+  /// @param plane The plane to test against.
+  /// @param rayOrigin The origin of the ray.
+  /// @param rayDir The direction of the ray.
+  /// @param outDistance The distance along the ray to the intersection point (output).
+  /// @return True if the ray intersects the plane, false otherwise.
   inline bool planeRayIntersection(const Plane &plane, const fm_vec3_t &rayOrigin, const fm_vec3_t &rayDir, float &outDistance) {
-    float normalDot = vec3Dot(plane.normal, rayDir);
-    if(fabsf(normalDot) < EPSILON) return false;
-    outDistance = -(vec3Dot(rayOrigin, plane.normal) + plane.d) / normalDot;
+    float normalDot = fm_vec3_dot(&plane.normal, &rayDir);
+    if(fabsf(normalDot) < FM_EPSILON) return false;
+    outDistance = -(fm_vec3_dot(&rayOrigin, &plane.normal) + plane.d) / normalDot;
     return true;
   }
 
-  // ----- Additional vector utilities -----
-
-  inline fm_vec3_t vec3Project(const fm_vec3_t &v, const fm_vec3_t &onto) {
-    float d = vec3Dot(v, onto);
-    float m = vec3MagSqrd(onto);
-    if(m < EPSILON) return vec3Zero();
-    return vec3Scale(onto, d / m);
-  }
-
-  inline fm_vec3_t vec3ClampMag(const fm_vec3_t &v, float maxMag) {
-    float magSq = vec3MagSqrd(v);
-    if(magSq > maxMag * maxMag) {
-      return vec3Scale(v, maxMag / sqrtf(magSq));
-    }
-    return v;
-  }
-
-  inline void vec3CalculateTangents(const fm_vec3_t &normal, fm_vec3_t &tangentU, fm_vec3_t &tangentV) {
-    if(fabsf(normal.x) > fabsf(normal.z)) {
-      float invLen = 1.0f / sqrtf(normal.x * normal.x + normal.y * normal.y);
-      tangentU = vec3(-normal.y * invLen, normal.x * invLen, 0.0f);
-    } else {
-      float invLen = 1.0f / sqrtf(normal.y * normal.y + normal.z * normal.z);
-      tangentU = vec3(0.0f, -normal.z * invLen, normal.y * invLen);
-    }
-    tangentV = vec3Cross(normal, tangentU);
-  }
 
   // ----- Quaternion utilities -----
 
+  /// @brief Constructs the conjugate of a quaternion, which represents the inverse rotation for unit quaternions.
+  /// @param q The quaternion to conjugate.
+  /// @return The conjugated quaternion.
   inline fm_quat_t quatConjugate(const fm_quat_t &q) {
     return {-q.x, -q.y, -q.z, q.w};
   }
 
+  /// @brief Rotates a vector by a quaternion.
+  /// @param q The quaternion representing the rotation.
+  /// @param v The vector to be rotated.
+  /// @return The rotated vector.
   inline fm_vec3_t quatRotateVec(const fm_quat_t &q, const fm_vec3_t &v) {
     float qx = q.x, qy = q.y, qz = q.z, qw = q.w;
     float tx = 2.0f * (qy * v.z - qz * v.y);
     float ty = 2.0f * (qz * v.x - qx * v.z);
     float tz = 2.0f * (qx * v.y - qy * v.x);
-    return vec3(v.x + qw * tx + (qy * tz - qz * ty),
-                v.y + qw * ty + (qz * tx - qx * tz),
-                v.z + qw * tz + (qx * ty - qy * tx));
+    return fm_vec3_t{{v.x + qw * tx + (qy * tz - qz * ty),
+                      v.y + qw * ty + (qz * tx - qx * tz),
+                      v.z + qw * tz + (qx * ty - qy * tx)}};
   }
 
+  /// @brief Computes the dot product of two quaternions.
+  /// @param a The first quaternion.
+  /// @param b The second quaternion.
+  /// @return The dot product of the two quaternions.
   inline float quatDot(const fm_quat_t &a, const fm_quat_t &b) {
     return a.x*b.x + a.y*b.y + a.z*b.z + a.w*b.w;
   }
 
-  inline fm_quat_t quatNormalize(const fm_quat_t &q) {
-    float mag = sqrtf(q.x*q.x + q.y*q.y + q.z*q.z + q.w*q.w);
-    if(mag < EPSILON) return {0, 0, 0, 1};
-    float inv = 1.0f / mag;
-    return {q.x*inv, q.y*inv, q.z*inv, q.w*inv};
-  }
 
-  inline fm_quat_t quatMultiply(const fm_quat_t &a, const fm_quat_t &b) {
-    return {
-      a.w*b.x + a.x*b.w + a.y*b.z - a.z*b.y,
-      a.w*b.y - a.x*b.z + a.y*b.w + a.z*b.x,
-      a.w*b.z + a.x*b.y - a.y*b.x + a.z*b.w,
-      a.w*b.w - a.x*b.x - a.y*b.y - a.z*b.z
-    };
-  }
-
-  inline fm_quat_t quatFromAxisAngle(const fm_vec3_t &axis, float angle) {
-    float half = 0.5f * angle;
-    float s = sinf(half);
-    return {axis.x * s, axis.y * s, axis.z * s, cosf(half)};
-  }
-
+  /// @brief Apply an Angular Velocity to an existing rotation quaternion, scaled by a given scalar 
+  /// @param q the input quaternion
+  /// @param omega the angular velocity
+  /// @param dt scalar
+  /// @return 
   inline fm_quat_t quatApplyAngularVelocity(const fm_quat_t &q, const fm_vec3_t &omega, float dt) {
     float hdt = 0.5f * dt;
     fm_quat_t dq;
+    fm_quat_t result;
     dq.x = hdt * (omega.x * q.w + omega.y * q.z - omega.z * q.y);
     dq.y = hdt * (omega.y * q.w + omega.z * q.x - omega.x * q.z);
     dq.z = hdt * (omega.z * q.w + omega.x * q.y - omega.y * q.x);
     dq.w = hdt * (-omega.x * q.x - omega.y * q.y - omega.z * q.z);
-    return quatNormalize({q.x + dq.x, q.y + dq.y, q.z + dq.z, q.w + dq.w});
+    result = {q.x + dq.x, q.y + dq.y, q.z + dq.z, q.w + dq.w};
+    fm_quat_norm(&result, &result);
+    return result;
   }
 
   /// @brief Checks if two quaternions are the same component-wise
