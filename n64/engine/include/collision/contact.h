@@ -24,6 +24,7 @@ namespace P64::Coll {
   enum class ContactConstraintKeyType : uint8_t {
     None = 0,
     ColliderPair,
+    ColliderMesh,
     ColliderMeshTriangle,
   };
 
@@ -80,6 +81,14 @@ namespace P64::Coll {
     key.colliderA = collider;
     key.meshCollider = meshCollider;
     key.triangleIndex = triangleIndex;
+    return key;
+  }
+
+  inline ContactConstraintKey makeColliderMeshConstraintKey(Collider *collider, MeshCollider *meshCollider) {
+    ContactConstraintKey key;
+    key.type = ContactConstraintKeyType::ColliderMesh;
+    key.colliderA = collider;
+    key.meshCollider = meshCollider;
     return key;
   }
 

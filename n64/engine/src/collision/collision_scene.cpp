@@ -5,6 +5,7 @@
  */
 #include "collision/collision_scene.h"
 #include "collision/collide.h"
+#include "collision/contact_utils.h"
 #include "collision/gjk.h"
 #include "scene/scene.h"
 
@@ -60,7 +61,7 @@ namespace P64::Coll {
   }
 
   static bool colliderShouldTestMesh(const Collider *collider) {
-    return collider && (collider->maskWrite != 0 || collider->maskRead != 0);
+    return collider && (collider->maskWrite != 0);
   }
 
   static fm_vec3_t constrainAngularWorld(const RigidBody *body, const fm_vec3_t &worldAngular) {
@@ -607,12 +608,20 @@ namespace P64::Coll {
   }
 
   void CollisionScene::dispatchCollisionCallbacks() const {
+    std::vector<CollEvent> pendingEvents;
+    pendingEvents.reserve(cachedConstraintCount_);
+
     for(int i = 0; i < cachedConstraintCount_; ++i) {
       const ContactConstraint &constraint = cachedConstraints_[i];
       if(!constraint.isActive || constraint.pointCount <= 0) continue;
       if(!constraint.objectA || !constraint.objectB) continue;
+      if(!constraint.objectA->isEnabled() || !constraint.objectB->isEnabled()) continue;
 
-      SceneManager::getCurrent().onObjectCollision(makeCollisionEvent(constraint));
+      pendingEvents.push_back(makeCollisionEvent(constraint));
+    }
+
+    for(const CollEvent &event : pendingEvents) {
+      SceneManager::getCurrent().onObjectCollision(event);
     }
   }
 
@@ -714,42 +723,11 @@ namespace P64::Coll {
         continue;
       }
 
-      RigidBody *a = cc.rigidBodyA;
-      RigidBody *b = cc.rigidBodyB;
-
       for(int j = 0; j < cc.pointCount; ++j) {
         ContactPoint &cp = cc.points[j];
         if(!cp.active) continue;
 
-        // Recompute world-space contact points from local coordinates
-        if(a) {
-          fm_vec3_t rA = cp.localPointA;
-          if(a->rotation) {
-            rA = quatRotateVec(*a->rotation, rA);
-          }
-          cp.contactA = *a->position + rA;
-        } else if(cc.meshColliderA) {
-          cp.contactA = cc.meshColliderA->toWorldSpace(cp.localPointA);
-        } else {
-          cp.contactA = cp.localPointA;
-        }
-        if(b) {
-          fm_vec3_t rB = cp.localPointB;
-          if(b->rotation) {
-            rB = quatRotateVec(*b->rotation, rB);
-          }
-          cp.contactB = *b->position + rB;
-        } else if(cc.meshColliderB) {
-          cp.contactB = cc.meshColliderB->toWorldSpace(cp.localPointB);
-        } else {
-          cp.contactB = cp.localPointB;
-        }
-
-        cp.point = (cp.contactA + cp.contactB) * 0.5f;
-
-        // Update penetration: pen = -dot(A - B, normal) = dot(B - A, normal)
-        fm_vec3_t diff = cp.contactA - cp.contactB;
-        cp.penetration = -fm_vec3_dot(&diff, &cc.normal);
+        refreshContactPointWorldState(cp, cc);
 
         // Deactivate if too separated
         if(cp.penetration < -(0.1f * physicsScale_)) {
@@ -1386,38 +1364,7 @@ namespace P64::Coll {
         ContactPoint &cp = cc.points[j];
         if(!cp.active) continue;
 
-        // Refresh world-space contacts from local anchors with current transforms
-        if(a && a->position) {
-          fm_vec3_t rA = cp.localPointA;
-          if(a->rotation) rA = quatRotateVec(*a->rotation, rA);
-          cp.contactA = *a->position + rA;
-          cp.aToContact = cp.contactA - a->worldCenterOfMass;
-        } else if (cc.meshColliderA) {
-          cp.contactA = cc.meshColliderA->toWorldSpace(cp.localPointA);
-          cp.aToContact = cp.contactA - (cc.meshColliderA->owner ? cc.meshColliderA->owner->pos : VEC3_ZERO);
-        } else {
-          cp.contactA = cp.localPointA;
-          cp.aToContact = VEC3_ZERO;
-        }
-
-        if(b && b->position) {
-          fm_vec3_t rB = cp.localPointB;
-          if(b->rotation) rB = quatRotateVec(*b->rotation, rB);
-          cp.contactB = *b->position + rB;
-          cp.bToContact = cp.contactB - b->worldCenterOfMass;
-        } else if (cc.meshColliderB) {
-          cp.contactB = cc.meshColliderB->toWorldSpace(cp.localPointB);
-          cp.bToContact = cp.contactB - (cc.meshColliderB->owner ? cc.meshColliderB->owner->pos : VEC3_ZERO);
-        } else {
-          cp.contactB = cp.localPointB;
-          cp.bToContact = VEC3_ZERO;
-        }
-
-        cp.point = (cp.contactA + cp.contactB) * 0.5f;
-
-        // Recompute penetration from refreshed contacts
-        fm_vec3_t diff = cp.contactA - cp.contactB;
-        cp.penetration = -fm_vec3_dot(&diff, &cc.normal);
+        refreshContactPointWorldState(cp, cc, true);
 
         if(cp.penetration < slop) continue;
 

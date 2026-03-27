@@ -343,6 +343,7 @@ void P64::Scene::onObjectCollision(const Coll::CollEvent &event)
                                  : (event.selfMeshCollider ? event.selfMeshCollider->owner : nullptr);
   auto objB = event.otherObject;
   if(!objA || !objB)return;
+  if(!objA->isEnabled() || !objB->isEnabled()) return;
 
   // Only generate event for the components of objA if the collider that generated the contact
   // is set to be affected by the other collider's layer (maskRead & maskWrite != 0).
@@ -362,6 +363,8 @@ void P64::Scene::onObjectCollision(const Coll::CollEvent &event)
       }
     }
   }
+
+  if(!objA->isEnabled() || !objB->isEnabled()) return;
 
   //if(!event.otherBCS)return;
 

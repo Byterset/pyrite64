@@ -39,6 +39,10 @@ namespace P64::Coll {
     fm_vec3_t support(const fm_vec3_t &dir) const;
     AABB boundingBox(const fm_quat_t *rotation) const;
     fm_vec3_t inertiaTensor(float mass) const;
+    fm_vec3_t toWorldSpace(const fm_vec3_t &localPoint) const;
+    fm_vec3_t toLocalSpace(const fm_vec3_t &worldPoint) const;
+    fm_vec3_t rotateToWorld(const fm_vec3_t &localDir) const;
+    fm_vec3_t rotateToLocal(const fm_vec3_t &worldDir) const;
   };
 
   /// GJK-compatible support wrapper

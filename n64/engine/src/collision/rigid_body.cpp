@@ -304,6 +304,26 @@ namespace P64::Coll {
     }
   }
 
+  fm_vec3_t RigidBody::toWorldSpace(const fm_vec3_t &localPoint) const {
+    if(!position) return localPoint;
+    return *position + rotateToWorld(localPoint);
+  }
+
+  fm_vec3_t RigidBody::toLocalSpace(const fm_vec3_t &worldPoint) const {
+    if(!position) return worldPoint;
+    return rotateToLocal(worldPoint - *position);
+  }
+
+  fm_vec3_t RigidBody::rotateToWorld(const fm_vec3_t &localDir) const {
+    if(!rotation) return localDir;
+    return quatRotateVec(*rotation, localDir);
+  }
+
+  fm_vec3_t RigidBody::rotateToLocal(const fm_vec3_t &worldDir) const {
+    if(!rotation) return worldDir;
+    return quatRotateVec(quatConjugate(*rotation), worldDir);
+  }
+
   void RigidBody::applyPositionConstraints() {
     if(!position) return;
     if(hasFlag(constraints, Constraint::FreezePosX)) position->x = prevStepPos.x;

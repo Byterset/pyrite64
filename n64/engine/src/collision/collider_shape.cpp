@@ -4,6 +4,7 @@
  * @brief Defines the Basic (non-mesh) Colliders (see collider_shape.h)
  */
 #include "collision/collider_shape.h"
+#include "scene/object.h"
 
 using namespace P64::Coll;
 
@@ -41,6 +42,24 @@ fm_vec3_t Collider::inertiaTensor(float mass) const {
     case ShapeType::Pyramid:  return pyramid.inertiaTensor(mass);
   }
   __builtin_unreachable();
+}
+
+fm_vec3_t Collider::toWorldSpace(const fm_vec3_t &localPoint) const {
+  return worldCenter + rotateToWorld(localPoint);
+}
+
+fm_vec3_t Collider::toLocalSpace(const fm_vec3_t &worldPoint) const {
+  return rotateToLocal(worldPoint - worldCenter);
+}
+
+fm_vec3_t Collider::rotateToWorld(const fm_vec3_t &localDir) const {
+  if(!owner) return localDir;
+  return owner->rot * localDir;
+}
+
+fm_vec3_t Collider::rotateToLocal(const fm_vec3_t &worldDir) const {
+  if(!owner) return worldDir;
+  return quatRotateVec(quatConjugate(owner->rot), worldDir);
 }
 
 void P64::Coll::colliderGjkSupport(const void *data, const fm_vec3_t &direction, fm_vec3_t &output) {
