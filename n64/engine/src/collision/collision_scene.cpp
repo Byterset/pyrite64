@@ -523,7 +523,7 @@ namespace P64::Coll {
 
     for(int idx : it->second) {
       ContactConstraint &cc = cachedConstraints_[idx];
-      if(fm_vec3_dot(&cc.normal, &normal) > minNormalDot) {
+      if(fm_vec3_dot(&cc.normal, &normal) >= minNormalDot) {
         return &cc;
       }
     }
@@ -747,6 +747,8 @@ namespace P64::Coll {
             rA = quatRotateVec(*a->rotation, rA);
           }
           cp.contactA = *a->position + rA;
+        // } else if(cc.meshColliderA) {
+        //   cp.contactA = cc.meshColliderA->toWorldSpace(cp.localPointA);
         }
         if(b) {
           fm_vec3_t rB = cp.localPointB;
@@ -754,14 +756,19 @@ namespace P64::Coll {
             rB = quatRotateVec(*b->rotation, rB);
           }
           cp.contactB = *b->position + rB;
+        // } else if(cc.meshColliderB) {
+        //   cp.contactB = cc.meshColliderB->toWorldSpace(cp.localPointB);
         }
+
+        cp.point = (cp.contactA + cp.contactB) * 0.5f;
 
         // Update penetration: pen = -dot(A - B, normal) = dot(B - A, normal)
         fm_vec3_t diff = cp.contactA - cp.contactB;
         cp.penetration = -fm_vec3_dot(&diff, &cc.normal);
 
         // Deactivate if too separated
-        if(cp.penetration < -0.1f) {
+        if(cp.penetration < -(0.1f * physicsScale_)) {
+          debugf("Deactivating contact point due to separation: pen=%.4f\n", (double)cp.penetration);
           cp.active = false;
         }
       }
@@ -1425,6 +1432,8 @@ namespace P64::Coll {
           cp.bToContact = VEC3_ZERO;
         }
 
+        cp.point = (cp.contactA + cp.contactB) * 0.5f;
+
         // Recompute penetration from refreshed contacts
         fm_vec3_t diff = cp.contactA - cp.contactB;
         cp.penetration = -fm_vec3_dot(&diff, &cc.normal);
@@ -1766,33 +1775,6 @@ namespace P64::Coll {
     const uint64_t detectStart = get_ticks();
     detectAllContacts();
     ticksDetect = get_ticks() - detectStart;
-    // if(++detectDebugPrintCounter_ >= 30) {
-    //   detectDebugPrintCounter_ = 0;
-    //   debugf(
-    //     "Coll detect %.3fms | inactive %.3f | order %.3f | bodies %.3f | detached %.3f (body %.3f + detached %.3f) | mesh %.3f | cleanup %.3f\n",
-    //     ticksToMs(ticksDetect),
-    //     ticksToMs(ticksDetectDeactivate),
-    //     ticksToMs(ticksDetectBuildOrder),
-    //     ticksToMs(ticksDetectBodyPairs),
-    //     ticksToMs(ticksDetectDetachedPairs),
-    //     ticksToMs(ticksDetectDetachedBodyPairs),
-    //     ticksToMs(ticksDetectDetachedDetachedPairs),
-    //     ticksToMs(ticksDetectMeshPairs),
-    //     ticksToMs(ticksDetectCleanup)
-    //   );
-    //   debugf(
-    //     "  colliders=%" PRIu32 " triggers=%" PRIu32 " bodies=%" PRIu32 " detached=%" PRIu32
-    //     " bodyCandidates=%" PRIu32 " objPairs=%" PRIu32 " detachedPairs=%" PRIu32 " meshPairs=%" PRIu32 "\n",
-    //     detectOrderedColliderCount,
-    //     detectTriggerColliderCount,
-    //     detectOrderedBodyCount,
-    //     detectDetachedColliderCount,
-    //     detectBodyCandidateCount,
-    //     detectObjectPairCount,
-    //     detectDetachedPairCount,
-    //     detectMeshPairCount
-    //   );
-    // }
 
     stageStart = get_ticks();
     // Refresh anchors from local-space points before solving.

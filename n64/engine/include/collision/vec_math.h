@@ -178,6 +178,29 @@ namespace P64::Coll {
     return Plane{normal, -fm_vec3_dot(&normal, &point)};
   }
 
+  /// @brief Returns the signed distance from a point to a plane.
+  /// @param plane The plane to test against.
+  /// @param point The point to measure from.
+  /// @return Positive if the point is on the side the normal points to, negative otherwise.
+  inline float planeSignedDistance(const Plane &plane, const fm_vec3_t &point)
+  {
+    return fm_vec3_dot(&plane.normal, &point) + plane.d;
+  }
+
+  /// @brief Projects a point onto a plane.
+  /// @param plane The plane to project onto.
+  /// @param point The point to project.
+  /// @return The closest point on the plane to the given point.
+  inline fm_vec3_t planeProjectPoint(const Plane &plane, const fm_vec3_t &point)
+  {
+    float dist = planeSignedDistance(plane, point);
+    return fm_vec3_t{
+        point.x - dist * plane.normal.x,
+        point.y - dist * plane.normal.y,
+        point.z - dist * plane.normal.z,
+    };
+  }
+  
 
   /// @brief Tests for intersection between a ray and a plane, returning the distance along the ray to the intersection point if it exists.
   /// @param plane The plane to test against.

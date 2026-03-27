@@ -430,7 +430,8 @@ namespace P64::Coll {
     tri.mesh = &mesh;
 
     Simplex simplex;
-    fm_vec3_t firstDir = VEC3_RIGHT;
+    fm_vec3_t firstDir = ((tri.vertices[tri.tri.indices[0]] + tri.vertices[tri.tri.indices[1]] + tri.vertices[tri.tri.indices[2]]) / 3.0f) - colliderProxyMeshSpace->worldCenter;
+    if(fm_vec3_len2(&firstDir) < FM_EPSILON * FM_EPSILON) firstDir = VEC3_RIGHT;
 
     uint64_t startTicks = get_ticks();
     bool gjkOverlap = gjkCheckForOverlap(
@@ -537,7 +538,7 @@ namespace P64::Coll {
       }
     }
 
-    debugf("Object-to-mesh collision: GJK time = %llu tks, EPA time = %llu tks, candidates = %d\n", ticks_gjk_obj_mesh, ticks_epa_obj_mesh, count);
+    debugf("Object-to-mesh collision: GJK time = %.4f us, EPA time = %.4f us, candidates = %d\n", (double)TICKS_TO_US(ticks_gjk_obj_mesh), (double)TICKS_TO_US(ticks_epa_obj_mesh), count);
 
     ticks_epa_obj_mesh = 0;
     ticks_gjk_obj_mesh = 0;
@@ -608,7 +609,7 @@ namespace P64::Coll {
     if(!hasAnalyticalPath) {
       // Fall back to GJK + EPA
       fm_vec3_t firstDir = colliderA->worldCenter - colliderB->worldCenter;
-      if(fm_vec3_len2(&firstDir) < FM_EPSILON) firstDir = VEC3_UP;
+      if(fm_vec3_len2(&firstDir) < FM_EPSILON * FM_EPSILON) firstDir = VEC3_UP;
 
       proxyA.collider = colliderA;
       proxyA.worldCenter = colliderA->worldCenter;
