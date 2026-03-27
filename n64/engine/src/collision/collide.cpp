@@ -31,18 +31,6 @@ namespace P64::Coll {
     return quatToMatrix3(colliderOrientation(collider));
   }
 
-  static ConstraintCacheKeyPart makeConstraintCacheKeyPart(Collider *collider, Object *object) {
-    if(collider) return ConstraintCacheKeyPart{collider, 1};
-    if(object) return ConstraintCacheKeyPart{object, 2};
-    return ConstraintCacheKeyPart{};
-  }
-
-  static bool shouldSwapConstraintOrder(Collider *colliderA, Object *objectA, Collider *colliderB, Object *objectB) {
-    const ConstraintCacheKeyPart keyA = makeConstraintCacheKeyPart(colliderA, objectA);
-    const ConstraintCacheKeyPart keyB = makeConstraintCacheKeyPart(colliderB, objectB);
-    return keyB < keyA;
-  }
-
   static bool colliderReadsCollider(const Collider *reader, const Collider *writer) {
     return reader && writer && ((reader->maskRead & writer->maskWrite) != 0);
   }
@@ -90,6 +78,153 @@ namespace P64::Coll {
     fm_vec3_t localDir = matrix3Vec3Mul(proxy->rotationT, direction);
     fm_vec3_t localSupport = proxy->collider->support(localDir);
     output = matrix3Vec3Mul(proxy->rotation, localSupport) + proxy->worldCenter;
+  }
+
+  static bool barycentricIsInsideTriangle(const fm_vec3_t &barycentric, float tolerance) {
+    return barycentric.x >= -tolerance && barycentric.y >= -tolerance && barycentric.z >= -tolerance &&
+           barycentric.x <= 1.0f + tolerance && barycentric.y <= 1.0f + tolerance && barycentric.z <= 1.0f + tolerance;
+  }
+
+  static int minimumTriangleReuseContacts(const Collider &collider) {
+    switch(collider.type) {
+      case ShapeType::Sphere:
+      case ShapeType::Capsule:
+        return 1;
+      case ShapeType::Cylinder:
+      case ShapeType::Cone:
+        return 2;
+      case ShapeType::Box:
+      case ShapeType::Pyramid:
+        return 3;
+    }
+
+    return MAX_CONTACT_POINTS_PER_PAIR;
+  }
+
+  static float triangleReuseShapeScale(const Collider &collider) {
+    switch(collider.type) {
+      case ShapeType::Sphere:
+        return collider.sphere.radius;
+      case ShapeType::Capsule:
+        return fmaxf(collider.capsule.radius, collider.capsule.innerHalfHeight);
+      case ShapeType::Box:
+        return fmaxf(collider.box.halfSize.x, fmaxf(collider.box.halfSize.y, collider.box.halfSize.z));
+      case ShapeType::Cylinder:
+        return fmaxf(collider.cylinder.radius, collider.cylinder.halfHeight);
+      case ShapeType::Cone:
+        return fmaxf(collider.cone.radius, collider.cone.halfHeight);
+      case ShapeType::Pyramid:
+        return fmaxf(collider.pyramid.baseHalfWidthX, fmaxf(collider.pyramid.baseHalfWidthZ, collider.pyramid.halfHeight));
+    }
+
+    return 0.0f;
+  }
+
+  static float cachedTriangleContactSpanSq(const ContactConstraint &constraint) {
+    float maxSpanSq = 0.0f;
+    for(int i = 0; i < constraint.pointCount; ++i) {
+      const ContactPoint &pointA = constraint.points[i];
+      if(!pointA.active) continue;
+
+      for(int j = i + 1; j < constraint.pointCount; ++j) {
+        const ContactPoint &pointB = constraint.points[j];
+        if(!pointB.active) continue;
+
+        const fm_vec3_t diff = pointA.contactA - pointB.contactA;
+        maxSpanSq = fmaxf(maxSpanSq, fm_vec3_len2(&diff));
+      }
+    }
+
+    return maxSpanSq;
+  }
+
+  static bool canSkipTriangleEpaWithCachedConstraint(const ContactConstraint &constraint, const Collider &collider) {
+    const int minContacts = minimumTriangleReuseContacts(collider);
+    if(constraint.pointCount < minContacts) {
+      return false;
+    }
+
+    if(minContacts <= 1) {
+      return true;
+    }
+
+    const float minSpan = fmaxf(triangleReuseShapeScale(collider) * 0.2f, 0.02f);
+    return cachedTriangleContactSpanSq(constraint) >= (minSpan * minSpan);
+  }
+
+  static bool refreshCachedTriangleConstraint(
+    ContactConstraint &constraint,
+    RigidBody *rigidBody,
+    const MeshTriangle &triangle,
+    const MeshCollider &mesh,
+    float combinedFriction,
+    float combinedBounce,
+    bool respondsA,
+    bool respondsB) {
+    if(constraint.isTrigger || constraint.pointCount <= 0 || !rigidBody || !rigidBody->position) {
+      return false;
+    }
+
+    const fm_vec3_t localV0 = triangle.vertices[triangle.tri.indices[0]];
+    const fm_vec3_t localV1 = triangle.vertices[triangle.tri.indices[1]];
+    const fm_vec3_t localV2 = triangle.vertices[triangle.tri.indices[2]];
+    const Plane trianglePlaneLocal = planeFromNormalAndPoint(triangle.normal, localV0);
+    fm_vec3_t triangleNormalWorld = triangle.worldNormal();
+    triangleNormalWorld = makeSafeContactNormal(triangleNormalWorld, constraint.points[0].contactA, constraint.points[0].contactB);
+    if(fm_vec3_dot(&triangleNormalWorld, &constraint.normal) < 0.0f) {
+      triangleNormalWorld = -triangleNormalWorld;
+    }
+
+    constraint.isActive = true;
+    constraint.isTrigger = false;
+    constraint.normal = triangleNormalWorld;
+    vec3CalculateTangents(constraint.normal, constraint.tangentU, constraint.tangentV);
+    constraint.combinedFriction = combinedFriction;
+    constraint.combinedBounce = combinedBounce;
+    constraint.respondsA = respondsA;
+    constraint.respondsB = respondsB;
+
+    constexpr float BARY_TOLERANCE = 0.02f;
+    constexpr float REUSE_MAX_SEPARATION = 0.05f;
+    int writeIndex = 0;
+
+    for(int pointIndex = 0; pointIndex < constraint.pointCount; ++pointIndex) {
+      ContactPoint &point = constraint.points[pointIndex];
+      if(!point.active) continue;
+
+      fm_vec3_t localMeshPoint = planeProjectPoint(trianglePlaneLocal, point.localPointB);
+      const fm_vec3_t barycentric = calculateBarycentricCoords(localV0, localV1, localV2, localMeshPoint);
+      if(!barycentricIsInsideTriangle(barycentric, BARY_TOLERANCE)) {
+        point.active = false;
+        continue;
+      }
+
+      point.localPointB = evaluateBarycentricCoords(localV0, localV1, localV2, barycentric);
+
+      fm_vec3_t localObjectPoint = point.localPointA;
+      if(rigidBody->rotation) {
+        localObjectPoint = quatRotateVec(*rigidBody->rotation, localObjectPoint);
+      }
+
+      point.contactA = *rigidBody->position + localObjectPoint;
+      point.contactB = mesh.toWorldSpace(point.localPointB);
+      point.point = (point.contactA + point.contactB) * 0.5f;
+
+      fm_vec3_t diff = point.contactA - point.contactB;
+      point.penetration = -fm_vec3_dot(&diff, &constraint.normal);
+      if(point.penetration < -REUSE_MAX_SEPARATION) {
+        point.active = false;
+        continue;
+      }
+
+      if(writeIndex != pointIndex) {
+        constraint.points[writeIndex] = point;
+      }
+      ++writeIndex;
+    }
+
+    constraint.pointCount = writeIndex;
+    return writeIndex > 0;
   }
 
   // ── Analytical collision helpers ──────────────────────────────────
@@ -243,34 +378,53 @@ namespace P64::Coll {
   ContactConstraint *collideCacheContactConstraint(
     RigidBody *rigidBodyA, Collider *colliderA, MeshCollider *meshColliderA, Object *objectA,
     RigidBody *rigidBodyB, Collider *colliderB, MeshCollider *meshColliderB, Object *objectB, const EpaResult &result,
-    float combinedFriction, float combinedBounce, bool isTrigger, bool respondsA, bool respondsB) {
+    float combinedFriction, float combinedBounce, bool isTrigger, bool respondsA, bool respondsB, int triangleIndex) {
 
     CollisionScene *scene = collisionSceneGetInstance();
     EpaResult orderedResult = result;
 
     orderedResult.normal = makeSafeContactNormal(orderedResult.normal, orderedResult.contactA, orderedResult.contactB);
 
-    if(shouldSwapConstraintOrder(colliderA, objectA, colliderB, objectB)) {
+    const bool isColliderPair = colliderA && colliderB && !meshColliderA && !meshColliderB;
+    const bool hasMeshOnA = meshColliderA && !meshColliderB && !colliderA && colliderB;
+
+    if(hasMeshOnA) {
       swapConstraintOrder(rigidBodyA, colliderA, meshColliderA, objectA, rigidBodyB, colliderB, meshColliderB, objectB, orderedResult);
       std::swap(respondsA, respondsB);
     }
 
-    // Search for existing constraint with matching collider pair and similar normal
-    ContactConstraint *existing = scene->findCachedConstraintByPair(
-      colliderA, objectA, colliderB, objectB, orderedResult.normal, 0.9f);
-
-    if(existing) {
-      if(existing->rigidBodyA != rigidBodyA || existing->colliderA != colliderA || existing->meshColliderA != meshColliderA || existing->objectA != objectA ||
-         existing->rigidBodyB != rigidBodyB || existing->colliderB != colliderB || existing->meshColliderB != meshColliderB || existing->objectB != objectB) {
-        existing = nullptr;
-      }
+    if(isColliderPair && shouldSwapColliderPairOrder(colliderA, colliderB)) {
+      swapConstraintOrder(rigidBodyA, colliderA, meshColliderA, objectA, rigidBodyB, colliderB, meshColliderB, objectB, orderedResult);
+      std::swap(respondsA, respondsB);
     }
+
+    ContactConstraintKey key;
+    if(colliderA && colliderB) {
+      key = makeColliderPairConstraintKey(colliderA, colliderB);
+    } else if(colliderA && meshColliderB && triangleIndex >= 0) {
+      key = makeColliderMeshConstraintKey(colliderA, meshColliderB, static_cast<uint16_t>(triangleIndex));
+    } else {
+      return nullptr;
+    }
+
+    ContactConstraint *existing = scene->findCachedConstraint(key);
 
     if(existing) {
       // Update existing constraint
+      existing->rigidBodyA = rigidBodyA;
+      existing->colliderA = colliderA;
+      existing->meshColliderA = meshColliderA;
+      existing->objectA = objectA;
+      existing->rigidBodyB = rigidBodyB;
+      existing->colliderB = colliderB;
+      existing->meshColliderB = meshColliderB;
+      existing->objectB = objectB;
       existing->isActive = true;
+      existing->isTrigger = isTrigger;
       existing->normal = orderedResult.normal;
       vec3CalculateTangents(orderedResult.normal, existing->tangentU, existing->tangentV);
+      existing->combinedFriction = combinedFriction;
+      existing->combinedBounce = combinedBounce;
       existing->respondsA = respondsA;
       existing->respondsB = respondsB;
 
@@ -331,6 +485,8 @@ namespace P64::Coll {
           target->localPointA = rigidBodyA->rotation
             ? quatRotateVec(quatConjugate(*rigidBodyA->rotation), relA)
             : relA;
+        } else if (meshColliderA) {
+          target->localPointA = meshColliderA->toLocalSpace(target->contactA);
         } else {
           target->localPointA = target->contactA;
         }
@@ -339,8 +495,9 @@ namespace P64::Coll {
           target->localPointB = rigidBodyB->rotation
             ? quatRotateVec(quatConjugate(*rigidBodyB->rotation), relB)
             : relB;
+        } else if (meshColliderB) {
+          target->localPointB = meshColliderB->toLocalSpace(target->contactB);
         } else {
-          // Mesh contact: store world-space contact point directly
           target->localPointB = target->contactB;
         }
       }
@@ -363,6 +520,7 @@ namespace P64::Coll {
 
     // Create new constraint
     ContactConstraint *cc = scene->createCachedConstraint(
+      key,
       rigidBodyA, colliderA, meshColliderA, objectA,
       rigidBodyB, colliderB, meshColliderB, objectB);
     if(!cc) return nullptr;
@@ -397,8 +555,10 @@ namespace P64::Coll {
       cp.localPointB = rigidBodyB->rotation
         ? matrix3Vec3Mul(matrix3Transpose(rigidBodyB->rotationMatrix), relB)
         : relB;
-    } else {
+    } else if (meshColliderB) {
       // Mesh contact: store world-space contact point directly
+      cp.localPointB = meshColliderB->toLocalSpace(cp.contactB);
+    } else {
       cp.localPointB = cp.contactB;
     }
 
@@ -423,6 +583,9 @@ namespace P64::Coll {
     Object *objectA = colliderProxyMeshSpace->collider->owner;
     Object *objectB = mesh.owner;
 
+    const float combinedFriction = fminf(colliderProxyMeshSpace->collider->friction, mesh.friction);
+    const float combinedBounce = fmaxf(colliderProxyMeshSpace->collider->bounce, mesh.bounce);
+
     MeshTriangle tri;
     tri.vertices = mesh.vertices;
     tri.tri = mesh.triangles[triangleIndex];
@@ -443,6 +606,24 @@ namespace P64::Coll {
     ticks_gjk_obj_mesh += get_ticks() - startTicks;
     if(!gjkOverlap) return false;
 
+    if(!isTriggerContact) {
+      CollisionScene *scene = collisionSceneGetInstance();
+      ContactConstraint *existing = scene->findCachedConstraint(
+        makeColliderMeshConstraintKey(colliderProxyMeshSpace->collider, const_cast<MeshCollider *>(&mesh), static_cast<uint16_t>(triangleIndex)));
+      if(existing && refreshCachedTriangleConstraint(*existing, rigidBody, tri, mesh, combinedFriction, combinedBounce, true, false) &&
+         canSkipTriangleEpaWithCachedConstraint(*existing, *colliderProxyMeshSpace->collider)) {
+        existing->rigidBodyA = rigidBody;
+        existing->colliderA = colliderProxyMeshSpace->collider;
+        existing->meshColliderA = nullptr;
+        existing->objectA = objectA;
+        existing->rigidBodyB = nullptr;
+        existing->colliderB = nullptr;
+        existing->meshColliderB = const_cast<MeshCollider *>(&mesh);
+        existing->objectB = objectB;
+        return true;
+      }
+    }
+
 
     // If the collider is a trigger we only need to check for overlap
     if (isTriggerContact)
@@ -462,7 +643,7 @@ namespace P64::Coll {
       collideCacheContactConstraint(
           rigidBody, colliderProxyMeshSpace->collider, nullptr, objectA,
           nullptr, nullptr, const_cast<MeshCollider *>(&mesh), objectB,
-          dummyResult, 0.0f, 0.0f, true, false, false);
+          dummyResult, 0.0f, 0.0f, true, false, false, triangleIndex);
 
       return true;
     }
@@ -483,14 +664,11 @@ namespace P64::Coll {
       epaResult.contactA = mesh.toWorldSpace(epaResult.contactA);
       epaResult.contactB = mesh.toWorldSpace(epaResult.contactB);
 
-      float combinedFriction = fmin(colliderProxyMeshSpace->collider->friction, mesh.friction);
-      float combinedBounce = fmax(colliderProxyMeshSpace->collider->bounce, mesh.bounce);
-
       // Cache the contact constraint for this collision
       collideCacheContactConstraint(
           rigidBody, colliderProxyMeshSpace->collider, nullptr, objectA,
           nullptr, nullptr, const_cast<MeshCollider *>(&mesh), objectB,
-          epaResult, combinedFriction, combinedBounce, isTriggerContact, !isTriggerContact, false);
+          epaResult, combinedFriction, combinedBounce, isTriggerContact, !isTriggerContact, false, triangleIndex);
 
       return true;
     }

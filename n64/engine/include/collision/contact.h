@@ -6,7 +6,10 @@
 #pragma once
 
 #include "vec_math.h"
+#include <cstddef>
 #include <cstdint>
+#include <functional>
+#include <utility>
 
 namespace P64 { class Object; }
 
@@ -17,6 +20,68 @@ namespace P64::Coll {
   struct RigidBody; // forward declare
   struct Collider;  // forward declare
   struct MeshCollider;  // forward declare
+
+  enum class ContactConstraintKeyType : uint8_t {
+    None = 0,
+    ColliderPair,
+    ColliderMeshTriangle,
+  };
+
+  struct ContactConstraintKey {
+    ContactConstraintKeyType type{ContactConstraintKeyType::None};
+    Collider *colliderA{nullptr};
+    Collider *colliderB{nullptr};
+    MeshCollider *meshCollider{nullptr};
+    uint16_t triangleIndex{0};
+
+    bool operator==(const ContactConstraintKey &other) const {
+      return type == other.type &&
+             colliderA == other.colliderA &&
+             colliderB == other.colliderB &&
+             meshCollider == other.meshCollider &&
+             triangleIndex == other.triangleIndex;
+    }
+  };
+
+  struct ContactConstraintKeyHash {
+    std::size_t operator()(const ContactConstraintKey &key) const {
+      std::size_t hash = static_cast<std::size_t>(key.type);
+      const auto combine = [&hash](std::size_t value) {
+        hash ^= value + 0x9e3779b97f4a7c15ull + (hash << 6) + (hash >> 2);
+      };
+
+      combine(reinterpret_cast<std::uintptr_t>(key.colliderA));
+      combine(reinterpret_cast<std::uintptr_t>(key.colliderB));
+      combine(reinterpret_cast<std::uintptr_t>(key.meshCollider));
+      combine(static_cast<std::size_t>(key.triangleIndex));
+      return hash;
+    }
+  };
+
+  inline bool shouldSwapColliderPairOrder(Collider *colliderA, Collider *colliderB) {
+    return std::less<const Collider *>{}(colliderB, colliderA);
+  }
+
+  inline ContactConstraintKey makeColliderPairConstraintKey(Collider *colliderA, Collider *colliderB) {
+    if(shouldSwapColliderPairOrder(colliderA, colliderB)) {
+      std::swap(colliderA, colliderB);
+    }
+
+    ContactConstraintKey key;
+    key.type = ContactConstraintKeyType::ColliderPair;
+    key.colliderA = colliderA;
+    key.colliderB = colliderB;
+    return key;
+  }
+
+  inline ContactConstraintKey makeColliderMeshConstraintKey(Collider *collider, MeshCollider *meshCollider, uint16_t triangleIndex) {
+    ContactConstraintKey key;
+    key.type = ContactConstraintKeyType::ColliderMeshTriangle;
+    key.colliderA = collider;
+    key.meshCollider = meshCollider;
+    key.triangleIndex = triangleIndex;
+    return key;
+  }
 
   /// Linked-list node for tracking contacts on a physics object
   struct Contact {
@@ -48,6 +113,7 @@ namespace P64::Coll {
 
   /// Contact constraint representing a pair of colliding rigid bodies
   struct ContactConstraint {
+    ContactConstraintKey key{};
     RigidBody *rigidBodyA{nullptr};
     Collider *colliderA{nullptr};
     MeshCollider *meshColliderA{nullptr};

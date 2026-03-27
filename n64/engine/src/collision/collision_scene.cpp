@@ -60,7 +60,7 @@ namespace P64::Coll {
   }
 
   static bool colliderShouldTestMesh(const Collider *collider) {
-    return collider && collider->maskWrite != 0;
+    return collider && (collider->maskWrite != 0 || collider->maskRead != 0);
   }
 
   static fm_vec3_t constrainAngularWorld(const RigidBody *body, const fm_vec3_t &worldAngular) {
@@ -116,19 +116,6 @@ namespace P64::Coll {
     return body->invMass * dirFactor;
   }
 
-  ConstraintCacheKeyPart CollisionScene::makeConstraintCacheKeyPart(Collider *collider, Object *object) {
-    if(collider) return ConstraintCacheKeyPart{collider, 1};
-    if(object) return ConstraintCacheKeyPart{object, 2};
-    return ConstraintCacheKeyPart{};
-  }
-
-  ConstraintCacheKey CollisionScene::makeConstraintPairKey(Collider *colliderA, Object *objectA, Collider *colliderB, Object *objectB) {
-    ConstraintCacheKeyPart keyA = makeConstraintCacheKeyPart(colliderA, objectA);
-    ConstraintCacheKeyPart keyB = makeConstraintCacheKeyPart(colliderB, objectB);
-    return (keyA < keyB) ? ConstraintCacheKey{keyA, keyB}
-                         : ConstraintCacheKey{keyB, keyA};
-  }
-
   bool CollisionScene::shouldTrackSleepState(const RigidBody *rigidBody) {
     return rigidBody && !rigidBody->isKinematic && rigidBody->position;
   }
@@ -163,12 +150,11 @@ namespace P64::Coll {
     return fm_vec3_distance2(&rigidBody->compoundScale, &rigidBody->owner->scale) > FM_EPSILON * FM_EPSILON;
   }
 
-  void CollisionScene::rebuildCachedConstraintPairs() {
-    cachedConstraintPairs_.clear();
+  void CollisionScene::rebuildCachedConstraintLookup() {
+    cachedConstraintLookup_.clear();
     for(int i = 0; i < cachedConstraintCount_; ++i) {
       ContactConstraint &cc = cachedConstraints_[i];
-      ConstraintCacheKey key = makeConstraintPairKey(cc.colliderA, cc.objectA, cc.colliderB, cc.objectB);
-      cachedConstraintPairs_[key].push_back(i);
+      cachedConstraintLookup_[cc.key] = i;
     }
   }
 
@@ -188,7 +174,7 @@ namespace P64::Coll {
     meshColliders_.clear();
     cachedConstraintCount_ = 0;
     cachedConstraints_.clear();
-    cachedConstraintPairs_.clear();
+    cachedConstraintLookup_.clear();
     solverConstraints_.clear();
     ticksWakePrep = 0;
     ticksWorldUpdate = 0;
@@ -452,7 +438,7 @@ namespace P64::Coll {
 
     std::vector<RigidBody *> wakeCandidates;
     removeCachedConstraints([mesh](const ContactConstraint &cc) {
-      return cc.objectB == mesh->owner;
+      return cc.meshColliderA == mesh || cc.meshColliderB == mesh;
     }, wakeCandidates);
 
     wakeCandidateIslands(wakeCandidates);
@@ -493,11 +479,17 @@ namespace P64::Coll {
   }
 
   ContactConstraint *CollisionScene::createCachedConstraint(
+    const ContactConstraintKey &key,
     RigidBody *rigidBodyA, Collider *colliderA, MeshCollider *meshColliderA, Object *objectA,
     RigidBody *rigidBodyB, Collider *colliderB, MeshCollider *meshColliderB, Object *objectB) {
+    if(ContactConstraint *existing = findCachedConstraint(key)) {
+      return existing;
+    }
+
     cachedConstraints_.push_back(ContactConstraint{});
     cachedConstraintCount_ = static_cast<int>(cachedConstraints_.size());
     ContactConstraint &cc = cachedConstraints_.back();
+    cc.key = key;
     cc.rigidBodyA = rigidBodyA;
     cc.colliderA = colliderA;
     cc.meshColliderA = meshColliderA;
@@ -507,28 +499,14 @@ namespace P64::Coll {
     cc.meshColliderB = meshColliderB;
     cc.objectB = objectB;
 
-    ConstraintCacheKey key = makeConstraintPairKey(colliderA, objectA, colliderB, objectB);
-    cachedConstraintPairs_[key].push_back(cachedConstraintCount_ - 1);
+    cachedConstraintLookup_[key] = cachedConstraintCount_ - 1;
     return &cc;
   }
 
-  ContactConstraint *CollisionScene::findCachedConstraintByPair(
-    Collider *colliderA, Object *objectA,
-    Collider *colliderB, Object *objectB,
-    const fm_vec3_t &normal, float minNormalDot) {
-
-    ConstraintCacheKey key = makeConstraintPairKey(colliderA, objectA, colliderB, objectB);
-    auto it = cachedConstraintPairs_.find(key);
-    if(it == cachedConstraintPairs_.end()) return nullptr;
-
-    for(int idx : it->second) {
-      ContactConstraint &cc = cachedConstraints_[idx];
-      if(fm_vec3_dot(&cc.normal, &normal) >= minNormalDot) {
-        return &cc;
-      }
-    }
-
-    return nullptr;
+  ContactConstraint *CollisionScene::findCachedConstraint(const ContactConstraintKey &key) {
+    auto it = cachedConstraintLookup_.find(key);
+    if(it == cachedConstraintLookup_.end()) return nullptr;
+    return &cachedConstraints_[it->second];
   }
 
   void CollisionScene::collectConnectedIsland(RigidBody *seed, std::vector<RigidBody *> &island, std::unordered_set<RigidBody *> &visited) const {
@@ -582,29 +560,32 @@ namespace P64::Coll {
     const std::function<bool(const ContactConstraint &)> &shouldRemove,
     std::vector<RigidBody *> &wakeCandidates,
     RigidBody *ignoredCandidate) {
-    bool removedAny = false;
-
     for(int i = 0; i < cachedConstraintCount_;) {
       ContactConstraint &cc = cachedConstraints_[i];
       if(shouldRemove(cc)) {
         addWakeCandidate(wakeCandidates, cc.rigidBodyA, ignoredCandidate);
         addWakeCandidate(wakeCandidates, cc.rigidBodyB, ignoredCandidate);
 
-        int lastIndex = cachedConstraintCount_ - 1;
-        if(i != lastIndex) {
-          cachedConstraints_[i] = cachedConstraints_[lastIndex];
-        }
-        cachedConstraints_.pop_back();
-        cachedConstraintCount_--;
-        removedAny = true;
+        removeCachedConstraintAt(i);
       } else {
         ++i;
       }
     }
+  }
 
-    if(removedAny) {
-      rebuildCachedConstraintPairs();
+  void CollisionScene::removeCachedConstraintAt(int index) {
+    assert(index >= 0 && index < cachedConstraintCount_);
+
+    const int lastIndex = cachedConstraintCount_ - 1;
+    cachedConstraintLookup_.erase(cachedConstraints_[index].key);
+
+    if(index != lastIndex) {
+      cachedConstraints_[index] = cachedConstraints_[lastIndex];
+      cachedConstraintLookup_[cachedConstraints_[index].key] = index;
     }
+
+    cachedConstraints_.pop_back();
+    cachedConstraintCount_ = static_cast<int>(cachedConstraints_.size());
   }
 
   CollEvent CollisionScene::makeCollisionEvent(const ContactConstraint &constraint) const {
@@ -747,8 +728,10 @@ namespace P64::Coll {
             rA = quatRotateVec(*a->rotation, rA);
           }
           cp.contactA = *a->position + rA;
-        // } else if(cc.meshColliderA) {
-        //   cp.contactA = cc.meshColliderA->toWorldSpace(cp.localPointA);
+        } else if(cc.meshColliderA) {
+          cp.contactA = cc.meshColliderA->toWorldSpace(cp.localPointA);
+        } else {
+          cp.contactA = cp.localPointA;
         }
         if(b) {
           fm_vec3_t rB = cp.localPointB;
@@ -756,8 +739,10 @@ namespace P64::Coll {
             rB = quatRotateVec(*b->rotation, rB);
           }
           cp.contactB = *b->position + rB;
-        // } else if(cc.meshColliderB) {
-        //   cp.contactB = cc.meshColliderB->toWorldSpace(cp.localPointB);
+        } else if(cc.meshColliderB) {
+          cp.contactB = cc.meshColliderB->toWorldSpace(cp.localPointB);
+        } else {
+          cp.contactB = cp.localPointB;
         }
 
         cp.point = (cp.contactA + cp.contactB) * 0.5f;
@@ -788,23 +773,13 @@ namespace P64::Coll {
   }
 
   void CollisionScene::removeInactiveContacts() {
-    bool removedAny = false;
     for(int i = 0; i < cachedConstraintCount_;) {
       ContactConstraint &cc = cachedConstraints_[i];
       if(!cc.isActive) {
-        int lastIndex = cachedConstraintCount_ - 1;
-        if(i != lastIndex) {
-          cachedConstraints_[i] = cachedConstraints_[lastIndex];
-        }
-        cachedConstraints_.pop_back();
-        cachedConstraintCount_--;
-        removedAny = true;
+        removeCachedConstraintAt(i);
       } else {
         ++i;
       }
-    }
-    if(removedAny) {
-      rebuildCachedConstraintPairs();
     }
   }
 
@@ -1417,6 +1392,9 @@ namespace P64::Coll {
           if(a->rotation) rA = quatRotateVec(*a->rotation, rA);
           cp.contactA = *a->position + rA;
           cp.aToContact = cp.contactA - a->worldCenterOfMass;
+        } else if (cc.meshColliderA) {
+          cp.contactA = cc.meshColliderA->toWorldSpace(cp.localPointA);
+          cp.aToContact = cp.contactA - (cc.meshColliderA->owner ? cc.meshColliderA->owner->pos : VEC3_ZERO);
         } else {
           cp.contactA = cp.localPointA;
           cp.aToContact = VEC3_ZERO;
@@ -1427,6 +1405,9 @@ namespace P64::Coll {
           if(b->rotation) rB = quatRotateVec(*b->rotation, rB);
           cp.contactB = *b->position + rB;
           cp.bToContact = cp.contactB - b->worldCenterOfMass;
+        } else if (cc.meshColliderB) {
+          cp.contactB = cc.meshColliderB->toWorldSpace(cp.localPointB);
+          cp.bToContact = cp.contactB - (cc.meshColliderB->owner ? cc.meshColliderB->owner->pos : VEC3_ZERO);
         } else {
           cp.contactB = cp.localPointB;
           cp.bToContact = VEC3_ZERO;

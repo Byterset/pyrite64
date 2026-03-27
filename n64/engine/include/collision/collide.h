@@ -21,6 +21,6 @@ namespace P64::Coll {
   ContactConstraint *collideCacheContactConstraint(
     RigidBody *rigidBodyA, Collider *colliderA, MeshCollider *meshColliderA, Object *objectA,
     RigidBody *rigidBodyB, Collider *colliderB, MeshCollider *meshColliderB, Object *objectB, const EpaResult &result,
-    float combinedFriction, float combinedBounce, bool isTrigger, bool respondsA, bool respondsB);
+    float combinedFriction, float combinedBounce, bool isTrigger, bool respondsA, bool respondsB, int triangleIndex = -1);
 
 } // namespace P64::Coll

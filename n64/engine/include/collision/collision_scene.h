@@ -14,7 +14,6 @@
 #include <array>
 #include <deque>
 #include <functional>
-#include <map>
 #include <cstddef>
 #include <unordered_set>
 #include <unordered_map>
@@ -41,20 +40,6 @@ namespace P64::Coll {
     std::array<ContactPoint, MAX_CONTACT_POINTS_PER_PAIR> contacts{};
     Object *otherObject{};
   };
-
-  struct ConstraintCacheKeyPart {
-    const void *identity{nullptr};
-    uint8_t kind{0};
-
-    bool operator<(const ConstraintCacheKeyPart &other) const {
-      if(identity != other.identity) {
-        return std::less<const void *>{}(identity, other.identity);
-      }
-      return kind < other.kind;
-    }
-  };
-
-  using ConstraintCacheKey = std::pair<ConstraintCacheKeyPart, ConstraintCacheKeyPart>;
 
   class CollisionScene {
   public:
@@ -112,12 +97,10 @@ namespace P64::Coll {
     ContactConstraint &getCachedConstraint(int index);
     const ContactConstraint &getCachedConstraint(int index) const;
     ContactConstraint *createCachedConstraint(
+      const ContactConstraintKey &key,
       RigidBody *rigidBodyA, Collider *colliderA, MeshCollider *meshColliderA, Object *objectA,
       RigidBody *rigidBodyB, Collider *colliderB, MeshCollider *meshColliderB, Object *objectB);
-    ContactConstraint *findCachedConstraintByPair(
-      Collider *colliderA, Object *objectA,
-      Collider *colliderB, Object *objectB,
-      const fm_vec3_t &normal, float minNormalDot);
+    ContactConstraint *findCachedConstraint(const ContactConstraintKey &key);
 
     bool raycast(Raycast &ray, RaycastHit &hit) const;
 
@@ -128,7 +111,7 @@ namespace P64::Coll {
     std::vector<Collider *> colliders_{};
     std::unordered_map<const Object *, std::vector<Collider *>> ownerColliders_{};
     std::deque<ContactConstraint> cachedConstraints_{};
-    std::map<ConstraintCacheKey, std::vector<int>> cachedConstraintPairs_{};
+    std::unordered_map<ContactConstraintKey, int, ContactConstraintKeyHash> cachedConstraintLookup_{};
     std::vector<ContactConstraint *> solverConstraints_{};
 
     AABBTree rigidBodyAABBTree;
@@ -145,8 +128,6 @@ namespace P64::Coll {
 
     int cachedConstraintCount_{0};
 
-    static ConstraintCacheKeyPart makeConstraintCacheKeyPart(Collider *collider, Object *object);
-    static ConstraintCacheKey makeConstraintPairKey(Collider *colliderA, Object *objectA, Collider *colliderB, Object *objectB);
     static bool shouldTrackSleepState(const RigidBody *rigidBody);
     static bool rigidBodyTransformExceededSleepThreshold(const RigidBody *rigidBody);
     static bool rigidBodyVelocitiesExceededSleepThreshold(const RigidBody *rigidBody);
@@ -163,10 +144,11 @@ namespace P64::Coll {
       const std::function<bool(const ContactConstraint &)> &shouldRemove,
       std::vector<RigidBody *> &wakeCandidates,
       RigidBody *ignoredCandidate = nullptr);
+    void removeCachedConstraintAt(int index);
     CollEvent makeCollisionEvent(const ContactConstraint &constraint) const;
     void dispatchCollisionCallbacks() const;
 
-    void rebuildCachedConstraintPairs();
+    void rebuildCachedConstraintLookup();
     void wakeIsland(RigidBody *rigidBody);
     void wakeBodiesMovedExternally();
     void updateSleepStates();
