@@ -1,6 +1,6 @@
 /**
  * @file rigid_body.h
- * @author Kevin Reier (Byterset)
+ * @author Kevin Reier <https://github.com/Byterset>
  * @brief Contains the rigidBody definition, constants and related functions
  */
 #pragma once

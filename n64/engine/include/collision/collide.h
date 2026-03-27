@@ -1,6 +1,6 @@
 /**
  * @file collide.h
- * @author Kevin Reier (Byterset)
+ * @author Kevin Reier <https://github.com/Byterset>
  * @brief Functions to detect collisions between different shapes and objects and record them
  */
 #pragma once

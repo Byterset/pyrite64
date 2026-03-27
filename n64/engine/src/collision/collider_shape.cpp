@@ -1,6 +1,7 @@
 /**
- * @copyright 2024 - Max Bebök
- * @license MIT
+ * @file collider_shape.cpp
+ * @author Kevin Reier <https://github.com/Byterset>
+ * @brief Defines the Basic (non-mesh) Colliders (see collider_shape.h)
  */
 #include "collision/collider_shape.h"
 

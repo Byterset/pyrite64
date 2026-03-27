@@ -1,7 +1,8 @@
 /**
-* @copyright 2025 - Max Bebök
-* @license MIT
-*/
+ * @file rigidBody.cpp
+ * @author Kevin Reier <https://github.com/Byterset>
+ * @brief Defines the RigidBody component, which allows an Object to have a rigid body for physics simulation (see rigidBody.h)
+ */
 #include "scene/object.h"
 #include "scene/components/rigidBody.h"
 #include "lib/logger.h"

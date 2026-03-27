@@ -1,6 +1,6 @@
 /**
  * @file aabb.h
- * @author Kevin Reier (Byterset)
+ * @author Kevin Reier <https://github.com/Byterset>
  * @brief Defines the Axis Aligned Bounding Box and helper functions for it
  */
 #pragma once

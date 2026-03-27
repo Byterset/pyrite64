@@ -1,6 +1,6 @@
 /**
  * @file raycast.h
- * @author Kevin Reier (Byterset)
+ * @author Kevin Reier <https://github.com/Byterset>
  * @brief Raycast definitions and functions
  */
 #pragma once

@@ -1,6 +1,7 @@
 /**
- * @copyright 2024 - Max Bebök
- * @license MIT
+ * @file rigid_body.h
+ * @author Kevin Reier <https://github.com/Byterset>
+ * @brief Contains the rigidBody definition, constants and related functions (see rigid_body.h)
  */
 #include "collision/rigid_body.h"
 #include <cassert>

@@ -1,6 +1,6 @@
 /**
- * @file contact.h
- * @author Kevin Reier (Byterset)
+ * @file collision_scene.h
+ * @author Kevin Reier <https://github.com/Byterset>
  * @brief Defines the Collision Scene which keeps track of physics participants and updates them
  */
 #pragma once

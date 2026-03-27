@@ -1,6 +1,7 @@
 /**
- * @copyright 2024 - Max Bebök
- * @license MIT
+ * @file collide.cpp
+ * @author Kevin Reier <github.com/Byterset>
+ * @brief Functions to detect collisions between different shapes and objects and record them (see collide.h)
  */
 #include "collision/collide.h"
 #include "collision/collision_scene.h"

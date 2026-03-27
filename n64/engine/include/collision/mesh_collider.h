@@ -1,6 +1,6 @@
 /**
  * @file mesh_collider.h
- * @author Kevin Reier (Byterset)
+ * @author Kevin Reier <https://github.com/Byterset>
  * @brief Mesh Collider definitions and functions
  */
 #pragma once

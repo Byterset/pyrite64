@@ -1,6 +1,7 @@
 /**
- * @copyright 2024 - Max Bebök
- * @license MIT
+ * @file aabb_tree.cpp
+ * @author Kevin Reier <https://github.com/Byterset>
+ * @brief Dynamic AABB tree BVH Implementation (see aabb_tree.h)
  */
 #include "collision/aabb_tree.h"
 

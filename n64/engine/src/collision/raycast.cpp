@@ -1,6 +1,7 @@
 /**
- * @copyright 2024 - Max Bebök
- * @license MIT
+ * @file raycast.cpp
+ * @author Kevin Reier <https://github.com/Byterset>
+ * @brief Raycast definitions and functions (see raycast.h)
  */
 #include "collision/raycast.h"
 

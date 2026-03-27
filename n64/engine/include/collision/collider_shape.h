@@ -1,6 +1,6 @@
 /**
  * @file collider_shape.h
- * @author Kevin Reier (Byterset)
+ * @author Kevin Reier <https://github.com/Byterset>
  * @brief Defines the Basic (non-mesh) Colliders 
  */
 #pragma once

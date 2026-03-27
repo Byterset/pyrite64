@@ -1,6 +1,7 @@
 /**
- * @copyright 2024 - Max Bebök
- * @license MIT
+ * @file collision_scene.cpp
+ * @author Kevin Reier <https://github.com/Byterset>
+ * @brief Defines the Collision Scene which keeps track of physics participants and updates them (see collision_scene.h)
  */
 #include "collision/collision_scene.h"
 #include "collision/collide.h"

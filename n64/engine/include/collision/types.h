@@ -1,6 +1,6 @@
 /**
  * @file types.h
- * @author Kevin Reier (Byterset)
+ * @author Kevin Reier <https://github.com/Byterset>
  * @brief Contains the different existing Basic Collider Shape Types
  */
 

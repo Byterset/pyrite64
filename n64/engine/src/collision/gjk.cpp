@@ -1,11 +1,7 @@
 /**
- * @copyright 2024 - Max Bebök
- * @license MIT
- *
- * Gilbert–Johnson–Keerthi distance algorithm (GJK) implementation for collision detection.
- *
- * Efficiently determines if two convex shapes overlap by building a simplex (tetrahedron)
- * that contains the origin in Minkowski difference space.
+ * @file gjk.cpp
+ * @author Kevin Reier <https://github.com/Byterset>
+ * @brief Gilbert–Johnson–Keerthi distance algorithm (GJK) implementation for collision detection. (see gjk.h)
  */
 #include "collision/gjk.h"
 

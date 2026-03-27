@@ -1,7 +1,8 @@
 /**
-* @copyright 2025 - Max Bebök
-* @license MIT
-*/
+ * @file rigidBody.h
+ * @author Kevin Reier <https://github.com/Byterset>
+ * @brief Defines the RigidBody component, which allows an Object to have a rigid body for physics simulation
+ */
 #pragma once
 #include "assets/assetManager.h"
 #include "scene/object.h"

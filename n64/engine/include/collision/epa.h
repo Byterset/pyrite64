@@ -1,6 +1,6 @@
 /**
  * @file epa.h
- * @author Kevin Reier (Byterset)
+ * @author Kevin Reier <https://github.com/Byterset>
  * @brief Expanding Polytope Algorithm (EPA) implementation for collision detection.
  *
  * EPA refines the penetration information after GJK determines that two convex shapes intersect.

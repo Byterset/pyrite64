@@ -1,6 +1,6 @@
 /**
  * @file gjk.h
- * @author Kevin Reier (Byterset)
+ * @author Kevin Reier <https://github.com/Byterset>
  * @brief Gilbert–Johnson–Keerthi distance algorithm (GJK) implementation for collision detection.
  * Efficiently determines if two convex shapes overlap or not by attempting to build a Simplex (Tetrahedron for 3D GJK)
  * that contains the origin.

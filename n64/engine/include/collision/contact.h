@@ -1,6 +1,6 @@
 /**
  * @file contact.h
- * @author Kevin Reier (Byterset)
+ * @author Kevin Reier <https://github.com/Byterset>
  * @brief Defines Contact Points as well as Contact Constraints
  */
 #pragma once

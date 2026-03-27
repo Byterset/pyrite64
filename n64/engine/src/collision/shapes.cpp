@@ -1,6 +1,7 @@
 /**
- * @copyright 2024 - Max Bebök
- * @license MIT
+ * @file shapes.cpp
+ * @author Kevin Reier <https://github.com/Byterset>
+ * @brief Defines the Properties and helper functions of the different basic Collider shapes (see shapes.h)
  */
 #include "collision/shapes.h"
 

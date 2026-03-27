@@ -1,6 +1,6 @@
 /**
  * @file vec_math.h
- * @author Kevin Reier (Byterset)
+ * @author Kevin Reier <https://github.com/Byterset>
  * @brief Additional Vector Math Functions and Operators for Collision Detection
  */
 #pragma once

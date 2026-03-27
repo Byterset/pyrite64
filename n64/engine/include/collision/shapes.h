@@ -1,6 +1,6 @@
 /**
  * @file shapes.h
- * @author Kevin Reier (Byterset)
+ * @author Kevin Reier <https://github.com/Byterset>
  * @brief Defines the Properties and helper functions of the different basic Collider shapes
  */
 #pragma once

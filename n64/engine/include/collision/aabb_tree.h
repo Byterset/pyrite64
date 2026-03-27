@@ -1,6 +1,6 @@
 /**
- * @file collide.h
- * @author Kevin Reier (Byterset)
+ * @file aabb_tree.h
+ * @author Kevin Reier <https://github.com/Byterset>
  * @brief Dynamic AABB tree BVH Implementation
  */
 #pragma once
