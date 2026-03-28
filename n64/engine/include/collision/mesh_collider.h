@@ -61,6 +61,9 @@ namespace P64::Coll {
     fm_quat_t lastOwnerRot{QUAT_IDENTITY};
     fm_vec3_t lastOwnerScale{1.0f, 1.0f, 1.0f};
     bool hasCachedOwnerTransform{false};
+    bool transformChanged{false}; ///< Set to true when owner transform changes, used to trigger AABB tree updates
+
+     // Cached transform data for fast vertex/normal transforms without needing to access the owner Object
 
     Matrix3x3 inverseRotation{}; ///< Cached inverse of owner's rotation for fast local-space queries
 

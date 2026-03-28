@@ -55,6 +55,14 @@ namespace P64::Coll {
     int queryRay(const fm_vec3_t &origin, const fm_vec3_t &invDir, float maxDist,
                  NodeProxy *results, int maxResults) const;
 
+    // Always order so that id_a < id_b
+    static int32_t makeNodePairKey(NodeProxy id_a, NodeProxy id_b)
+    {
+      if (id_a > id_b)
+        std::swap(id_a, id_b);
+      return ((int32_t)id_a << 16) | id_b;
+    }
+
     NodeProxy root{NULL_NODE};
 
   private:

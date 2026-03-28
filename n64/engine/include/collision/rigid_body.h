@@ -84,7 +84,7 @@ namespace P64::Coll {
     float angularDamping{0.03f};
 
     // Collision
-    AABB boundingBox{};
+    AABB worldAABB{};
     fm_vec3_t centerOffset{};
 
     // Cached transforms
@@ -97,6 +97,7 @@ namespace P64::Coll {
     fm_vec3_t torqueAccumulator{};
     fm_vec3_t prevStepPos{};
     fm_quat_t prevStepRot{};
+    fm_vec3_t prevStepScale{};
     fm_vec3_t localInertiaTensor{};
     fm_vec3_t invLocalInertiaTensor{};
     fm_vec3_t compoundScale{};

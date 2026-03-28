@@ -114,7 +114,7 @@ namespace P64::Coll {
     std::unordered_map<ContactConstraintKey, int, ContactConstraintKeyHash> cachedConstraintLookup_{};
     std::vector<ContactConstraint *> solverConstraints_{};
 
-    AABBTree rigidBodyAABBTree;
+    AABBTree colliderAABBTree;
 
     // Multiple mesh colliders
     std::vector<MeshCollider *> meshColliders_{};
@@ -150,7 +150,7 @@ namespace P64::Coll {
 
     void rebuildCachedConstraintLookup();
     void wakeIsland(RigidBody *rigidBody);
-    void wakeBodiesMovedExternally();
+    void wakeBodiesTransformedExternally();
     void updateSleepStates();
     void refreshContacts();
     void removeInactiveContacts();
@@ -161,7 +161,7 @@ namespace P64::Coll {
     void solveVelocityConstraints();
     bool solvePositionConstraints();
     void fixSweptCollisions();
-    void updateMeshColliderWorldAABBs();
+    void updateMeshColliderWorldStates();
   };
 
   CollisionScene *collisionSceneGetInstance();

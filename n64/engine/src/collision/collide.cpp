@@ -590,6 +590,11 @@ namespace P64::Coll {
       }
     }
 
+    // Keep the mesh contact on the triangle and reconstruct the box anchor
+    // along the contact normal so the analytical pair matches EPA's
+    // normal/penetration contract.
+    localContactA = localContactB - (normalLocal * penetration);
+
     result.normal = matrix3Vec3Mul(boxProxy.rotation, normalLocal);
     result.penetration = penetration;
     result.contactA = boxProxy.worldCenter + matrix3Vec3Mul(boxProxy.rotation, localContactA);
@@ -823,18 +828,20 @@ namespace P64::Coll {
     bool hasAnalyticalPath = false;
     bool analyticalHit = false;
     uint64_t startTicks = get_ticks();
-    switch(colliderProxyMeshSpace->collider->type) {
-      case ShapeType::Sphere:
-        hasAnalyticalPath = true;
-        analyticalHit = analyticalSphereTriangle(*colliderProxyMeshSpace, tri, analyticalResult);
-        break;
-      case ShapeType::Box:
-        hasAnalyticalPath = true;
-        analyticalHit = analyticalBoxTriangle(*colliderProxyMeshSpace, tri, analyticalResult);
-        break;
-      default:
-        break;
-    }
+
+    // TODO: For whatever reason this is not stable
+    // switch(colliderProxyMeshSpace->collider->type) {
+    //   case ShapeType::Sphere:
+    //     hasAnalyticalPath = true;
+    //     analyticalHit = analyticalSphereTriangle(*colliderProxyMeshSpace, tri, analyticalResult);
+    //     break;
+    //   case ShapeType::Box:
+    //     hasAnalyticalPath = true;
+    //     analyticalHit = analyticalBoxTriangle(*colliderProxyMeshSpace, tri, analyticalResult);
+    //     break;
+    //   default:
+    //     break;
+    // }
     if(hasAnalyticalPath) {
       ticks_analytical_obj_mesh += get_ticks() - startTicks;
     }
@@ -950,12 +957,12 @@ namespace P64::Coll {
       // If the triangle is overlapping and the collider is a Trigger
       // we can skip the rest of the candidates since triggers just need to report that a collision happened
       if(collideDetectObjectToTriangle(&colliderInMeshSpace, rigidBody, mesh, triIndex) && collider->isTrigger) {
-        debugf(
-          "Object-to-mesh collision: analytical time = %.4f us, GJK time = %.4f us, EPA time = %.4f us, candidates = %d\n",
-          (double)TICKS_TO_US(ticks_analytical_obj_mesh),
-          (double)TICKS_TO_US(ticks_gjk_obj_mesh),
-          (double)TICKS_TO_US(ticks_epa_obj_mesh),
-          count);
+        // debugf(
+        //   "Object-to-mesh collision: analytical time = %.4f us, GJK time = %.4f us, EPA time = %.4f us, candidates = %d\n",
+        //   (double)TICKS_TO_US(ticks_analytical_obj_mesh),
+        //   (double)TICKS_TO_US(ticks_gjk_obj_mesh),
+        //   (double)TICKS_TO_US(ticks_epa_obj_mesh),
+        //   count);
         ticks_analytical_obj_mesh = 0;
         ticks_epa_obj_mesh = 0;
         ticks_gjk_obj_mesh = 0;
@@ -963,12 +970,12 @@ namespace P64::Coll {
       }
     }
 
-    debugf(
-      "Object-to-mesh collision: analytical time = %.4f us, GJK time = %.4f us, EPA time = %.4f us, candidates = %d\n",
-      (double)TICKS_TO_US(ticks_analytical_obj_mesh),
-      (double)TICKS_TO_US(ticks_gjk_obj_mesh),
-      (double)TICKS_TO_US(ticks_epa_obj_mesh),
-      count);
+    // debugf(
+    //   "Object-to-mesh collision: analytical time = %.4f us, GJK time = %.4f us, EPA time = %.4f us, candidates = %d\n",
+    //   (double)TICKS_TO_US(ticks_analytical_obj_mesh),
+    //   (double)TICKS_TO_US(ticks_gjk_obj_mesh),
+    //   (double)TICKS_TO_US(ticks_epa_obj_mesh),
+    //   count);
 
     ticks_analytical_obj_mesh = 0;
     ticks_epa_obj_mesh = 0;

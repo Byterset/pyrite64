@@ -106,6 +106,7 @@ namespace P64::Coll {
     if(position) {
       prevStepPos = *position;
     }
+    prevStepScale = object->scale;
 
     updateWorldInertia();
   }

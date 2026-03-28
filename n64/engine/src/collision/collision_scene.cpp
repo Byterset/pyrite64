@@ -142,6 +142,11 @@ namespace P64::Coll {
       if(rotSim < ROT_SIMILARITY_SLEEP_THRESHOLD) return true;
     }
 
+    if(rigidBody->owner){
+      const float scaleDeltaSq = fm_vec3_distance2(&rigidBody->owner->scale, &rigidBody->prevStepScale);
+      if(scaleDeltaSq > POS_SLEEP_THRESHOLD_SQ) return true;
+    }
+
     return false;
   }
 
@@ -166,7 +171,7 @@ namespace P64::Coll {
   // ── Reset / Init ──────────────────────────────────────────────────
 
   void CollisionScene::reset() {
-    rigidBodyAABBTree.destroy();
+    colliderAABBTree.destroy();
 
     rigidBodies_.clear();
     ownerRigidBodies_.clear();
@@ -207,7 +212,7 @@ namespace P64::Coll {
     detectMeshPairCount = 0;
     detectDebugPrintCounter_ = 0;
 
-    rigidBodyAABBTree.init(32); // Initial capacity (will grow as needed)
+    colliderAABBTree.init(32); // Initial capacity (will grow as needed)
   }
 
   /// @brief Updates the world state of a collider.
@@ -323,8 +328,7 @@ namespace P64::Coll {
     syncCompoundProperties(rigidBody);
     rigidBody->updateWorldInertia();
     const fm_vec3_t worldPos = rigidBody->position ? *rigidBody->position : VEC3_ZERO;
-    rigidBody->boundingBox = AABB{worldPos, worldPos};
-    rigidBody->aabbTreeNodeId = rigidBodyAABBTree.createNode(rigidBody->boundingBox, rigidBody);
+    rigidBody->worldAABB = AABB{worldPos, worldPos};
   }
 
   void CollisionScene::removeRigidBody(RigidBody *rigidBody) {
@@ -339,21 +343,16 @@ namespace P64::Coll {
       }
     }
 
-    // Remove from AABB tree
-    if(rigidBody->aabbTreeNodeId != NULL_NODE) {
-      rigidBodyAABBTree.removeLeaf(rigidBody->aabbTreeNodeId, true);
-      rigidBody->aabbTreeNodeId = NULL_NODE;
-    }
-
     removeCachedConstraints([rigidBody](const ContactConstraint &cc) {
       return cc.rigidBodyA == rigidBody || cc.rigidBodyB == rigidBody;
     }, wakeCandidates, rigidBody);
 
     // Sleeping rigidBodies overlapping the removed body are likely support-dependent and should re-evaluate.
-    const AABB removedBounds = rigidBody->boundingBox;
+    const AABB removedBounds = rigidBody->worldAABB;
+    
     for(RigidBody *body : rigidBodies_) {
       if(!body || body == rigidBody) continue;
-      if(aabbOverlap(body->boundingBox, removedBounds)) {
+      if(aabbOverlap(body->worldAABB, removedBounds)) {
         addWakeCandidate(wakeCandidates, body, rigidBody);
       }
     }
@@ -388,6 +387,7 @@ namespace P64::Coll {
       syncCompoundProperties(rigidBody);
       rigidBody->updateWorldInertia();
     }
+    collider->aabbTreeNodeId = colliderAABBTree.createNode(collider->worldAABB, collider);
   }
 
   void CollisionScene::removeCollider(Collider *collider) {
@@ -413,6 +413,11 @@ namespace P64::Coll {
     }
 
     colliders_.erase(std::remove(colliders_.begin(), colliders_.end(), collider), colliders_.end());
+
+    if(collider->aabbTreeNodeId != NULL_NODE) {
+      colliderAABBTree.removeLeaf(collider->aabbTreeNodeId, true);
+      collider->aabbTreeNodeId = NULL_NODE;
+    }
 
     if(owner) {
       RigidBody *rigidBody = findRigidBodyByOwner(owner);
@@ -607,9 +612,26 @@ namespace P64::Coll {
     return event;
   }
 
+
+
   void CollisionScene::dispatchCollisionCallbacks() const {
+
+    struct ObjectPairHash
+    {
+      size_t operator()(std::pair<const Object *, const Object *> p) const
+      {
+        uintptr_t a = (uintptr_t)p.first;
+        uintptr_t b = (uintptr_t)p.second;
+        // Canonical order so (a,b) == (b,a)
+        if (a > b)
+          std::swap(a, b);
+        // Combine with a good mixer
+        return a * 2654435761ULL ^ (b * 2246822519ULL);
+      }
+    };
     std::vector<CollEvent> pendingEvents;
     pendingEvents.reserve(cachedConstraintCount_);
+    std::unordered_set<std::pair<const Object *, const Object *>, ObjectPairHash> processedPairs;
 
     for(int i = 0; i < cachedConstraintCount_; ++i) {
       const ContactConstraint &constraint = cachedConstraints_[i];
@@ -617,7 +639,14 @@ namespace P64::Coll {
       if(!constraint.objectA || !constraint.objectB) continue;
       if(!constraint.objectA->isEnabled() || !constraint.objectB->isEnabled()) continue;
 
-      pendingEvents.push_back(makeCollisionEvent(constraint));
+      auto key = std::make_pair(constraint.objectA, constraint.objectB);
+      // make sure we only send one event per object pair, even if they have multiple contact constraints
+      if (processedPairs.insert(key).second)
+      {
+        // first time seeing this pair
+        pendingEvents.push_back(makeCollisionEvent(constraint));
+      }
+      
     }
 
     for(const CollEvent &event : pendingEvents) {
@@ -649,7 +678,7 @@ namespace P64::Coll {
     }
   }
 
-  void CollisionScene::wakeBodiesMovedExternally() {
+  void CollisionScene::wakeBodiesTransformedExternally() {
     std::vector<RigidBody *> wakeCandidates;
 
     for(RigidBody *body : rigidBodies_) {
@@ -731,7 +760,6 @@ namespace P64::Coll {
 
         // Deactivate if too separated
         if(cp.penetration < -(0.1f * physicsScale_)) {
-          debugf("Deactivating contact point due to separation: pen=%.4f\n", (double)cp.penetration);
           cp.active = false;
         }
       }
@@ -775,13 +803,7 @@ namespace P64::Coll {
   // ── Contact detection ─────────────────────────────────────────────
 
   void CollisionScene::detectAllContacts() {
-    detectOrderedColliderCount = 0;
-    detectTriggerColliderCount = 0;
-    detectOrderedBodyCount = 0;
-    detectDetachedColliderCount = 0;
-    detectBodyCandidateCount = 0;
     detectObjectPairCount = 0;
-    detectDetachedPairCount = 0;
     detectMeshPairCount = 0;
 
     uint64_t stageStart = get_ticks();
@@ -791,289 +813,107 @@ namespace P64::Coll {
     }
     ticksDetectDeactivate = get_ticks() - stageStart;
 
-    struct OrderedColliderEntry {
-      Collider *collider{nullptr};
-      RigidBody *rigidBody{nullptr};
-      bool isSleepingSolid{false};
-    };
-
-    struct OrderedBodyEntry {
-      RigidBody *rigidBody{nullptr};
-      const std::vector<Collider *> *colliders{nullptr};
-      bool isSleepingSolid{false};
-      int sortKey{0};
-    };
-
-    auto ownerHasTriggerCollider = [](const std::vector<Collider *> *ownerColliders) {
-      if(!ownerColliders) return false;
-      for(Collider *collider : *ownerColliders) {
-        if(collider && collider->isTrigger) {
-          return true;
-        }
-      }
-      return false;
-    };
-
-    // Build deterministic processing lists so broadphase traversal does not depend on
-    // scene graph order or AABB tree query result order.
     stageStart = get_ticks();
-    std::vector<OrderedColliderEntry> orderedColliders;
-    orderedColliders.reserve(colliders_.size());
-    for(Collider *collider : colliders_) {
-      if(!collider || !collider->owner) continue;
 
-      RigidBody *rigidBody = findRigidBodyByOwner(collider->owner);
-      if(collider->isTrigger) {
-        ++detectTriggerColliderCount;
-      }
-      orderedColliders.push_back(OrderedColliderEntry{
-        collider,
-        rigidBody,
-        rigidBody && rigidBody->isSleeping && !collider->isTrigger
-      });
-    }
+    //map of unique collider pairs that have already been tested this step to avoid duplication
+    std::unordered_set<int32_t> tested_pairs;
 
-    std::sort(orderedColliders.begin(), orderedColliders.end(), [](const OrderedColliderEntry &lhs, const OrderedColliderEntry &rhs) {
-      if(lhs.isSleepingSolid != rhs.isSleepingSolid) return !lhs.isSleepingSolid;
-      return lhs.collider < rhs.collider;
-    });
+    //list of candidate colliders for broad phase query results
+    std::vector<NodeProxy> candidateColliders;
 
-    std::unordered_map<const Collider *, int> colliderOrder;
-    colliderOrder.reserve(orderedColliders.size());
-    std::vector<OrderedColliderEntry> detachedColliders;
-    detachedColliders.reserve(orderedColliders.size());
-    for(std::size_t i = 0; i < orderedColliders.size(); ++i) {
-      const OrderedColliderEntry &entry = orderedColliders[i];
-      colliderOrder[entry.collider] = static_cast<int>(i);
-      if(!entry.rigidBody) {
-        detachedColliders.push_back(entry);
-      }
-    }
+    
+    
+    candidateColliders.resize(colliders_.size());
+    for (Collider *collider : colliders_)
+    {
+      if (!collider || !collider->owner)
+        continue;
+      if (collider->isTrigger)
+        continue;
 
-    std::vector<OrderedBodyEntry> orderedBodies;
-    orderedBodies.reserve(rigidBodies_.size());
-    for(RigidBody *rigidBody : rigidBodies_) {
-      if(!rigidBody || !rigidBody->owner) continue;
+      RigidBody *rbA = findRigidBodyByOwner(collider->owner);
 
-      const std::vector<Collider *> *ownerColliders = findCollidersForOwner(rigidBody->owner);
-      if(!ownerColliders || ownerColliders->empty()) continue;
+      const int candidateCount = colliderAABBTree.queryBounds(
+          collider->worldAABB,
+          candidateColliders.data(),
+          static_cast<int>(candidateColliders.size()));
+      bool sixteen_wasthere = false;
+      for (int candidateIdx = 0; candidateIdx < candidateCount; ++candidateIdx)
+      {
+        void *data = colliderAABBTree.getNodeData(candidateColliders[candidateIdx]);
+        if (!data)
+          continue;
+        
+        Collider *collB = static_cast<Collider *>(data);
 
-      int sortKey = std::numeric_limits<int>::max();
-      for(Collider *collider : *ownerColliders) {
-        if(!collider) continue;
-        auto orderIt = colliderOrder.find(collider);
-        if(orderIt == colliderOrder.end()) continue;
-        sortKey = std::min(sortKey, orderIt->second);
-      }
-      if(sortKey == std::numeric_limits<int>::max()) continue;
+        // When you get a candidate pair:
+        auto key = AABBTree::makeNodePairKey(collider->aabbTreeNodeId, collB->aabbTreeNodeId);
+        if (tested_pairs.insert(key).second)
+        {
+          // Was not present -> test this pair
+          // don't let collider collide with itself or colliders of the same object
+          if (!collB || collB == collider || !collB->owner)
+            continue;
+          if (collider->owner == collB->owner)
+            continue;
 
-      orderedBodies.push_back(OrderedBodyEntry{
-        rigidBody,
-        ownerColliders,
-        rigidBody->isSleeping && !ownerHasTriggerCollider(ownerColliders),
-        sortKey
-      });
-    }
-
-    std::sort(orderedBodies.begin(), orderedBodies.end(), [](const OrderedBodyEntry &lhs, const OrderedBodyEntry &rhs) {
-      if(lhs.isSleepingSolid != rhs.isSleepingSolid) return !lhs.isSleepingSolid;
-      if(lhs.sortKey != rhs.sortKey) return lhs.sortKey < rhs.sortKey;
-      return lhs.rigidBody < rhs.rigidBody;
-    });
-
-    std::unordered_map<const RigidBody *, int> bodyOrder;
-    bodyOrder.reserve(orderedBodies.size());
-    for(std::size_t i = 0; i < orderedBodies.size(); ++i) {
-      bodyOrder[orderedBodies[i].rigidBody] = static_cast<int>(i);
-    }
-
-    detectOrderedColliderCount = static_cast<uint32_t>(orderedColliders.size());
-    detectDetachedColliderCount = static_cast<uint32_t>(detachedColliders.size());
-    detectOrderedBodyCount = static_cast<uint32_t>(orderedBodies.size());
-    ticksDetectBuildOrder = get_ticks() - stageStart;
-
-    // Collider-to-collider broad phase using the rigidbody AABB tree.
-    stageStart = get_ticks();
-    std::vector<NodeProxy> candidateBodies;
-    candidateBodies.resize(rigidBodies_.size());
-    for(const OrderedBodyEntry &entryA : orderedBodies) {
-      RigidBody *rbA = entryA.rigidBody;
-      if(!rbA) continue;
-      if(rbA->isSleeping && !ownerHasTriggerCollider(entryA.colliders)) continue;
-      if(candidateBodies.empty()) continue;
-
-      auto orderAIt = bodyOrder.find(rbA);
-      if(orderAIt == bodyOrder.end()) continue;
-      const int orderA = orderAIt->second;
-
-      const int candidateCount = rigidBodyAABBTree.queryBounds(
-        rbA->boundingBox,
-        candidateBodies.data(),
-        static_cast<int>(candidateBodies.size())
-      );
-
-      std::vector<RigidBody *> orderedCandidates;
-      orderedCandidates.reserve(candidateCount);
-      for(int candidateIdx = 0; candidateIdx < candidateCount; ++candidateIdx) {
-        void *data = rigidBodyAABBTree.getNodeData(candidateBodies[candidateIdx]);
-        if(!data) continue;
-
-        RigidBody *rbB = static_cast<RigidBody *>(data);
-        if(!rbB || rbB == rbA || !rbB->owner) continue;
-        if(rbA->owner == rbB->owner) continue;
-
-        auto orderBIt = bodyOrder.find(rbB);
-        if(orderBIt == bodyOrder.end() || orderBIt->second <= orderA) continue;
-
-        orderedCandidates.push_back(rbB);
-      }
-
-      detectBodyCandidateCount += static_cast<uint32_t>(orderedCandidates.size());
-
-      std::sort(orderedCandidates.begin(), orderedCandidates.end(), [&bodyOrder](const RigidBody *lhs, const RigidBody *rhs) {
-        const int lhsOrder = bodyOrder.at(lhs);
-        const int rhsOrder = bodyOrder.at(rhs);
-        if(lhsOrder != rhsOrder) return lhsOrder < rhsOrder;
-        return lhs < rhs;
-      });
-
-      for(RigidBody *rbB : orderedCandidates) {
-        const std::vector<Collider *> *ownerCollidersB = findCollidersForOwner(rbB->owner);
-        if(!ownerCollidersB || ownerCollidersB->empty()) continue;
-
-        for(Collider *colliderA : *entryA.colliders) {
-          if(!colliderA) continue;
-
-          for(Collider *colliderB : *ownerCollidersB) {
-            if(!colliderB) continue;
-            if(!collidersShouldGenerateContact(colliderA, colliderB)) continue;
-            if(!aabbOverlap(colliderA->worldAABB, colliderB->worldAABB)) continue;
-            if(rbA->isSleeping && rbB->isSleeping && !colliderA->isTrigger && !colliderB->isTrigger) continue;
-
-            ++detectObjectPairCount;
-            collideDetectObjectToObject(colliderA, rbA, colliderB, rbB);
+          if (!collidersShouldGenerateContact(collider, collB))
+            continue;
+          ++detectObjectPairCount;
+          RigidBody *rbB = findRigidBodyByOwner(collB->owner);
+          if((rbA && rbA->isSleeping) && (rbB && rbB->isSleeping)) {
+            // Allow sleeping objects to generate contacts with triggers, but skip if both are sleeping non-triggers to save performance
+            if(!collider->isTrigger && !collB->isTrigger) {
+              continue;
+            }
           }
-        }
-      }
-    }
-    ticksDetectBodyPairs = get_ticks() - stageStart;
-
-    // Fallback for colliders without a rigidbody owner.
-    stageStart = get_ticks();
-    std::vector<NodeProxy> detachedCandidateBodies;
-    detachedCandidateBodies.resize(rigidBodies_.size());
-
-    for(const OrderedColliderEntry &entryA : detachedColliders) {
-      Collider *colliderA = entryA.collider;
-      if(!colliderA) continue;
-
-      if(!detachedCandidateBodies.empty()) {
-        const int candidateCount = rigidBodyAABBTree.queryBounds(
-          colliderA->worldAABB,
-          detachedCandidateBodies.data(),
-          static_cast<int>(detachedCandidateBodies.size())
-        );
-
-        std::vector<RigidBody *> orderedCandidates;
-        orderedCandidates.reserve(candidateCount);
-        for(int candidateIdx = 0; candidateIdx < candidateCount; ++candidateIdx) {
-          void *data = rigidBodyAABBTree.getNodeData(detachedCandidateBodies[candidateIdx]);
-          if(!data) continue;
-
-          RigidBody *rbB = static_cast<RigidBody *>(data);
-          if(!rbB || !rbB->owner) continue;
-
-          auto orderBIt = bodyOrder.find(rbB);
-          if(orderBIt == bodyOrder.end()) continue;
-          orderedCandidates.push_back(rbB);
-        }
-
-        std::sort(orderedCandidates.begin(), orderedCandidates.end(), [&bodyOrder](const RigidBody *lhs, const RigidBody *rhs) {
-          const int lhsOrder = bodyOrder.at(lhs);
-          const int rhsOrder = bodyOrder.at(rhs);
-          if(lhsOrder != rhsOrder) return lhsOrder < rhsOrder;
-          return lhs < rhs;
-        });
-
-        for(RigidBody *rbB : orderedCandidates) {
-          const std::vector<Collider *> *ownerCollidersB = findCollidersForOwner(rbB->owner);
-          if(!ownerCollidersB || ownerCollidersB->empty()) continue;
-
-          for(Collider *colliderB : *ownerCollidersB) {
-            if(!colliderB) continue;
-            if(!collidersShouldGenerateContact(colliderA, colliderB)) continue;
-            if(!aabbOverlap(colliderA->worldAABB, colliderB->worldAABB)) continue;
-
-            const bool sleepingBodyNeedsWakeCheck = colliderReadsCollider(colliderB, colliderA);
-            if(rbB->isSleeping && !colliderA->isTrigger && !colliderB->isTrigger && !sleepingBodyNeedsWakeCheck) continue;
-
-            ++detectDetachedPairCount;
-            collideDetectObjectToObject(colliderA, nullptr, colliderB, rbB);
+          if (collider->owner->id == 16 || collB->owner->id == 16) {
+            sixteen_wasthere = true;
+            debugf("Debug info for collider pair involving object 16\n");
           }
+          collideDetectObjectToObject(collider, rbA, collB, rbB);
         }
       }
-    }
-    ticksDetectDetachedBodyPairs = get_ticks() - stageStart;
-
-    stageStart = get_ticks();
-    std::vector<const OrderedColliderEntry *> detachedSweep;
-    detachedSweep.reserve(detachedColliders.size());
-    for(const OrderedColliderEntry &entry : detachedColliders) {
-      if(entry.collider) {
-        detachedSweep.push_back(&entry);
+      if(sixteen_wasthere) {
+        debugf("object 16 was part of candidates\n");
       }
     }
+    for (std::size_t m = 0; m < meshColliders_.size(); ++m)
+    {
 
-    std::sort(detachedSweep.begin(), detachedSweep.end(), [](const OrderedColliderEntry *lhs, const OrderedColliderEntry *rhs) {
-      if(lhs->collider->worldAABB.min.x != rhs->collider->worldAABB.min.x) {
-        return lhs->collider->worldAABB.min.x < rhs->collider->worldAABB.min.x;
-      }
-      return lhs->collider < rhs->collider;
-    });
-
-    for(std::size_t i = 0; i < detachedSweep.size(); ++i) {
-      Collider *colliderA = detachedSweep[i]->collider;
-      if(!colliderA) continue;
-
-      const float maxX = colliderA->worldAABB.max.x;
-      for(std::size_t j = i + 1; j < detachedSweep.size(); ++j) {
-        Collider *colliderB = detachedSweep[j]->collider;
-        if(!colliderB) continue;
-        if(colliderB->worldAABB.min.x > maxX) break;
-        if(colliderA->owner == colliderB->owner) continue;
-        if(!collidersShouldGenerateContact(colliderA, colliderB)) continue;
-        if(!aabbOverlap(colliderA->worldAABB, colliderB->worldAABB)) continue;
-
-        ++detectDetachedPairCount;
-        collideDetectObjectToObject(colliderA, nullptr, colliderB, nullptr);
-      }
-    }
-    ticksDetectDetachedDetachedPairs = get_ticks() - stageStart;
-    ticksDetectDetachedPairs = ticksDetectDetachedBodyPairs + ticksDetectDetachedDetachedPairs;
-
-    // Collider-to-mesh tests.
-    stageStart = get_ticks();
-    for(std::size_t m = 0; m < meshColliders_.size(); ++m) {
       MeshCollider *mesh = meshColliders_[m];
-      if(!mesh || mesh->triangleCount <= 0) continue;
 
-      for(const OrderedColliderEntry &entry : orderedColliders) {
-        Collider *collider = entry.collider;
-        RigidBody *rigidBody = entry.rigidBody;
-        if(!collider || !colliderShouldTestMesh(collider))
-          continue;
-        if(rigidBody && rigidBody->isSleeping && !collider->isTrigger)
+      if (!mesh || mesh->triangleCount <= 0)
+        continue;
+
+      const int candidateCount = colliderAABBTree.queryBounds(
+          mesh->worldBoundingBox,
+          candidateColliders.data(),
+          static_cast<int>(candidateColliders.size()));
+
+      for (int candidateIdx = 0; candidateIdx < candidateCount; ++candidateIdx)
+      {
+        void *data = colliderAABBTree.getNodeData(candidateColliders[candidateIdx]);
+        if (!data)
           continue;
 
-        if(!aabbOverlap(collider->worldAABB, mesh->worldBoundingBox))
+        Collider *collA = static_cast<Collider *>(data);
+        if(!collA || !collA->owner)
+          continue;
+
+        RigidBody *rigidBodyA = findRigidBodyByOwner(collA->owner);
+        if (!colliderShouldTestMesh(collA))
+          continue;
+
+        //prevent perpetural collision checks of sleeping objects with meshes
+        if(!mesh->transformChanged && rigidBodyA && rigidBodyA->isSleeping && !collA->isTrigger)
           continue;
 
         ++detectMeshPairCount;
-        collideDetectObjectToMesh(collider, rigidBody, *mesh);
+        collideDetectObjectToMesh(collA, rigidBodyA, *mesh);
       }
-    }
-    ticksDetectMeshPairs = get_ticks() - stageStart;
 
+    }
     //TODO: possibly offer mesh-mesh collision detection in the future, but not needed for current use cases
 
     stageStart = get_ticks();
@@ -1446,53 +1286,17 @@ namespace P64::Coll {
   }
 
   /// @brief Recalculate the world-space AABBs of all Mesh Colliders in the Collision Scene.
-  void CollisionScene::updateMeshColliderWorldAABBs() {
-    std::vector<RigidBody *> wakeCandidates;
-    auto addWakeCandidate = [&](RigidBody *candidate) {
-      if(!candidate || !candidate->isSleeping) return;
-      if(std::find(wakeCandidates.begin(), wakeCandidates.end(), candidate) == wakeCandidates.end()) {
-        wakeCandidates.push_back(candidate);
-      }
-    };
-
-    std::vector<NodeProxy> queryResults;
-    queryResults.resize(rigidBodies_.size());
-
+  void CollisionScene::updateMeshColliderWorldStates() {
     for(std::size_t i = 0; i < meshColliders_.size(); ++i) {
       MeshCollider *mesh = meshColliders_[i];
       if(!mesh) continue;
 
-      const bool transformChanged = mesh->ownerTransformChanged();
-      if(!transformChanged && mesh->hasCachedOwnerTransform) continue;
+      mesh->transformChanged = mesh->ownerTransformChanged();
+      if(!mesh->transformChanged && mesh->hasCachedOwnerTransform) continue;
 
       const AABB previousBounds = mesh->worldBoundingBox;
       mesh->recalculateWorldAABB();
       mesh->syncOwnerTransform();
-
-      if(!transformChanged && !aabbChanged(previousBounds, mesh->worldBoundingBox)) continue;
-
-      const AABB affectedBounds = mergeAABBs(previousBounds, mesh->worldBoundingBox);
-      if(queryResults.empty()) continue;
-
-      const int candidateCount = rigidBodyAABBTree.queryBounds(
-        affectedBounds,
-        queryResults.data(),
-        static_cast<int>(queryResults.size())
-      );
-
-      for(int resultIdx = 0; resultIdx < candidateCount; ++resultIdx) {
-        void *data = rigidBodyAABBTree.getNodeData(queryResults[resultIdx]);
-        if(!data) continue;
-
-        RigidBody *body = static_cast<RigidBody *>(data);
-        if(!body || !body->isSleeping) continue;
-        addWakeCandidate(body);
-        
-      }
-    }
-
-    for(RigidBody *candidate : wakeCandidates) {
-      wakeIsland(candidate);
     }
   }
 
@@ -1528,134 +1332,134 @@ namespace P64::Coll {
     return true;
   }
 
-  bool CollisionScene::raycast(Raycast &ray, RaycastHit &hit) const {
-    hit = RaycastHit{};
+  // bool CollisionScene::raycast(Raycast &ray, RaycastHit &hit) const {
+  //   hit = RaycastHit{};
 
-    // Test mesh colliders
-    if(hasFlag(ray.mask, RaycastMask::MESH_COLLIDERS)) {
-      for(std::size_t m = 0; m < meshColliders_.size(); ++m) {
-        const MeshCollider *mesh = meshColliders_[m];
-        if(!mesh || mesh->triangleCount == 0) continue;
+  //   // Test mesh colliders
+  //   if(hasFlag(ray.mask, RaycastMask::MESH_COLLIDERS)) {
+  //     for(std::size_t m = 0; m < meshColliders_.size(); ++m) {
+  //       const MeshCollider *mesh = meshColliders_[m];
+  //       if(!mesh || mesh->triangleCount == 0) continue;
 
-        // Transform the ray into the mesh's local space for AABB tree query
-        fm_vec3_t localOrigin = mesh->hasTransform() ? mesh->toLocalSpace(ray.origin) : ray.origin;
-        fm_vec3_t localDir = mesh->hasTransform() ? mesh->rotateToLocal(ray.dir) : ray.dir;
-        fm_vec3_t localInvDir = fm_vec3_t{{
-          fabsf(localDir.x) > FM_EPSILON ? 1.0f / localDir.x : 1e30f,
-          fabsf(localDir.y) > FM_EPSILON ? 1.0f / localDir.y : 1e30f,
-          fabsf(localDir.z) > FM_EPSILON ? 1.0f / localDir.z : 1e30f
-        }};
+  //       // Transform the ray into the mesh's local space for AABB tree query
+  //       fm_vec3_t localOrigin = mesh->hasTransform() ? mesh->toLocalSpace(ray.origin) : ray.origin;
+  //       fm_vec3_t localDir = mesh->hasTransform() ? mesh->rotateToLocal(ray.dir) : ray.dir;
+  //       fm_vec3_t localInvDir = fm_vec3_t{{
+  //         fabsf(localDir.x) > FM_EPSILON ? 1.0f / localDir.x : 1e30f,
+  //         fabsf(localDir.y) > FM_EPSILON ? 1.0f / localDir.y : 1e30f,
+  //         fabsf(localDir.z) > FM_EPSILON ? 1.0f / localDir.z : 1e30f
+  //       }};
 
-        NodeProxy triCandidates[64];
-        int triCount = mesh->aabbTree.queryRay(
-          localOrigin, localInvDir, ray.maxDistance, triCandidates, 64);
+  //       NodeProxy triCandidates[64];
+  //       int triCount = mesh->aabbTree.queryRay(
+  //         localOrigin, localInvDir, ray.maxDistance, triCandidates, 64);
 
-        int tested = 0;
-        for(int i = 0; i < triCount && tested < RAYCAST_MAX_TRIANGLE_TESTS; ++i) {
-          void *data = mesh->aabbTree.getNodeData(triCandidates[i]);
-          if(!data) continue;
-          int triIdx = static_cast<int>(reinterpret_cast<intptr_t>(data)) - 1; // stored as index+1
-          if(triIdx < 0 || triIdx >= mesh->triangleCount) continue;
+  //       int tested = 0;
+  //       for(int i = 0; i < triCount && tested < RAYCAST_MAX_TRIANGLE_TESTS; ++i) {
+  //         void *data = mesh->aabbTree.getNodeData(triCandidates[i]);
+  //         if(!data) continue;
+  //         int triIdx = static_cast<int>(reinterpret_cast<intptr_t>(data)) - 1; // stored as index+1
+  //         if(triIdx < 0 || triIdx >= mesh->triangleCount) continue;
 
-          const MeshTriangleIndices &tri = mesh->triangles[triIdx];
-          // Get vertices in world space
-          fm_vec3_t v0 = mesh->toWorldSpace(mesh->vertices[tri.indices[0]]);
-          fm_vec3_t v1 = mesh->toWorldSpace(mesh->vertices[tri.indices[1]]);
-          fm_vec3_t v2 = mesh->toWorldSpace(mesh->vertices[tri.indices[2]]);
+  //         const MeshTriangleIndices &tri = mesh->triangles[triIdx];
+  //         // Get vertices in world space
+  //         fm_vec3_t v0 = mesh->toWorldSpace(mesh->vertices[tri.indices[0]]);
+  //         fm_vec3_t v1 = mesh->toWorldSpace(mesh->vertices[tri.indices[1]]);
+  //         fm_vec3_t v2 = mesh->toWorldSpace(mesh->vertices[tri.indices[2]]);
 
-          float dist;
-          fm_vec3_t normal;
-          if(rayTriangleIntersect(ray.origin, ray.dir, v0, v1, v2, dist, normal)) {
-            if(dist < hit.distance && dist <= ray.maxDistance) {
-              hit.distance = dist;
-              hit.point = ray.origin + ray.dir * dist;
-              hit.normal = normal;
-              hit.hitId = 0;
-              hit.didHit = true;
-            }
-          }
-          tested++;
-        }
-      }
-    }
+  //         float dist;
+  //         fm_vec3_t normal;
+  //         if(rayTriangleIntersect(ray.origin, ray.dir, v0, v1, v2, dist, normal)) {
+  //           if(dist < hit.distance && dist <= ray.maxDistance) {
+  //             hit.distance = dist;
+  //             hit.point = ray.origin + ray.dir * dist;
+  //             hit.normal = normal;
+  //             hit.hitId = 0;
+  //             hit.didHit = true;
+  //           }
+  //         }
+  //         tested++;
+  //       }
+  //     }
+  //   }
 
-    // Test physics objects
-    if(hasFlag(ray.mask, RaycastMask::COLLIDER_BODIES)) {
-      NodeProxy objCandidates[MAX_OBJ_COLLISION_CANDIDATES];
-      int objCount = rigidBodyAABBTree.queryRay(
-        ray.origin, ray.invDir, ray.maxDistance, objCandidates, MAX_OBJ_COLLISION_CANDIDATES);
+  //   // Test physics objects
+  //   if(hasFlag(ray.mask, RaycastMask::COLLIDER_BODIES)) {
+  //     NodeProxy objCandidates[MAX_OBJ_COLLISION_CANDIDATES];
+  //     int objCount = rigidBodyAABBTree.queryRay(
+  //       ray.origin, ray.invDir, ray.maxDistance, objCandidates, MAX_OBJ_COLLISION_CANDIDATES);
 
-      int tested = 0;
-      for(int i = 0; i < objCount && tested < RAYCAST_MAX_OBJECT_TESTS; ++i) {
-        void *data = rigidBodyAABBTree.getNodeData(objCandidates[i]);
-        if(!data) continue;
-        auto *obj = static_cast<RigidBody *>(data);
+  //     int tested = 0;
+  //     for(int i = 0; i < objCount && tested < RAYCAST_MAX_OBJECT_TESTS; ++i) {
+  //       void *data = rigidBodyAABBTree.getNodeData(objCandidates[i]);
+  //       if(!data) continue;
+  //       auto *obj = static_cast<RigidBody *>(data);
 
-        // if(!obj->collider) continue;
-        if((obj->collisionLayers & ray.collisionLayers) == 0) continue;
-        if((obj->collisionLayers & ray.ignoreLayers) != 0) continue;
-        if(!ray.interactTrigger) {
-          const std::vector<Collider *> *ownerColliders = findCollidersForOwner(obj->owner);
-          if(ownerColliders && !ownerColliders->empty()) {
-            bool hasSolidCollider = false;
-            for(const Collider *ownerCollider : *ownerColliders) {
-              if(ownerCollider && !ownerCollider->isTrigger) {
-                hasSolidCollider = true;
-                break;
-              }
-            }
-            if(!hasSolidCollider) continue;
-          }
-        }
+  //       // if(!obj->collider) continue;
+  //       if((obj->collisionLayers & ray.collisionLayers) == 0) continue;
+  //       if((obj->collisionLayers & ray.ignoreLayers) != 0) continue;
+  //       if(!ray.interactTrigger) {
+  //         const std::vector<Collider *> *ownerColliders = findCollidersForOwner(obj->owner);
+  //         if(ownerColliders && !ownerColliders->empty()) {
+  //           bool hasSolidCollider = false;
+  //           for(const Collider *ownerCollider : *ownerColliders) {
+  //             if(ownerCollider && !ownerCollider->isTrigger) {
+  //               hasSolidCollider = true;
+  //               break;
+  //             }
+  //           }
+  //           if(!hasSolidCollider) continue;
+  //         }
+  //       }
 
-        // Simple sphere approximation for ray-rigidBody test
-        fm_vec3_t toObj = obj->worldCenterOfMass - ray.origin;
-        float projLen = fm_vec3_dot(&toObj, &ray.dir);
-        if(projLen < 0.0f) continue;
+  //       // Simple sphere approximation for ray-rigidBody test
+  //       fm_vec3_t toObj = obj->worldCenterOfMass - ray.origin;
+  //       float projLen = fm_vec3_dot(&toObj, &ray.dir);
+  //       if(projLen < 0.0f) continue;
 
-        fm_vec3_t closestOnRay = ray.origin + ray.dir * projLen;
-        float distSq = fm_vec3_distance2(&closestOnRay, &obj->worldCenterOfMass);
+  //       fm_vec3_t closestOnRay = ray.origin + ray.dir * projLen;
+  //       float distSq = fm_vec3_distance2(&closestOnRay, &obj->worldCenterOfMass);
 
-        // Approximate radius from AABB
-        fm_vec3_t halfExtent = (obj->boundingBox.max - obj->boundingBox.min) * 0.5f;
-        float approxRadius = fm_vec3_len2(&halfExtent);
+  //       // Approximate radius from AABB
+  //       fm_vec3_t halfExtent = (obj->boundingBox.max - obj->boundingBox.min) * 0.5f;
+  //       float approxRadius = fm_vec3_len2(&halfExtent);
 
-        if(distSq > approxRadius) continue;
+  //       if(distSq > approxRadius) continue;
 
-        // Refine: for spheres, do exact intersection
-        //TODO: fix this
-        // if(obj->collider->type == ShapeType::Sphere) {
-        //   float r = obj->collider->sphere.radius;
-        //   float disc = projLen * projLen - vec3MagSqrd(toObj) + r * r;
-        //   if(disc < 0.0f) continue;
+  //       // Refine: for spheres, do exact intersection
+  //       //TODO: fix this
+  //       // if(obj->collider->type == ShapeType::Sphere) {
+  //       //   float r = obj->collider->sphere.radius;
+  //       //   float disc = projLen * projLen - vec3MagSqrd(toObj) + r * r;
+  //       //   if(disc < 0.0f) continue;
 
-        //   float dist = projLen - sqrtf(disc);
-        //   if(dist < FM_EPSILON || dist > ray.maxDistance) continue;
-        //   if(dist >= hit.distance) continue;
+  //       //   float dist = projLen - sqrtf(disc);
+  //       //   if(dist < FM_EPSILON || dist > ray.maxDistance) continue;
+  //       //   if(dist >= hit.distance) continue;
 
-        //   hit.distance = dist;
-        //   hit.point = vec3Add(ray.origin, vec3Scale(ray.dir, dist));
-        //   hit.normal = vec3Normalize(vec3Sub(hit.point, obj->worldCenterOfMass));
-        //   hit.hitId = obj->owner ? obj->owner->id : 0;
-        //   hit.didHit = true;
-        // } else {
-        //   // Use approximate distance for non-sphere shapes
-        //   float dist = projLen - approxRadius;
-        //   if(dist < FM_EPSILON) dist = projLen;
-        //   if(dist > ray.maxDistance || dist >= hit.distance) continue;
+  //       //   hit.distance = dist;
+  //       //   hit.point = vec3Add(ray.origin, vec3Scale(ray.dir, dist));
+  //       //   hit.normal = vec3Normalize(vec3Sub(hit.point, obj->worldCenterOfMass));
+  //       //   hit.hitId = obj->owner ? obj->owner->id : 0;
+  //       //   hit.didHit = true;
+  //       // } else {
+  //       //   // Use approximate distance for non-sphere shapes
+  //       //   float dist = projLen - approxRadius;
+  //       //   if(dist < FM_EPSILON) dist = projLen;
+  //       //   if(dist > ray.maxDistance || dist >= hit.distance) continue;
 
-        //   hit.distance = dist;
-        //   hit.point = vec3Add(ray.origin, vec3Scale(ray.dir, dist));
-        //   hit.normal = vec3Normalize(vec3Sub(hit.point, obj->worldCenterOfMass));
-        //   hit.hitId = obj->owner ? obj->owner->id : 0;
-        //   hit.didHit = true;
-        // }
-        tested++;
-      }
-    }
+  //       //   hit.distance = dist;
+  //       //   hit.point = vec3Add(ray.origin, vec3Scale(ray.dir, dist));
+  //       //   hit.normal = vec3Normalize(vec3Sub(hit.point, obj->worldCenterOfMass));
+  //       //   hit.hitId = obj->owner ? obj->owner->id : 0;
+  //       //   hit.didHit = true;
+  //       // }
+  //       tested++;
+  //     }
+  //   }
 
-    return hit.didHit;
-  }
+  //   return hit.didHit;
+  // }
 
   // ── Main step ─────────────────────────────────────────────────────
 
@@ -1664,12 +1468,12 @@ namespace P64::Coll {
 
     uint64_t stageStart = get_ticks();
 
-    // 0. Update mesh collider world AABBs (in case transforms changed)
-    // TODO: maybe only update if transform is dirty?
-    updateMeshColliderWorldAABBs();
+    // 0. Update mesh collider world states (in case transforms changed)
+    // recalculates world AABBs and marks if transform changed for potential broadphase optimization
+    updateMeshColliderWorldStates();
 
     // 0.5 Wake sleeping dynamic bodies that were moved or rotated externally.
-    wakeBodiesMovedExternally();
+    wakeBodiesTransformedExternally();
     ticksWakePrep = get_ticks() - stageStart;
 
     stageStart = get_ticks();
@@ -1678,9 +1482,8 @@ namespace P64::Coll {
       updateColliderWorldState(collider);
     }
 
-    // 2. Update compound COM/inertia on demand and refresh world inertia tensors.
+    // 2. Update compound CoM/inertia on demand and refresh world inertia tensors.
     for (RigidBody *body : rigidBodies_){
-      if(!body) continue;
       syncCompoundProperties(body);
       if(body->isSleeping) continue;
       body->updateWorldInertia();
@@ -1690,8 +1493,6 @@ namespace P64::Coll {
     stageStart = get_ticks();
     // 3. Integrate velocities
     for(RigidBody *body : rigidBodies_) {
-      if(!body) continue;
-
       if(!body->isSleeping) {
         body->integrateVelocity(fixedDt_, gravity_);
         body->integrateAngularVelocity(fixedDt_);
@@ -1727,38 +1528,13 @@ namespace P64::Coll {
     solveVelocityConstraints();
     ticksVelocitySolve = get_ticks() - stageStart;
 
-    // 8. Integrate positions and update AABBs
+    // 8. Integrate positions and rotations
     stageStart = get_ticks();
     for(RigidBody *body : rigidBodies_) {
-      RigidBody *obj = body;
-      if(!obj || obj->isSleeping) continue;
+      if(body->isSleeping) continue;
 
-      obj->integratePosition(fixedDt_);
-      obj->integrateRotation(fixedDt_);
-      AABB bounds{};
-      bool hasBounds = false;
-      if(const std::vector<Collider *> *ownerColliders = findCollidersForOwner(obj->owner)) {
-        for(Collider *collider : *ownerColliders) {
-          if(!collider) continue;
-          updateColliderWorldState(collider);
-          if(!hasBounds) {
-            bounds = collider->worldAABB;
-            hasBounds = true;
-          } else {
-            bounds.min = vec3Min(bounds.min, collider->worldAABB.min);
-            bounds.max = vec3Max(bounds.max, collider->worldAABB.max);
-          }
-        }
-      }
-
-      if(hasBounds) {
-        obj->boundingBox = bounds;
-      }
-
-      if(obj->aabbTreeNodeId != NULL_NODE) {
-        fm_vec3_t displacement = obj->velocity * fixedDt_;
-        rigidBodyAABBTree.moveNode(obj->aabbTreeNodeId, obj->boundingBox, displacement);
-      }
+      body->integratePosition(fixedDt_);
+      body->integrateRotation(fixedDt_);
     }
     ticksIntegratePos = get_ticks() - stageStart;
 
@@ -1771,41 +1547,31 @@ namespace P64::Coll {
     }
     ticksPositionSolve = get_ticks() - stageStart;
 
-    // 10. Apply position constraints and update sleep
+    // 10. Apply position constraints, inertia and world state of rigidbodies and colliders
     stageStart = get_ticks();
     for(RigidBody *body : rigidBodies_) {
-      RigidBody *obj = body;
-      if(!obj) continue;
 
-      obj->applyPositionConstraints();
-      obj->updateWorldInertia();
-      AABB bounds{};
-      bool hasBounds = false;
-      if(const std::vector<Collider *> *ownerColliders = findCollidersForOwner(obj->owner)) {
-        for(Collider *collider : *ownerColliders) {
-          if(!collider) continue;
-          updateColliderWorldState(collider);
-          if(!hasBounds) {
-            bounds = collider->worldAABB;
-            hasBounds = true;
-          } else {
-            bounds.min = vec3Min(bounds.min, collider->worldAABB.min);
-            bounds.max = vec3Max(bounds.max, collider->worldAABB.max);
-          }
-        }
+      if(!body) continue;
+
+      body->applyPositionConstraints();
+      body->updateWorldInertia();
+    }
+    for(Collider *collider : colliders_) {
+      if(!collider) continue;
+      RigidBody *body = findRigidBodyByOwner(collider->owner);
+      updateColliderWorldState(collider);
+      fm_vec3_t displacement = body ? (*body->position - body->prevStepPos) : VEC3_ZERO;
+      if(body){
+        body->worldAABB.min = vec3Min(body->worldAABB.min, collider->worldAABB.min);
+        body->worldAABB.max = vec3Max(body->worldAABB.max, collider->worldAABB.max);
       }
-
-      if(hasBounds) {
-        obj->boundingBox = bounds;
-      }
-
-      // Keep broadphase in sync with post-solve corrected transforms.
-      if(!obj->isSleeping && obj->aabbTreeNodeId != NULL_NODE) {
-        fm_vec3_t displacement = *obj->position - obj->prevStepPos;
-        rigidBodyAABBTree.moveNode(obj->aabbTreeNodeId, obj->boundingBox, displacement);
+      if(collider->aabbTreeNodeId != NULL_NODE)
+      {
+        colliderAABBTree.moveNode(collider->aabbTreeNodeId, collider->worldAABB, displacement);
       }
     }
 
+    // 11. Update RigidBody Sleep
     updateSleepStates();
     ticksFinalize = get_ticks() - stageStart;
 

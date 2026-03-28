@@ -8,6 +8,7 @@
 #include "gjk.h"
 #include "types.h"
 #include "shapes.h"
+#include "aabb_tree.h"
 
 namespace P64
 {
@@ -35,6 +36,7 @@ namespace P64::Coll {
     bool isTrigger{false}; // whether this collider is a trigger (generates contacts for events, but no physical response)
     uint8_t maskRead{0x00};  // which collision layers this collider get's affected by
     uint8_t maskWrite{0x00}; // which collision layers this collider affects
+    NodeProxy aabbTreeNodeId{NULL_NODE}; // Node ID in the scene's dynamic AABB tree
 
     fm_vec3_t support(const fm_vec3_t &dir) const;
     AABB boundingBox(const fm_quat_t *rotation) const;
