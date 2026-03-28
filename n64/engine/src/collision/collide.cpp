@@ -86,21 +86,7 @@ namespace P64::Coll {
            barycentric.x <= 1.0f + tolerance && barycentric.y <= 1.0f + tolerance && barycentric.z <= 1.0f + tolerance;
   }
 
-  static fm_vec3_t clampPointToBoxLocal(const fm_vec3_t &point, const fm_vec3_t &halfSize) {
-    return fm_vec3_t{{
-      fmaxf(-halfSize.x, fminf(point.x, halfSize.x)),
-      fmaxf(-halfSize.y, fminf(point.y, halfSize.y)),
-      fmaxf(-halfSize.z, fminf(point.z, halfSize.z))
-    }};
-  }
 
-  static fm_vec3_t boxSupportLocal(const fm_vec3_t &halfSize, const fm_vec3_t &direction) {
-    return fm_vec3_t{{
-      copysignf(halfSize.x, direction.x),
-      copysignf(halfSize.y, direction.y),
-      copysignf(halfSize.z, direction.z)
-    }};
-  }
 
   static fm_vec3_t closestPointOnTriangle(const fm_vec3_t &point, const fm_vec3_t &a, const fm_vec3_t &b, const fm_vec3_t &c) {
     const fm_vec3_t ab = b - a;
@@ -168,48 +154,6 @@ namespace P64::Coll {
     const float p2 = fm_vec3_dot(&v2, &axis);
     outMin = fminf(outMin, p2);
     outMax = fmaxf(outMax, p2);
-  }
-
-  static bool testBoxTriangleSatAxis(
-    const fm_vec3_t &axisCandidate,
-    const fm_vec3_t &triangleCenter,
-    const fm_vec3_t &v0,
-    const fm_vec3_t &v1,
-    const fm_vec3_t &v2,
-    const fm_vec3_t &halfSize,
-    float &bestOverlap,
-    fm_vec3_t &bestAxis,
-    int axisKind,
-    int &bestAxisKind) {
-    const float axisLenSq = fm_vec3_len2(&axisCandidate);
-    if(axisLenSq <= FM_EPSILON * FM_EPSILON) {
-      return true;
-    }
-
-    fm_vec3_t axis;
-    fm_vec3_scale(&axis, &axisCandidate, 1.0f / sqrtf(axisLenSq));
-
-    float triMin;
-    float triMax;
-    projectTriangleOntoAxis(v0, v1, v2, axis, triMin, triMax);
-
-    const float boxRadius =
-      halfSize.x * fabsf(axis.x) +
-      halfSize.y * fabsf(axis.y) +
-      halfSize.z * fabsf(axis.z);
-
-    if(triMin > boxRadius || triMax < -boxRadius) {
-      return false;
-    }
-
-    const float overlap = fminf(boxRadius - triMin, triMax + boxRadius);
-    if(overlap < bestOverlap) {
-      bestOverlap = overlap;
-      bestAxis = fm_vec3_dot(&triangleCenter, &axis) > 0.0f ? -axis : axis;
-      bestAxisKind = axisKind;
-    }
-
-    return true;
   }
 
   static void meshLocalResultToWorld(EpaResult &result, const MeshCollider &mesh) {
@@ -486,122 +430,6 @@ namespace P64::Coll {
     return true;
   }
 
-  static bool analyticalSphereTriangle(const ColliderProxy &sphereProxy, const MeshTriangle &triangle, EpaResult &result) {
-    const Collider *sphere = sphereProxy.collider;
-    if(!sphere || sphere->type != ShapeType::Sphere) return false;
-
-    const fm_vec3_t v0 = triangle.vertices[triangle.tri.indices[0]];
-    const fm_vec3_t v1 = triangle.vertices[triangle.tri.indices[1]];
-    const fm_vec3_t v2 = triangle.vertices[triangle.tri.indices[2]];
-    const fm_vec3_t closest = closestPointOnTriangle(sphereProxy.worldCenter, v0, v1, v2);
-    const fm_vec3_t delta = sphereProxy.worldCenter - closest;
-    const float radius = sphere->sphere.radius;
-    const float distSq = fm_vec3_len2(&delta);
-
-    if(distSq > radius * radius) {
-      return false;
-    }
-
-    const fm_vec3_t triCenter = (v0 + v1 + v2) / 3.0f;
-    if(distSq > FM_EPSILON * FM_EPSILON) {
-      fm_vec3_norm(&result.normal, &delta);
-    } else {
-      const Plane trianglePlane = planeFromNormalAndPoint(triangle.normal, v0);
-      fm_vec3_t fallbackNormal = triangle.normal;
-      if(planeSignedDistance(trianglePlane, sphereProxy.worldCenter) < 0.0f) {
-        fallbackNormal = -fallbackNormal;
-      }
-      result.normal = makeSafeContactNormal(fallbackNormal, sphereProxy.worldCenter, triCenter);
-    }
-
-    result.penetration = radius - sqrtf(fmaxf(distSq, 0.0f));
-    result.contactA = sphereProxy.worldCenter - (result.normal * radius);
-    result.contactB = closest;
-    return true;
-  }
-
-  static bool analyticalBoxTriangle(const ColliderProxy &boxProxy, const MeshTriangle &triangle, EpaResult &result) {
-    const Collider *box = boxProxy.collider;
-    if(!box || box->type != ShapeType::Box) return false;
-
-    enum {
-      BoxTriangleAxisBoxFace = 0,
-      BoxTriangleAxisTriangleFace = 1,
-      BoxTriangleAxisEdgeCross = 2,
-    };
-
-    const fm_vec3_t halfSize = box->box.halfSize;
-    const fm_vec3_t triWorldV0 = triangle.vertices[triangle.tri.indices[0]];
-    const fm_vec3_t triWorldV1 = triangle.vertices[triangle.tri.indices[1]];
-    const fm_vec3_t triWorldV2 = triangle.vertices[triangle.tri.indices[2]];
-
-    const fm_vec3_t v0 = matrix3Vec3Mul(boxProxy.rotationT, triWorldV0 - boxProxy.worldCenter);
-    const fm_vec3_t v1 = matrix3Vec3Mul(boxProxy.rotationT, triWorldV1 - boxProxy.worldCenter);
-    const fm_vec3_t v2 = matrix3Vec3Mul(boxProxy.rotationT, triWorldV2 - boxProxy.worldCenter);
-    const fm_vec3_t triangleCenter = (v0 + v1 + v2) / 3.0f;
-
-    float bestOverlap = std::numeric_limits<float>::max();
-    fm_vec3_t bestAxis = VEC3_ZERO;
-    int bestAxisKind = BoxTriangleAxisBoxFace;
-
-    const fm_vec3_t boxAxes[3] = {VEC3_RIGHT, VEC3_UP, VEC3_FORWARD};
-    for(const fm_vec3_t &axis : boxAxes) {
-      if(!testBoxTriangleSatAxis(axis, triangleCenter, v0, v1, v2, halfSize, bestOverlap, bestAxis, BoxTriangleAxisBoxFace, bestAxisKind)) {
-        return false;
-      }
-    }
-
-    const fm_vec3_t edge0 = v1 - v0;
-    const fm_vec3_t edge1 = v2 - v1;
-    const fm_vec3_t edge2 = v0 - v2;
-    fm_vec3_t triangleNormal;
-    fm_vec3_cross(&triangleNormal, &edge0, &edge1);
-    if(!testBoxTriangleSatAxis(triangleNormal, triangleCenter, v0, v1, v2, halfSize, bestOverlap, bestAxis, BoxTriangleAxisTriangleFace, bestAxisKind)) {
-      return false;
-    }
-
-    const fm_vec3_t triangleEdges[3] = {edge0, edge1, edge2};
-    for(const fm_vec3_t &edge : triangleEdges) {
-      for(const fm_vec3_t &axis : boxAxes) {
-        fm_vec3_t crossAxis;
-        fm_vec3_cross(&crossAxis, &edge, &axis);
-        if(!testBoxTriangleSatAxis(crossAxis, triangleCenter, v0, v1, v2, halfSize, bestOverlap, bestAxis, BoxTriangleAxisEdgeCross, bestAxisKind)) {
-          return false;
-        }
-      }
-    }
-
-    if(bestOverlap <= FM_EPSILON || bestAxisKind == BoxTriangleAxisEdgeCross) {
-      return false;
-    }
-
-    fm_vec3_t normalLocal = bestAxis;
-    fm_vec3_t localContactA = boxSupportLocal(halfSize, -normalLocal);
-    fm_vec3_t localContactB = closestPointOnTriangle(localContactA, v0, v1, v2);
-    const fm_vec3_t separation = localContactB - localContactA;
-    float penetration = fm_vec3_dot(&separation, &normalLocal);
-
-    if(penetration <= FM_EPSILON) {
-      localContactA = clampPointToBoxLocal(localContactB - (normalLocal * bestOverlap), halfSize);
-      const fm_vec3_t adjustedSeparation = localContactB - localContactA;
-      penetration = fm_vec3_dot(&adjustedSeparation, &normalLocal);
-      if(penetration <= FM_EPSILON) {
-        return false;
-      }
-    }
-
-    // Keep the mesh contact on the triangle and reconstruct the box anchor
-    // along the contact normal so the analytical pair matches EPA's
-    // normal/penetration contract.
-    localContactA = localContactB - (normalLocal * penetration);
-
-    result.normal = matrix3Vec3Mul(boxProxy.rotation, normalLocal);
-    result.penetration = penetration;
-    result.contactA = boxProxy.worldCenter + matrix3Vec3Mul(boxProxy.rotation, localContactA);
-    result.contactB = boxProxy.worldCenter + matrix3Vec3Mul(boxProxy.rotation, localContactB);
-    return true;
-  }
-
 
   // ── Contact constraint caching ────────────────────────────────────
 
@@ -824,46 +652,12 @@ namespace P64::Coll {
       }
     }
 
-    EpaResult analyticalResult;
-    bool hasAnalyticalPath = false;
-    bool analyticalHit = false;
     uint64_t startTicks = get_ticks();
-
-    // TODO: For whatever reason this is not stable
-    // switch(colliderProxyMeshSpace->collider->type) {
-    //   case ShapeType::Sphere:
-    //     hasAnalyticalPath = true;
-    //     analyticalHit = analyticalSphereTriangle(*colliderProxyMeshSpace, tri, analyticalResult);
-    //     break;
-    //   case ShapeType::Box:
-    //     hasAnalyticalPath = true;
-    //     analyticalHit = analyticalBoxTriangle(*colliderProxyMeshSpace, tri, analyticalResult);
-    //     break;
-    //   default:
-    //     break;
-    // }
-    if(hasAnalyticalPath) {
-      ticks_analytical_obj_mesh += get_ticks() - startTicks;
-    }
-
-    if(hasAnalyticalPath) {
-      if(!analyticalHit) {
-        return false;
-      }
-
-      meshLocalResultToWorld(analyticalResult, mesh);
-      collideCacheContactConstraint(
-        rigidBody, colliderProxyMeshSpace->collider, nullptr, objectA,
-        nullptr, nullptr, const_cast<MeshCollider *>(&mesh), objectB,
-        analyticalResult, combinedFriction, combinedBounce, isTriggerContact, !isTriggerContact, false, triangleIndex);
-      return true;
-    }
 
     Simplex simplex;
     fm_vec3_t firstDir = ((tri.vertices[tri.tri.indices[0]] + tri.vertices[tri.tri.indices[1]] + tri.vertices[tri.tri.indices[2]]) / 3.0f) - colliderProxyMeshSpace->worldCenter;
     if(fm_vec3_len2(&firstDir) < FM_EPSILON * FM_EPSILON) firstDir = VEC3_RIGHT;
 
-    startTicks = get_ticks();
     bool gjkOverlap = gjkCheckForOverlap(
       simplex,
       colliderProxyMeshSpace, colliderProxyGjkSupport,
