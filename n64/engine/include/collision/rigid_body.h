@@ -132,6 +132,7 @@ namespace P64::Coll {
     void applyAngularImpulse(const fm_vec3_t &angImpulse);
     void setAngularVelocity(const fm_vec3_t &angVel);
     void applyForceAtPoint(const fm_vec3_t &force, const fm_vec3_t &worldPoint);
+    fm_vec3_t getVelocityAtPoint(const fm_vec3_t &worldPoint) const;
 
     void updateWorldInertia();
     void applyPositionConstraints();

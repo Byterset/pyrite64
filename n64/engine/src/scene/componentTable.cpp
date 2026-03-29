@@ -36,6 +36,7 @@ namespace
 {
   HAS_FUNC_TPL(has_draw,   get_draw,    draw   )
   HAS_FUNC_TPL(has_update, get_update,  update )
+  HAS_FUNC_TPL(has_fixed_update, get_fixed_update, fixedUpdate)
   HAS_FUNC_TPL(has_event,  get_event,   onEvent)
   HAS_FUNC_TPL(has_coll,   get_coll,    onColl )
 }
@@ -44,6 +45,7 @@ namespace
   [Comp::NAME::ID] = { \
     .initDel = reinterpret_cast<FuncInitDel>(Comp::NAME::initDelete), \
     .update = (FuncUpdate)get_update<Comp::NAME>(), \
+    .fixedUpdate = (FuncFixedUpdate)get_fixed_update<Comp::NAME>(), \
     .draw   = (FuncDraw)(get_draw<Comp::NAME>()), \
     .onEvent = (FuncOnEvent)(get_event<Comp::NAME>()), \
     .onColl = (FuncOnColl)(get_coll<Comp::NAME>()), \

@@ -186,12 +186,21 @@ void P64::Scene::update(float deltaTime)
   }
   while (accumulator_ticks >= fixedDeltaTimeTicks)
   {
-    //TODO: dispatch fixedupdate calls here
-    //fixed_update_dispatch();
-    // if (update_has_layer(UPDATE_LAYER_WORLD))
-    // {
+    for(auto obj : objects)
+    {
+      if(!obj->isEnabled()) continue;
+
+      auto compRefs = obj->getCompRefs();
+      for(uint32_t i = 0; i < obj->compCount; ++i) {
+        const auto &compDef = COMP_TABLE[compRefs[i].type];
+        if(!compDef.fixedUpdate) continue;
+
+        char* dataPtr = (char*)obj + compRefs[i].offset;
+        compDef.fixedUpdate(*obj, dataPtr, fixedDeltaTime);
+      }
+    }
+
     Coll::collisionSceneGetInstance()->step();
-    // }
     accumulator_ticks -= fixedDeltaTimeTicks;
   }
 

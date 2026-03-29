@@ -174,9 +174,10 @@ namespace P64::Coll {
     }
 
     float dt = fixedDt * timeScalar;
+    const bool hadExternalTorque = !vec3IsZero(torqueAccumulator);
 
     // Apply torque accumulator
-    if(!vec3IsZero(torqueAccumulator)) {
+    if(hadExternalTorque) {
       fm_vec3_t angAccel = applyWorldInertia(torqueAccumulator);
       angularVelocity = angularVelocity + (angAccel * dt * timeScalar);
       torqueAccumulator = VEC3_ZERO;
@@ -200,7 +201,7 @@ namespace P64::Coll {
 
     // Angular damping — amplify near rest
     float dampFactor = angularDamping;
-    if(angSpeedSq < AMPLIFY_ANG_DAMPING_THRESHOLD_SQ && angSpeedSq > FM_EPSILON) {
+    if(!hadExternalTorque && angSpeedSq < AMPLIFY_ANG_DAMPING_THRESHOLD_SQ && angSpeedSq > FM_EPSILON) {
       float ratio = angSpeedSq * AMPLIFY_ANG_DAMPING_THRESHOLD_SQ_INV;
       dampFactor = angularDamping + (1.0f - angularDamping) * (1.0f - ratio);
     }
@@ -270,6 +271,19 @@ namespace P64::Coll {
   void RigidBody::setAngularVelocity(const fm_vec3_t &angVel) {
     angularVelocity = angVel;
     if(isSleeping) wake();
+  }
+
+  fm_vec3_t RigidBody::getVelocityAtPoint(const fm_vec3_t &worldPoint) const {
+    fm_vec3_t pointVelocity = velocity;
+
+    if(vec3IsZero(angularVelocity)) {
+      return pointVelocity;
+    }
+
+    fm_vec3_t offset = worldPoint - worldCenterOfMass;
+    fm_vec3_t angularPointVelocity;
+    fm_vec3_cross(&angularPointVelocity, &angularVelocity, &offset);
+    return pointVelocity + angularPointVelocity;
   }
 
   void RigidBody::applyForceAtPoint(const fm_vec3_t &force, const fm_vec3_t &worldPoint) {
