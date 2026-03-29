@@ -15,6 +15,7 @@ namespace P64::Coll {
 
   using NodeProxy = int16_t;
   constexpr NodeProxy NULL_NODE = -1;
+  // Multiplier for how much to fatten AABBs when inserting/moving nodes. This helps avoid frequent reinsertion for small movements.
   constexpr float AABB_DISPLACEMENT_MULTIPLIER = 10.0f;
   constexpr int AABB_QUERY_STACK_SIZE = 256;
 
@@ -52,8 +53,7 @@ namespace P64::Coll {
 
     int queryBounds(const AABB &queryBox, NodeProxy *results, int maxResults) const;
     int queryPoint(const fm_vec3_t &point, NodeProxy *results, int maxResults) const;
-    int queryRay(const fm_vec3_t &origin, const fm_vec3_t &invDir, float maxDist,
-                 NodeProxy *results, int maxResults) const;
+    int queryRay(const Raycast &ray, NodeProxy *results, int maxResults) const;
 
     // Always order so that id_a < id_b
     static int32_t makeNodePairKey(NodeProxy id_a, NodeProxy id_b)

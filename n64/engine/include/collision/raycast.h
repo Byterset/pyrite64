@@ -8,47 +8,54 @@
 #include "vec_math.h"
 #include <cstdint>
 #include <cmath>
+#include <limits>
 
 namespace P64::Coll {
 
-  constexpr float RAYCAST_MAX_DISTANCE = 2000.0f;
-  constexpr int RAYCAST_MAX_OBJECT_TESTS = 10;
-  constexpr int RAYCAST_MAX_TRIANGLE_TESTS = 15;
+  struct Collider;
 
-  enum class RaycastMask : uint8_t {
+  constexpr int RAYCAST_MAX_COLLIDER_TESTS = 50;
+  constexpr int RAYCAST_MAX_TRIANGLE_TESTS = 100;
+
+  enum class RaycastColliderTypeFlags : uint8_t {
     MESH_COLLIDERS = (1 << 0),
     COLLIDER_BODIES  = (1 << 1),
-    All             = 0xFF
+    ALL             = 0xFF
   };
 
-  inline RaycastMask operator|(RaycastMask a, RaycastMask b) {
-    return static_cast<RaycastMask>(static_cast<uint8_t>(a) | static_cast<uint8_t>(b));
+  inline RaycastColliderTypeFlags operator|(RaycastColliderTypeFlags a, RaycastColliderTypeFlags b) {
+    return static_cast<RaycastColliderTypeFlags>(static_cast<uint8_t>(a) | static_cast<uint8_t>(b));
   }
-  inline bool hasFlag(RaycastMask m, RaycastMask f) {
+  inline bool hasFlag(RaycastColliderTypeFlags m, RaycastColliderTypeFlags f) {
     return (static_cast<uint8_t>(m) & static_cast<uint8_t>(f)) != 0;
   }
+
+  
 
   struct Raycast {
     fm_vec3_t origin{};
     fm_vec3_t dir{};
     fm_vec3_t invDir{};
-    float maxDistance{RAYCAST_MAX_DISTANCE};
-    RaycastMask mask{RaycastMask::All};
-    uint16_t collisionLayers{0xFFFF};
-    uint16_t ignoreLayers{0};
+    float maxDistance{};
+    RaycastColliderTypeFlags collTypes{RaycastColliderTypeFlags::ALL};
+    uint8_t readMask{0xFF};
     bool interactTrigger{false};
 
     static Raycast create(const fm_vec3_t &origin, const fm_vec3_t &dir, float maxDist,
-                          RaycastMask mask = RaycastMask::All, bool interactTrigger = false,
-                          uint16_t collisionLayers = 0xFFFF, uint16_t ignoreLayers = 0);
+                          RaycastColliderTypeFlags collTypes = RaycastColliderTypeFlags::ALL, bool interactTrigger = false,
+                          uint8_t readMask = 0xFF);
   };
 
   struct RaycastHit {
     fm_vec3_t point{};
     fm_vec3_t normal{};
-    float distance{1e30f};
-    uint16_t hitId{0};
+    float distance{std::numeric_limits<float>::max()};
+    uint16_t hitObjectId{0};
     bool didHit{false};
   };
+
+  bool ray_collider_intersection(const Raycast &ray, const Collider *coll, RaycastHit &hit);
+
+  bool ray_triangle_intersection(const Raycast &ray, const fm_vec3_t &v0, const fm_vec3_t &v1, const fm_vec3_t &v2, const fm_vec3_t &tri_norm, RaycastHit &hit);
 
 } // namespace P64::Coll

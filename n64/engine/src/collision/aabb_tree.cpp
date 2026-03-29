@@ -416,8 +416,7 @@ int AABBTree::queryPoint(const fm_vec3_t &point, NodeProxy *results, int maxResu
   return resultCount;
 }
 
-int AABBTree::queryRay(const fm_vec3_t &origin, const fm_vec3_t &invDir, float maxDist,
-                       NodeProxy *results, int maxResults) const
+int AABBTree::queryRay(const Raycast &ray, NodeProxy *results, int maxResults) const
 {
   if(root == NULL_NODE) return 0;
 
@@ -431,7 +430,7 @@ int AABBTree::queryRay(const fm_vec3_t &origin, const fm_vec3_t &invDir, float m
     NodeProxy current = stack[--stackCount];
     if(current == NULL_NODE) continue;
 
-    if(!aabbIntersectsRay(nodes_[current].bounds, origin, invDir, maxDist)) continue;
+    if(!aabbIntersectsRay(nodes_[current].bounds, ray)) continue;
 
     if(isLeaf(current)) {
       results[resultCount++] = current;

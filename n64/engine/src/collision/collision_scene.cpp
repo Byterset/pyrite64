@@ -125,7 +125,7 @@ namespace P64::Coll {
     if(!shouldTrackSleepState(rigidBody)) return false;
 
     const float speedSq = fm_vec3_len2(&rigidBody->velocity);
-    if(speedSq > SPEED_SLEEP_THRESHOLD_SQ) return true;
+    if(speedSq > SPEED_SLEEP_THRESHOLD_SQ * (g_scene.physicsScale_ * g_scene.physicsScale_)) return true;
 
     const float angSpeedSq = fm_vec3_len2(&rigidBody->angularVelocity);
     return angSpeedSq > ANGULAR_SLEEP_THRESHOLD_SQ;
@@ -135,7 +135,7 @@ namespace P64::Coll {
     if(!shouldTrackSleepState(rigidBody)) return false;
 
     const float posDeltaSq = fm_vec3_distance2(rigidBody->position, &rigidBody->prevStepPos);
-    if(posDeltaSq > POS_SLEEP_THRESHOLD_SQ) return true;
+    if(posDeltaSq > POS_SLEEP_THRESHOLD_SQ * (g_scene.physicsScale_ * g_scene.physicsScale_)) return true;
 
     if(rigidBody->rotation) {
       const float rotSim = fabsf(quatDot(*rigidBody->rotation, rigidBody->prevStepRot));
@@ -144,7 +144,7 @@ namespace P64::Coll {
 
     if(rigidBody->owner){
       const float scaleDeltaSq = fm_vec3_distance2(&rigidBody->owner->scale, &rigidBody->prevStepScale);
-      if(scaleDeltaSq > POS_SLEEP_THRESHOLD_SQ) return true;
+      if(scaleDeltaSq > POS_SLEEP_THRESHOLD_SQ * (g_scene.physicsScale_ * g_scene.physicsScale_)) return true;
     }
 
     return false;
@@ -186,31 +186,16 @@ namespace P64::Coll {
     ticksWorldUpdate = 0;
     ticksIntegrateVel = 0;
     ticksDetect = 0;
-    ticksDetectDeactivate = 0;
-    ticksDetectBuildOrder = 0;
     ticksDetectBodyPairs = 0;
-    ticksDetectDetachedPairs = 0;
-    ticksDetectDetachedBodyPairs = 0;
-    ticksDetectDetachedDetachedPairs = 0;
     ticksDetectMeshPairs = 0;
-    ticksDetectCleanup = 0;
     ticksRefreshCallbacks = 0;
     ticksPreSolve = 0;
     ticksWarmStart = 0;
     ticksVelocitySolve = 0;
-    ticksIntegratePos = 0;
+    ticksIntegration = 0;
     ticksPositionSolve = 0;
     ticksFinalize = 0;
     ticksTotal = 0;
-    detectOrderedColliderCount = 0;
-    detectTriggerColliderCount = 0;
-    detectOrderedBodyCount = 0;
-    detectDetachedColliderCount = 0;
-    detectBodyCandidateCount = 0;
-    detectObjectPairCount = 0;
-    detectDetachedPairCount = 0;
-    detectMeshPairCount = 0;
-    detectDebugPrintCounter_ = 0;
 
     colliderAABBTree.init(32); // Initial capacity (will grow as needed)
   }
@@ -803,17 +788,12 @@ namespace P64::Coll {
   // ── Contact detection ─────────────────────────────────────────────
 
   void CollisionScene::detectAllContacts() {
-    detectObjectPairCount = 0;
-    detectMeshPairCount = 0;
 
     uint64_t stageStart = get_ticks();
     // Mark all constraints as inactive; detection will re-activate them
     for(int i = 0; i < cachedConstraintCount_; ++i) {
       cachedConstraints_[i].isActive = false;
     }
-    ticksDetectDeactivate = get_ticks() - stageStart;
-
-    stageStart = get_ticks();
 
     //map of unique collider pairs that have already been tested this step to avoid duplication
     std::unordered_set<int32_t> tested_pairs;
@@ -837,7 +817,6 @@ namespace P64::Coll {
           collider->worldAABB,
           candidateColliders.data(),
           static_cast<int>(candidateColliders.size()));
-      bool sixteen_wasthere = false;
       for (int candidateIdx = 0; candidateIdx < candidateCount; ++candidateIdx)
       {
         void *data = colliderAABBTree.getNodeData(candidateColliders[candidateIdx]);
@@ -859,7 +838,6 @@ namespace P64::Coll {
 
           if (!collidersShouldGenerateContact(collider, collB))
             continue;
-          ++detectObjectPairCount;
           RigidBody *rbB = findRigidBodyByOwner(collB->owner);
           if((rbA && rbA->isSleeping) && (rbB && rbB->isSleeping)) {
             // Allow sleeping objects to generate contacts with triggers, but skip if both are sleeping non-triggers to save performance
@@ -867,15 +845,8 @@ namespace P64::Coll {
               continue;
             }
           }
-          if (collider->owner->id == 16 || collB->owner->id == 16) {
-            sixteen_wasthere = true;
-            debugf("Debug info for collider pair involving object 16\n");
-          }
           collideDetectObjectToObject(collider, rbA, collB, rbB);
         }
-      }
-      if(sixteen_wasthere) {
-        debugf("object 16 was part of candidates\n");
       }
     }
     for (std::size_t m = 0; m < meshColliders_.size(); ++m)
@@ -908,17 +879,13 @@ namespace P64::Coll {
         //prevent perpetural collision checks of sleeping objects with meshes
         if(!mesh->transformChanged && rigidBodyA && rigidBodyA->isSleeping && !collA->isTrigger)
           continue;
-
-        ++detectMeshPairCount;
         collideDetectObjectToMesh(collA, rigidBodyA, *mesh);
       }
 
     }
     //TODO: possibly offer mesh-mesh collision detection in the future, but not needed for current use cases
 
-    stageStart = get_ticks();
     removeInactiveContacts();
-    ticksDetectCleanup = get_ticks() - stageStart;
   }
 
   // ── Pre-solve ─────────────────────────────────────────────────────
@@ -1302,164 +1269,81 @@ namespace P64::Coll {
 
   // ── Raycast ───────────────────────────────────────────────────────
 
-  static bool rayTriangleIntersect(const fm_vec3_t &origin, const fm_vec3_t &dir,
-                                   const fm_vec3_t &v0, const fm_vec3_t &v1, const fm_vec3_t &v2,
-                                   float &outDist, fm_vec3_t &outNormal) {
-    fm_vec3_t e1 = v1 - v0;
-    fm_vec3_t e2 = v2 - v0;
-    fm_vec3_t h;
-    fm_vec3_cross(&h, &dir, &e2);
-    float a = fm_vec3_dot(&e1, &h);
-    if(fabsf(a) < FM_EPSILON) return false;
 
-    float f = 1.0f / a;
-    fm_vec3_t s = origin - v0;
-    float u = f * fm_vec3_dot(&s, &h);
-    if(u < 0.0f || u > 1.0f) return false;
+  bool CollisionScene::raycast(Raycast &ray, RaycastHit &hit) const {
+    RaycastHit currentHit = {};
+    hit.didHit = false;
+    hit.distance = std::numeric_limits<float>::max();
+    currentHit.distance = std::numeric_limits<float>::max();
 
-    fm_vec3_t q;
-    fm_vec3_cross(&q, &s, &e1);
-    float v = f * fm_vec3_dot(&dir, &q);
-    if(v < 0.0f || u + v > 1.0f) return false;
+    // Test mesh colliders
+    if(hasFlag(ray.collTypes, RaycastColliderTypeFlags::MESH_COLLIDERS)) {
+      for(std::size_t m = 0; m < meshColliders_.size(); ++m) {
+        const MeshCollider *mesh = meshColliders_[m];
+        if(!mesh || mesh->triangleCount == 0 || !mesh->owner) continue;
+        Raycast localRay = ray;
+        localRay.origin = mesh->hasTransform() ? mesh->toLocalSpace(ray.origin) : ray.origin;
+        localRay.dir = mesh->hasTransform() ? mesh->rotateToLocal(ray.dir) : ray.dir;
+        localRay.invDir = fm_vec3_t{{
+          fabsf(localRay.dir.x) > FM_EPSILON ? 1.0f / localRay.dir.x : FM_EPSILON,
+          fabsf(localRay.dir.y) > FM_EPSILON ? 1.0f / localRay.dir.y : FM_EPSILON,
+          fabsf(localRay.dir.z) > FM_EPSILON ? 1.0f / localRay.dir.z : FM_EPSILON
+        }};
 
-    float t = f * fm_vec3_dot(&e2, &q);
-    if(t < FM_EPSILON) return false;
 
-    outDist = t;
-    fm_vec3_t cross;
-    fm_vec3_cross(&cross, &e1, &e2);
-    fm_vec3_norm(&outNormal, &cross);
-    return true;
+        NodeProxy triCandidates[RAYCAST_MAX_TRIANGLE_TESTS];
+        int triCount = mesh->aabbTree.queryRay(localRay, triCandidates, RAYCAST_MAX_TRIANGLE_TESTS);
+        for(int i = 0; i < triCount; ++i) {
+          void *data = mesh->aabbTree.getNodeData(triCandidates[i]);
+          if(!data) continue;
+          int triIdx = static_cast<int>(reinterpret_cast<intptr_t>(data)) - 1; // stored as index+1
+          if(triIdx < 0 || triIdx >= mesh->triangleCount) continue;
+
+          const MeshTriangleIndices &tri = mesh->triangles[triIdx];
+
+          // Get vertices in world space
+          fm_vec3_t v0 = mesh->vertices[tri.indices[0]];
+          fm_vec3_t v1 = mesh->vertices[tri.indices[1]];
+          fm_vec3_t v2 = mesh->vertices[tri.indices[2]];
+
+          currentHit.distance = std::numeric_limits<float>::max();
+          currentHit.didHit = false;
+          hit.didHit = hit.didHit | ray_triangle_intersection(localRay, v0, v1, v2, mesh->normals[triIdx], currentHit);
+          if(currentHit.didHit && currentHit.distance < hit.distance && currentHit.distance <= ray.maxDistance) {
+            // Transform hit point and normal back to world space
+            hit.point = mesh->hasTransform() ? mesh->toWorldSpace(currentHit.point) : currentHit.point;
+            hit.normal = mesh->hasTransform() ? mesh->rotateToWorld(currentHit.normal) : currentHit.normal;
+            hit.distance = currentHit.distance;
+            hit.hitObjectId = mesh->owner->id;
+          }
+        }
+      }
+    }
+
+    // Test physics objects
+    if(hasFlag(ray.collTypes, RaycastColliderTypeFlags::COLLIDER_BODIES)) {
+      NodeProxy collCandidates[RAYCAST_MAX_COLLIDER_TESTS];
+      int candidate_count = colliderAABBTree.queryRay(ray, collCandidates, RAYCAST_MAX_COLLIDER_TESTS);
+
+      for(int i = 0; i < candidate_count; ++i) {
+        void *data = colliderAABBTree.getNodeData(collCandidates[i]);
+        if(!data) continue;
+        auto *coll = static_cast<Collider *>(data);
+        
+        if(!coll->owner) continue;
+        if(!ray.interactTrigger && coll->isTrigger) continue;
+        if((coll->maskWrite & ray.readMask) == 0) continue;
+        currentHit.didHit = false;
+        currentHit.distance = std::numeric_limits<float>::max();
+        hit.didHit = hit.didHit | ray_collider_intersection(ray, coll, currentHit);
+        if(currentHit.didHit && currentHit.distance < hit.distance && currentHit.distance <= ray.maxDistance) {
+          hit = currentHit;
+        }
+      }
+    }
+
+    return hit.didHit;
   }
-
-  // bool CollisionScene::raycast(Raycast &ray, RaycastHit &hit) const {
-  //   hit = RaycastHit{};
-
-  //   // Test mesh colliders
-  //   if(hasFlag(ray.mask, RaycastMask::MESH_COLLIDERS)) {
-  //     for(std::size_t m = 0; m < meshColliders_.size(); ++m) {
-  //       const MeshCollider *mesh = meshColliders_[m];
-  //       if(!mesh || mesh->triangleCount == 0) continue;
-
-  //       // Transform the ray into the mesh's local space for AABB tree query
-  //       fm_vec3_t localOrigin = mesh->hasTransform() ? mesh->toLocalSpace(ray.origin) : ray.origin;
-  //       fm_vec3_t localDir = mesh->hasTransform() ? mesh->rotateToLocal(ray.dir) : ray.dir;
-  //       fm_vec3_t localInvDir = fm_vec3_t{{
-  //         fabsf(localDir.x) > FM_EPSILON ? 1.0f / localDir.x : 1e30f,
-  //         fabsf(localDir.y) > FM_EPSILON ? 1.0f / localDir.y : 1e30f,
-  //         fabsf(localDir.z) > FM_EPSILON ? 1.0f / localDir.z : 1e30f
-  //       }};
-
-  //       NodeProxy triCandidates[64];
-  //       int triCount = mesh->aabbTree.queryRay(
-  //         localOrigin, localInvDir, ray.maxDistance, triCandidates, 64);
-
-  //       int tested = 0;
-  //       for(int i = 0; i < triCount && tested < RAYCAST_MAX_TRIANGLE_TESTS; ++i) {
-  //         void *data = mesh->aabbTree.getNodeData(triCandidates[i]);
-  //         if(!data) continue;
-  //         int triIdx = static_cast<int>(reinterpret_cast<intptr_t>(data)) - 1; // stored as index+1
-  //         if(triIdx < 0 || triIdx >= mesh->triangleCount) continue;
-
-  //         const MeshTriangleIndices &tri = mesh->triangles[triIdx];
-  //         // Get vertices in world space
-  //         fm_vec3_t v0 = mesh->toWorldSpace(mesh->vertices[tri.indices[0]]);
-  //         fm_vec3_t v1 = mesh->toWorldSpace(mesh->vertices[tri.indices[1]]);
-  //         fm_vec3_t v2 = mesh->toWorldSpace(mesh->vertices[tri.indices[2]]);
-
-  //         float dist;
-  //         fm_vec3_t normal;
-  //         if(rayTriangleIntersect(ray.origin, ray.dir, v0, v1, v2, dist, normal)) {
-  //           if(dist < hit.distance && dist <= ray.maxDistance) {
-  //             hit.distance = dist;
-  //             hit.point = ray.origin + ray.dir * dist;
-  //             hit.normal = normal;
-  //             hit.hitId = 0;
-  //             hit.didHit = true;
-  //           }
-  //         }
-  //         tested++;
-  //       }
-  //     }
-  //   }
-
-  //   // Test physics objects
-  //   if(hasFlag(ray.mask, RaycastMask::COLLIDER_BODIES)) {
-  //     NodeProxy objCandidates[MAX_OBJ_COLLISION_CANDIDATES];
-  //     int objCount = rigidBodyAABBTree.queryRay(
-  //       ray.origin, ray.invDir, ray.maxDistance, objCandidates, MAX_OBJ_COLLISION_CANDIDATES);
-
-  //     int tested = 0;
-  //     for(int i = 0; i < objCount && tested < RAYCAST_MAX_OBJECT_TESTS; ++i) {
-  //       void *data = rigidBodyAABBTree.getNodeData(objCandidates[i]);
-  //       if(!data) continue;
-  //       auto *obj = static_cast<RigidBody *>(data);
-
-  //       // if(!obj->collider) continue;
-  //       if((obj->collisionLayers & ray.collisionLayers) == 0) continue;
-  //       if((obj->collisionLayers & ray.ignoreLayers) != 0) continue;
-  //       if(!ray.interactTrigger) {
-  //         const std::vector<Collider *> *ownerColliders = findCollidersForOwner(obj->owner);
-  //         if(ownerColliders && !ownerColliders->empty()) {
-  //           bool hasSolidCollider = false;
-  //           for(const Collider *ownerCollider : *ownerColliders) {
-  //             if(ownerCollider && !ownerCollider->isTrigger) {
-  //               hasSolidCollider = true;
-  //               break;
-  //             }
-  //           }
-  //           if(!hasSolidCollider) continue;
-  //         }
-  //       }
-
-  //       // Simple sphere approximation for ray-rigidBody test
-  //       fm_vec3_t toObj = obj->worldCenterOfMass - ray.origin;
-  //       float projLen = fm_vec3_dot(&toObj, &ray.dir);
-  //       if(projLen < 0.0f) continue;
-
-  //       fm_vec3_t closestOnRay = ray.origin + ray.dir * projLen;
-  //       float distSq = fm_vec3_distance2(&closestOnRay, &obj->worldCenterOfMass);
-
-  //       // Approximate radius from AABB
-  //       fm_vec3_t halfExtent = (obj->boundingBox.max - obj->boundingBox.min) * 0.5f;
-  //       float approxRadius = fm_vec3_len2(&halfExtent);
-
-  //       if(distSq > approxRadius) continue;
-
-  //       // Refine: for spheres, do exact intersection
-  //       //TODO: fix this
-  //       // if(obj->collider->type == ShapeType::Sphere) {
-  //       //   float r = obj->collider->sphere.radius;
-  //       //   float disc = projLen * projLen - vec3MagSqrd(toObj) + r * r;
-  //       //   if(disc < 0.0f) continue;
-
-  //       //   float dist = projLen - sqrtf(disc);
-  //       //   if(dist < FM_EPSILON || dist > ray.maxDistance) continue;
-  //       //   if(dist >= hit.distance) continue;
-
-  //       //   hit.distance = dist;
-  //       //   hit.point = vec3Add(ray.origin, vec3Scale(ray.dir, dist));
-  //       //   hit.normal = vec3Normalize(vec3Sub(hit.point, obj->worldCenterOfMass));
-  //       //   hit.hitId = obj->owner ? obj->owner->id : 0;
-  //       //   hit.didHit = true;
-  //       // } else {
-  //       //   // Use approximate distance for non-sphere shapes
-  //       //   float dist = projLen - approxRadius;
-  //       //   if(dist < FM_EPSILON) dist = projLen;
-  //       //   if(dist > ray.maxDistance || dist >= hit.distance) continue;
-
-  //       //   hit.distance = dist;
-  //       //   hit.point = vec3Add(ray.origin, vec3Scale(ray.dir, dist));
-  //       //   hit.normal = vec3Normalize(vec3Sub(hit.point, obj->worldCenterOfMass));
-  //       //   hit.hitId = obj->owner ? obj->owner->id : 0;
-  //       //   hit.didHit = true;
-  //       // }
-  //       tested++;
-  //     }
-  //   }
-
-  //   return hit.didHit;
-  // }
 
   // ── Main step ─────────────────────────────────────────────────────
 
@@ -1536,7 +1420,7 @@ namespace P64::Coll {
       body->integratePosition(fixedDt_);
       body->integrateRotation(fixedDt_);
     }
-    ticksIntegratePos = get_ticks() - stageStart;
+    ticksIntegration = get_ticks() - stageStart;
 
     // 9. Position constraint solver
     stageStart = get_ticks();

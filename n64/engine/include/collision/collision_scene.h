@@ -47,30 +47,16 @@ namespace P64::Coll {
     uint64_t ticksWorldUpdate{0};
     uint64_t ticksIntegrateVel{0};
     uint64_t ticksDetect{0};
-    uint64_t ticksDetectDeactivate{0};
-    uint64_t ticksDetectBuildOrder{0};
     uint64_t ticksDetectBodyPairs{0};
-    uint64_t ticksDetectDetachedPairs{0};
-    uint64_t ticksDetectDetachedBodyPairs{0};
-    uint64_t ticksDetectDetachedDetachedPairs{0};
     uint64_t ticksDetectMeshPairs{0};
-    uint64_t ticksDetectCleanup{0};
     uint64_t ticksRefreshCallbacks{0};
     uint64_t ticksPreSolve{0};
     uint64_t ticksWarmStart{0};
     uint64_t ticksVelocitySolve{0};
-    uint64_t ticksIntegratePos{0};
+    uint64_t ticksIntegration{0};
     uint64_t ticksPositionSolve{0};
     uint64_t ticksFinalize{0};
     uint64_t ticksTotal{0};
-    uint32_t detectOrderedColliderCount{0};
-    uint32_t detectTriggerColliderCount{0};
-    uint32_t detectOrderedBodyCount{0};
-    uint32_t detectDetachedColliderCount{0};
-    uint32_t detectBodyCandidateCount{0};
-    uint32_t detectObjectPairCount{0};
-    uint32_t detectDetachedPairCount{0};
-    uint32_t detectMeshPairCount{0};
     void debugDraw(bool showMeshColliders, bool showRigidBodies);
     void reset();
 
@@ -124,7 +110,6 @@ namespace P64::Coll {
     fm_vec3_t gravity_{DEFAULT_GRAVITY};
     uint8_t velocitySolverIterations_{DEFAULT_VELOCITY_SOLVER_ITERATIONS};
     uint8_t positionSolverIterations_{DEFAULT_POSITION_SOLVER_ITERATIONS};
-    uint32_t detectDebugPrintCounter_{0};
 
     int cachedConstraintCount_{0};
 

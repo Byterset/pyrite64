@@ -4,6 +4,7 @@
  * @brief Contains the rigidBody definition, constants and related functions (see rigid_body.h)
  */
 #include "collision/rigid_body.h"
+#include "collision/collision_scene.h"
 #include <cassert>
 #include <cmath>
 
@@ -152,10 +153,13 @@ namespace P64::Coll {
     // Apply position constraints
     velocity = constrainLinearByFlags(constraints, velocity);
 
+    CollisionScene *scene = collisionSceneGetInstance();
+    float physicsScale = scene->getPhysicsScale();
+
     // Clamp to terminal speed
     float speedSq = fm_vec3_len2(&velocity);
-    if(speedSq > TERMINAL_SPEED * TERMINAL_SPEED) {
-      velocity = velocity * (TERMINAL_SPEED / sqrtf(speedSq));
+    if(speedSq > TERMINAL_SPEED * TERMINAL_SPEED * (physicsScale * physicsScale)) {
+      velocity = velocity * ((TERMINAL_SPEED * physicsScale) / sqrtf(speedSq));
     }
   }
 

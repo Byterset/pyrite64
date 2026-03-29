@@ -607,9 +607,6 @@ namespace P64::Coll {
     return cc;
   }
 
-  uint64_t ticks_analytical_obj_mesh = 0;
-  uint64_t ticks_gjk_obj_mesh = 0;
-  uint64_t ticks_epa_obj_mesh = 0;
 
   /// @brief Performs a collision test between a collider and a single Mesh triangle. Used as a subroutine for object-to-mesh collision detection.
   ///
@@ -652,8 +649,6 @@ namespace P64::Coll {
       }
     }
 
-    uint64_t startTicks = get_ticks();
-
     Simplex simplex;
     fm_vec3_t firstDir = ((tri.vertices[tri.tri.indices[0]] + tri.vertices[tri.tri.indices[1]] + tri.vertices[tri.tri.indices[2]]) / 3.0f) - colliderProxyMeshSpace->worldCenter;
     if(fm_vec3_len2(&firstDir) < FM_EPSILON * FM_EPSILON) firstDir = VEC3_RIGHT;
@@ -664,7 +659,6 @@ namespace P64::Coll {
       &tri, meshTriangleGjkSupport,
       firstDir
     );
-    ticks_gjk_obj_mesh += get_ticks() - startTicks;
     if(!gjkOverlap) return false;
 
     // If the collider is a trigger we only need to check for overlap
@@ -692,13 +686,11 @@ namespace P64::Coll {
 
     struct EpaResult epaResult;
 
-    startTicks = get_ticks();
     bool epaSuccess = epaSolve(
             simplex,
             colliderProxyMeshSpace, colliderProxyGjkSupport,
             &tri, meshTriangleGjkSupport,
             epaResult);
-    ticks_epa_obj_mesh += get_ticks() - startTicks;
     if (epaSuccess)
     {
       meshLocalResultToWorld(epaResult, mesh);
@@ -751,29 +743,11 @@ namespace P64::Coll {
       // If the triangle is overlapping and the collider is a Trigger
       // we can skip the rest of the candidates since triggers just need to report that a collision happened
       if(collideDetectObjectToTriangle(&colliderInMeshSpace, rigidBody, mesh, triIndex) && collider->isTrigger) {
-        // debugf(
-        //   "Object-to-mesh collision: analytical time = %.4f us, GJK time = %.4f us, EPA time = %.4f us, candidates = %d\n",
-        //   (double)TICKS_TO_US(ticks_analytical_obj_mesh),
-        //   (double)TICKS_TO_US(ticks_gjk_obj_mesh),
-        //   (double)TICKS_TO_US(ticks_epa_obj_mesh),
-        //   count);
-        ticks_analytical_obj_mesh = 0;
-        ticks_epa_obj_mesh = 0;
-        ticks_gjk_obj_mesh = 0;
         return;
       }
     }
 
-    // debugf(
-    //   "Object-to-mesh collision: analytical time = %.4f us, GJK time = %.4f us, EPA time = %.4f us, candidates = %d\n",
-    //   (double)TICKS_TO_US(ticks_analytical_obj_mesh),
-    //   (double)TICKS_TO_US(ticks_gjk_obj_mesh),
-    //   (double)TICKS_TO_US(ticks_epa_obj_mesh),
-    //   count);
 
-    ticks_analytical_obj_mesh = 0;
-    ticks_epa_obj_mesh = 0;
-    ticks_gjk_obj_mesh = 0;
   }
 
   

@@ -7,6 +7,7 @@
 
 #include "vec_math.h"
 #include <cmath>
+#include "collision/raycast.h"
 
 namespace P64::Coll {
 
@@ -95,23 +96,30 @@ namespace P64::Coll {
   /// @param invDir 
   /// @param maxDist 
   /// @return 
-  inline bool aabbIntersectsRay(const AABB &box, const fm_vec3_t &origin,
-                                const fm_vec3_t &invDir, float maxDist)
+  inline bool aabbIntersectsRay(const AABB &box, const Raycast &ray)
   {
-      float t1x = (box.min.x - origin.x) * invDir.x;
-      float t2x = (box.max.x - origin.x) * invDir.x;
-      float t1y = (box.min.y - origin.y) * invDir.y;
-      float t2y = (box.max.y - origin.y) * invDir.y;
-      float t1z = (box.min.z - origin.z) * invDir.z;
-      float t2z = (box.max.z - origin.z) * invDir.z;
 
-      float tmin = fminf(t1x, t2x);
-      float tmax = fmaxf(t1x, t2x);
-      tmin = fmaxf(tmin, fminf(t1y, t2y));
-      tmax = fminf(tmax, fmaxf(t1y, t2y));
-      tmin = fmaxf(tmin, fminf(t1z, t2z));
-      tmax = fminf(tmax, fmaxf(t1z, t2z));
+      if(aabbContainsPoint(box, ray.origin)) return true;
 
-      return tmax >= fmaxf(0.0f, tmin) && tmin < maxDist;
+      float tEnter = -std::numeric_limits<float>::infinity();
+      float tExit = std::numeric_limits<float>::infinity();
+
+      //for each axis
+      for(int i = 0; i < 3; ++i) {
+        if(ray.dir.v[i] != 0.0f) {
+          float t1 = (box.min.v[i] - ray.origin.v[i]) * ray.invDir.v[i];
+          float t2 = (box.max.v[i] - ray.origin.v[i]) * ray.invDir.v[i];
+
+          if(t1 > t2) std::swap(t1, t2);
+
+          tEnter = fmaxf(tEnter, t1);
+          tExit = fminf(tExit, t2);
+
+        }
+        else if(ray.origin.v[i] < box.min.v[i] || ray.origin.v[i] > box.max.v[i]) {
+          return false;
+        }
+      }
+      return tEnter <= tExit && tExit >= 0.0f && tEnter <= ray.maxDistance;
   }
 }

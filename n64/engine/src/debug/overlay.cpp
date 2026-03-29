@@ -288,7 +288,7 @@ void Debug::Overlay::draw(P64::Scene &scene, surface_t* surf)
     {"Pre", collScene.ticksPreSolve, COLOR_COLL_PRESOLVE},
     {"Warm", collScene.ticksWarmStart, COLOR_COLL_WARM},
     {"Vel", collScene.ticksVelocitySolve, COLOR_COLL_VEL_SOLVE},
-    {"IntP", collScene.ticksIntegratePos, COLOR_COLL_INTEGRATE_POS},
+    {"IntP", collScene.ticksIntegration, COLOR_COLL_INTEGRATE_POS},
     {"Pos", collScene.ticksPositionSolve, COLOR_COLL_POS_SOLVE},
     {"Final", collScene.ticksFinalize, COLOR_COLL_FINALIZE},
   };
