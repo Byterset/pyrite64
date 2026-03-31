@@ -70,11 +70,11 @@ namespace P64::Coll {
     if(hasFlag(body->constraints, Constraint::FreezeRotAll)) return VEC3_ZERO;
     if(!body->rotation) return worldAngular;
 
-    fm_vec3_t local = quatRotateVec(quatConjugate(*body->rotation), worldAngular);
+    fm_vec3_t local = quatConjugate(*body->rotation) * worldAngular;
     if(hasFlag(body->constraints, Constraint::FreezeRotX)) local.x = 0.0f;
     if(hasFlag(body->constraints, Constraint::FreezeRotY)) local.y = 0.0f;
     if(hasFlag(body->constraints, Constraint::FreezeRotZ)) local.z = 0.0f;
-    return quatRotateVec(*body->rotation, local);
+    return *body->rotation * local;
   }
 
   static fm_vec3_t constrainLinearWorld(const RigidBody *body, const fm_vec3_t &worldLinear) {
@@ -253,7 +253,7 @@ namespace P64::Coll {
 
     fm_vec3_t localCenterOffset = worldCenter - *rigidBody->position;
     if(rigidBody->rotation) {
-      localCenterOffset = quatRotateVec(quatConjugate(*rigidBody->rotation), localCenterOffset);
+      localCenterOffset = quatConjugate(*rigidBody->rotation) * localCenterOffset;
     }
     rigidBody->centerOffset = localCenterOffset;
 
@@ -270,7 +270,7 @@ namespace P64::Coll {
       fm_vec3_t colliderInertia = collider->inertiaTensor(massPerCollider);
       fm_vec3_t r = collider->worldCenter - worldCenter;
       if(rigidBody->rotation) {
-        r = quatRotateVec(quatConjugate(*rigidBody->rotation), r);
+        r = quatConjugate(*rigidBody->rotation) * r;
       }
 
       const float x2 = r.x * r.x;
@@ -1491,7 +1491,7 @@ namespace P64::Coll {
           fm_vec3_t scaled = fm_vec3_t{{local.x * scale.x, local.y * scale.y, local.z * scale.z}};
           if (useRotation)
           {
-            scaled = quatRotateVec(rot, scaled);
+            scaled = rot * scaled;
           }
           return scaled + pos;
         };

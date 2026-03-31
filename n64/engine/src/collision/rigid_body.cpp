@@ -192,11 +192,11 @@ namespace P64::Coll {
 
     // Apply rotation constraints in local space
     if(rotation && (constraints & Constraint::FreezeRotAll) != Constraint::None) {
-      fm_vec3_t localAV = quatRotateVec(quatConjugate(*rotation), angularVelocity);
+      fm_vec3_t localAV = quatConjugate(*rotation) * angularVelocity;
       if(hasFlag(constraints, Constraint::FreezeRotX)) localAV.x = 0.0f;
       if(hasFlag(constraints, Constraint::FreezeRotY)) localAV.y = 0.0f;
       if(hasFlag(constraints, Constraint::FreezeRotZ)) localAV.z = 0.0f;
-      angularVelocity = quatRotateVec(*rotation, localAV);
+      angularVelocity = *rotation * localAV;
     }
 
     // Angular damping — amplify near rest
@@ -227,13 +227,13 @@ namespace P64::Coll {
     prevStepRot = *rotation;
 
     // Store old world center of mass for offset correction
-    fm_vec3_t oldWorldCOM = *position + quatRotateVec(*rotation, centerOffset);
+    fm_vec3_t oldWorldCOM = *position + (*rotation * centerOffset);
 
     *rotation = quatApplyAngularVelocity(*rotation, angularVelocity, dt);
 
     // Correct position so that the center of mass stays in place
     if(!vec3IsZero(centerOffset)) {
-      fm_vec3_t newWorldCOM = *position + quatRotateVec(*rotation, centerOffset);
+      fm_vec3_t newWorldCOM = *position + (*rotation * centerOffset);
       fm_vec3_t correction = oldWorldCOM - newWorldCOM;
       *position = *position + correction;
     }
@@ -319,7 +319,7 @@ namespace P64::Coll {
     invWorldInertiaTensor = matrix3Mul(matrix3Mul(rotationMatrix, localInv), rTranspose);
 
     if(position) {
-      worldCenterOfMass = *position + quatRotateVec(*rotation, centerOffset);
+      worldCenterOfMass = *position + (*rotation * centerOffset);
     }
   }
 
@@ -335,12 +335,12 @@ namespace P64::Coll {
 
   fm_vec3_t RigidBody::rotateToWorld(const fm_vec3_t &localDir) const {
     if(!rotation) return localDir;
-    return quatRotateVec(*rotation, localDir);
+    return *rotation * localDir;
   }
 
   fm_vec3_t RigidBody::rotateToLocal(const fm_vec3_t &worldDir) const {
     if(!rotation) return worldDir;
-    return quatRotateVec(quatConjugate(*rotation), worldDir);
+    return quatConjugate(*rotation) * worldDir;
   }
 
   void RigidBody::applyPositionConstraints() {

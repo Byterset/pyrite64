@@ -395,7 +395,7 @@ namespace P64::Coll {
     // Capsule axis endpoints in world space
     fm_vec3_t localUp = fm_vec3_t{{0.0f, hh, 0.0f}};
     const fm_quat_t capsuleRot = colliderOrientation(capsule);
-    fm_vec3_t rotUp = quatRotateVec(capsuleRot, localUp);
+    fm_vec3_t rotUp = capsuleRot * localUp;
     fm_vec3_t capTop = capsule->worldCenter + rotUp;
     fm_vec3_t capBot = capsule->worldCenter - rotUp;
 

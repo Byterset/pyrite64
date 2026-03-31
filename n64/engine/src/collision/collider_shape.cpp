@@ -59,7 +59,7 @@ fm_vec3_t Collider::rotateToWorld(const fm_vec3_t &localDir) const {
 
 fm_vec3_t Collider::rotateToLocal(const fm_vec3_t &worldDir) const {
   if(!owner) return worldDir;
-  return quatRotateVec(quatConjugate(owner->rot), worldDir);
+  return quatConjugate(owner->rot) * worldDir;
 }
 
 void P64::Coll::colliderGjkSupport(const void *data, const fm_vec3_t &direction, fm_vec3_t &output) {

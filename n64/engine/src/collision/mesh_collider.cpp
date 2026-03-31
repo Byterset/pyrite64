@@ -78,7 +78,7 @@ namespace P64::Coll {
     fm_vec3_t scale = owner ? owner->scale : fm_vec3_t{{1.0f, 1.0f, 1.0f}};
     fm_vec3_t scaled = fm_vec3_t{{localPoint.x * scale.x, localPoint.y * scale.y, localPoint.z * scale.z}};
     if(!quatIsIdentical(&rotation, &QUAT_IDENTITY)) {
-      scaled = quatRotateVec(rotation, scaled);
+      scaled = rotation * scaled;
     }
     if(fm_vec3_len2(&position) > FM_EPSILON * FM_EPSILON) {
       scaled = scaled + position;

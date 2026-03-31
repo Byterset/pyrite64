@@ -225,20 +225,6 @@ namespace P64::Coll {
     return {-q.x, -q.y, -q.z, q.w};
   }
 
-  /// @brief Rotates a vector by a quaternion.
-  /// @param q The quaternion representing the rotation.
-  /// @param v The vector to be rotated.
-  /// @return The rotated vector.
-  inline fm_vec3_t quatRotateVec(const fm_quat_t &q, const fm_vec3_t &v) {
-    float qx = q.x, qy = q.y, qz = q.z, qw = q.w;
-    float tx = 2.0f * (qy * v.z - qz * v.y);
-    float ty = 2.0f * (qz * v.x - qx * v.z);
-    float tz = 2.0f * (qx * v.y - qy * v.x);
-    return fm_vec3_t{{v.x + qw * tx + (qy * tz - qz * ty),
-                      v.y + qw * ty + (qz * tx - qx * tz),
-                      v.z + qw * tz + (qx * ty - qy * tx)}};
-  }
-
   /// @brief Computes the dot product of two quaternions.
   /// @param a The first quaternion.
   /// @param b The second quaternion.
