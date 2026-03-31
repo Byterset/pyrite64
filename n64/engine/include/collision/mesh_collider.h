@@ -45,6 +45,8 @@ namespace P64::Coll {
     fm_vec3_t *normals{nullptr};
     uint16_t triangleCount{0};
     uint16_t vertexCount{0};
+    uint8_t maskRead{0x00};  // which collision layers this collider get's affected by
+    uint8_t maskWrite{0x00}; // which collision layers this collider affects
 
     // Owner tracking
     P64::Object* owner{};          ///< Pointer to the owning Object (for event lookups)

@@ -52,20 +52,21 @@ namespace P64::Comp
 
     new (data) RigidBody();
 
-    data->rigid_body = {};
+    data->rigid_body = Coll::RigidBody{};
     data->rigid_body.init(&obj, initData->mass);
-    data->rigid_body.isKinematic = initData->isKinematic;
+    data->rigid_body.setKinematic(initData->isKinematic);
     data->rigid_body.hasGravity = initData->hasGravity;
     data->rigid_body.gravityScalar = initData->gravityScalar;
     data->rigid_body.timeScalar = initData->timeScalar;
     data->rigid_body.angularDamping = initData->angularDamping;
-    data->rigid_body.constraints = Coll::Constraint::None;
-    if(initData->constrainPosX) data->rigid_body.constraints = data->rigid_body.constraints | Coll::Constraint::FreezePosX;
-    if(initData->constrainPosY) data->rigid_body.constraints = data->rigid_body.constraints | Coll::Constraint::FreezePosY;
-    if(initData->constrainPosZ) data->rigid_body.constraints = data->rigid_body.constraints | Coll::Constraint::FreezePosZ;
-    if(initData->constrainRotX) data->rigid_body.constraints = data->rigid_body.constraints | Coll::Constraint::FreezeRotX;
-    if(initData->constrainRotY) data->rigid_body.constraints = data->rigid_body.constraints | Coll::Constraint::FreezeRotY;
-    if(initData->constrainRotZ) data->rigid_body.constraints = data->rigid_body.constraints | Coll::Constraint::FreezeRotZ;
+    Coll::Constraint constraints = Coll::Constraint::None;
+    if(initData->constrainPosX) constraints = constraints | Coll::Constraint::FreezePosX;
+    if(initData->constrainPosY) constraints = constraints | Coll::Constraint::FreezePosY;
+    if(initData->constrainPosZ) constraints = constraints | Coll::Constraint::FreezePosZ;
+    if(initData->constrainRotX) constraints = constraints | Coll::Constraint::FreezeRotX;
+    if(initData->constrainRotY) constraints = constraints | Coll::Constraint::FreezeRotY;
+    if(initData->constrainRotZ) constraints = constraints | Coll::Constraint::FreezeRotZ;
+    data->rigid_body.setConstraints(constraints);
 
     if(obj.isEnabled()) {
       coll.addRigidBody(&data->rigid_body);

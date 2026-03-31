@@ -40,16 +40,8 @@ namespace P64::Coll {
     };
   }
 
-  static bool hasLinearConstraints(const RigidBody *body) {
-    return body && (body->constraints & Constraint::FreezePosAll) != Constraint::None;
-  }
-
-  static bool hasAngularConstraints(const RigidBody *body) {
-    return body && (body->constraints & Constraint::FreezeRotAll) != Constraint::None;
-  }
-
   static bool canApplyAngularResponse(const RigidBody *body) {
-    return body && !body->isKinematic && body->rotation && !hasFlag(body->constraints, Constraint::FreezeRotAll);
+    return body && body->canApplyAngularResponse();
   }
 
   static bool colliderReadsCollider(const Collider *reader, const Collider *writer) {
@@ -59,62 +51,26 @@ namespace P64::Coll {
   static bool collidersShouldGenerateContact(const Collider *colliderA, const Collider *colliderB) {
     return colliderReadsCollider(colliderA, colliderB) || colliderReadsCollider(colliderB, colliderA);
   }
-
   static bool colliderShouldTestMesh(const Collider *collider) {
-    return collider && (collider->maskWrite != 0);
-  }
-
-  static fm_vec3_t constrainAngularWorld(const RigidBody *body, const fm_vec3_t &worldAngular) {
-    if(!body) return worldAngular;
-    if(!hasAngularConstraints(body)) return worldAngular;
-    if(hasFlag(body->constraints, Constraint::FreezeRotAll)) return VEC3_ZERO;
-    if(!body->rotation) return worldAngular;
-
-    fm_vec3_t local = quatConjugate(*body->rotation) * worldAngular;
-    if(hasFlag(body->constraints, Constraint::FreezeRotX)) local.x = 0.0f;
-    if(hasFlag(body->constraints, Constraint::FreezeRotY)) local.y = 0.0f;
-    if(hasFlag(body->constraints, Constraint::FreezeRotZ)) local.z = 0.0f;
-    return *body->rotation * local;
+    return collider && !collider->isTrigger && (collider->maskWrite != 0);
   }
 
   static fm_vec3_t constrainLinearWorld(const RigidBody *body, const fm_vec3_t &worldLinear) {
-    if(!body) return worldLinear;
-    if(!hasLinearConstraints(body)) return worldLinear;
-    fm_vec3_t out = worldLinear;
-    if(hasFlag(body->constraints, Constraint::FreezePosX)) out.x = 0.0f;
-    if(hasFlag(body->constraints, Constraint::FreezePosY)) out.y = 0.0f;
-    if(hasFlag(body->constraints, Constraint::FreezePosZ)) out.z = 0.0f;
-    return out;
+    return body ? body->constrainLinearWorld(worldLinear) : worldLinear;
   }
 
   static void applyConstrainedLinearVelocityDelta(RigidBody *body, const fm_vec3_t &deltaLinearVelocity) {
     if(!body) return;
-    body->velocity = body->velocity + (hasLinearConstraints(body) ? constrainLinearWorld(body, deltaLinearVelocity) : deltaLinearVelocity);
+    body->applyConstrainedLinearVelocityDelta(deltaLinearVelocity);
   }
 
   static void applyConstrainedImpulseAtContact(RigidBody *body, const fm_vec3_t &impulse, const fm_vec3_t &toContact) {
-    if(!body || body->isKinematic) return;
-
-    applyConstrainedLinearVelocityDelta(body, impulse * body->invMass);
-    if(!canApplyAngularResponse(body)) return;
-    fm_vec3_t cross;
-    fm_vec3_cross(&cross, &toContact, &impulse);
-    fm_vec3_t angDelta = body->applyWorldInertia(cross);
-    if(hasAngularConstraints(body)) {
-      angDelta = constrainAngularWorld(body, angDelta);
-    }
-    body->angularVelocity = body->angularVelocity + angDelta;
+    if(!body) return;
+    body->applyConstrainedImpulseAtContact(impulse, toContact);
   }
 
   static float constrainedLinearInvMassAlong(const RigidBody *body, const fm_vec3_t &direction) {
-    if(!body || body->isKinematic) return 0.0f;
-    if(body->invMass <= FM_EPSILON) return 0.0f;
-    if(!hasLinearConstraints(body)) return body->invMass;
-
-    fm_vec3_t constrainedDir = constrainLinearWorld(body, direction);
-    float dirFactor = fm_vec3_dot(&direction, &constrainedDir);
-    if(dirFactor <= FM_EPSILON) return 0.0f;
-    return body->invMass * dirFactor;
+    return body ? body->constrainedLinearInvMassAlong(direction) : 0.0f;
   }
 
   bool CollisionScene::shouldTrackSleepState(const RigidBody *rigidBody) {
@@ -152,8 +108,8 @@ namespace P64::Coll {
 
   bool CollisionScene::rigidBodyCompoundPropertiesNeedUpdate(const RigidBody *rigidBody) {
     if(!rigidBody || !rigidBody->owner) return false;
-    if(rigidBody->compoundPropertiesDirty) return true;
-    return fm_vec3_distance2(&rigidBody->compoundScale, &rigidBody->owner->scale) > FM_EPSILON * FM_EPSILON;
+    if(rigidBody->compoundPropertiesDirty()) return true;
+    return fm_vec3_distance2(&rigidBody->getCompoundScale(), &rigidBody->owner->scale) > FM_EPSILON * FM_EPSILON;
   }
 
   void CollisionScene::rebuildCachedConstraintLookup() {
@@ -229,9 +185,11 @@ namespace P64::Coll {
   void CollisionScene::updateCompoundProperties(RigidBody *rigidBody) const {
     if(!rigidBody || !rigidBody->owner || !rigidBody->position) return;
 
+    const fm_vec3_t fallbackInertia = rigidBody->getDefaultLocalInertiaTensor();
+
     const std::vector<Collider *> *ownerColliders = findCollidersForOwner(rigidBody->owner);
     if(!ownerColliders || ownerColliders->empty()) {
-      rigidBody->centerOffset = VEC3_ZERO;
+      rigidBody->applyCompoundProperties(VEC3_ZERO, fallbackInertia, rigidBody->owner->scale);
       return;
     }
 
@@ -244,7 +202,7 @@ namespace P64::Coll {
     }
 
     if(count <= 0) {
-      rigidBody->centerOffset = VEC3_ZERO;
+      rigidBody->applyCompoundProperties(VEC3_ZERO, fallbackInertia, rigidBody->owner->scale);
       return;
     }
 
@@ -255,9 +213,9 @@ namespace P64::Coll {
     if(rigidBody->rotation) {
       localCenterOffset = quatConjugate(*rigidBody->rotation) * localCenterOffset;
     }
-    rigidBody->centerOffset = localCenterOffset;
 
     if(rigidBody->getMass() <= FM_EPSILON) {
+      rigidBody->applyCompoundProperties(localCenterOffset, fallbackInertia, rigidBody->owner->scale);
       return;
     }
 
@@ -284,12 +242,7 @@ namespace P64::Coll {
       compoundInertia = compoundInertia + colliderInertia;
     }
 
-    rigidBody->localInertiaTensor = compoundInertia;
-    rigidBody->invLocalInertiaTensor = fm_vec3_t{{
-      compoundInertia.x > FM_EPSILON ? 1.0f / compoundInertia.x : 0.0f,
-      compoundInertia.y > FM_EPSILON ? 1.0f / compoundInertia.y : 0.0f,
-      compoundInertia.z > FM_EPSILON ? 1.0f / compoundInertia.z : 0.0f
-    }};
+    rigidBody->applyCompoundProperties(localCenterOffset, compoundInertia, rigidBody->owner->scale);
   }
 
   void CollisionScene::syncCompoundProperties(RigidBody *rigidBody) const {
@@ -297,8 +250,6 @@ namespace P64::Coll {
     if(!rigidBodyCompoundPropertiesNeedUpdate(rigidBody)) return;
 
     updateCompoundProperties(rigidBody);
-    rigidBody->compoundScale = rigidBody->owner->scale;
-    rigidBody->compoundPropertiesDirty = false;
   }
 
   // ── Object management ─────────────────────────────────────────────
@@ -309,9 +260,8 @@ namespace P64::Coll {
     ownerRigidBodies_[rigidBody->owner] = rigidBody;
     
 
-    rigidBody->compoundPropertiesDirty = true;
+    rigidBody->markCompoundPropertiesDirty();
     syncCompoundProperties(rigidBody);
-    rigidBody->updateWorldInertia();
     const fm_vec3_t worldPos = rigidBody->position ? *rigidBody->position : VEC3_ZERO;
     rigidBody->worldAABB = AABB{worldPos, worldPos};
   }
@@ -368,9 +318,8 @@ namespace P64::Coll {
     RigidBody *rigidBody = findRigidBodyByOwner(collider->owner);
     if (rigidBody)
     {
-      rigidBody->compoundPropertiesDirty = true;
+      rigidBody->markCompoundPropertiesDirty();
       syncCompoundProperties(rigidBody);
-      rigidBody->updateWorldInertia();
     }
     collider->aabbTreeNodeId = colliderAABBTree.createNode(collider->worldAABB, collider);
   }
@@ -407,9 +356,8 @@ namespace P64::Coll {
     if(owner) {
       RigidBody *rigidBody = findRigidBodyByOwner(owner);
       if(rigidBody) {
-        rigidBody->compoundPropertiesDirty = true;
+        rigidBody->markCompoundPropertiesDirty();
         syncCompoundProperties(rigidBody);
-        rigidBody->updateWorldInertia();
       }
     }
   }
@@ -902,8 +850,6 @@ namespace P64::Coll {
       const bool bHasMotionAngular = canApplyAngularResponse(b);
       const bool aCanRotate = cc.respondsA && aHasMotionAngular;
       const bool bCanRotate = cc.respondsB && bHasMotionAngular;
-      const bool aHasAngularConstraints = hasAngularConstraints(a);
-      const bool bHasAngularConstraints = hasAngularConstraints(b);
 
       float invMassA = cc.respondsA ? constrainedLinearInvMassAlong(a, cc.normal) : 0.0f;
       float invMassB = cc.respondsB ? constrainedLinearInvMassAlong(b, cc.normal) : 0.0f;
@@ -930,15 +876,13 @@ namespace P64::Coll {
 
         float angularA = 0.0f;
         if(aCanRotate) {
-          fm_vec3_t inertia = a->applyWorldInertia(raCrossN);
-          if(aHasAngularConstraints) inertia = constrainAngularWorld(a, inertia);
+          fm_vec3_t inertia = a->applyConstrainedWorldInertia(raCrossN);
           angularA = fm_vec3_dot(&raCrossN, &inertia);
         }
 
         float angularB = 0.0f;
         if(bCanRotate) {
-          fm_vec3_t inertia = b->applyWorldInertia(rbCrossN);
-          if(bHasAngularConstraints) inertia = constrainAngularWorld(b, inertia);
+          fm_vec3_t inertia = b->applyConstrainedWorldInertia(rbCrossN);
           angularB = fm_vec3_dot(&rbCrossN, &inertia);
         }
 
@@ -954,14 +898,12 @@ namespace P64::Coll {
           fm_vec3_cross(&rbCrossU, &cp.bToContact, &cc.tangentU);
           float angU_A = 0.0f;
           if(aCanRotate) {
-            fm_vec3_t inertia = a->applyWorldInertia(raCrossU);
-            if(aHasAngularConstraints) inertia = constrainAngularWorld(a, inertia);
+            fm_vec3_t inertia = a->applyConstrainedWorldInertia(raCrossU);
             angU_A = fm_vec3_dot(&raCrossU, &inertia);
           }
           float angU_B = 0.0f;
           if(bCanRotate) {
-            fm_vec3_t inertia = b->applyWorldInertia(rbCrossU);
-            if(bHasAngularConstraints) inertia = constrainAngularWorld(b, inertia);
+            fm_vec3_t inertia = b->applyConstrainedWorldInertia(rbCrossU);
             angU_B = fm_vec3_dot(&rbCrossU, &inertia);
           }
           float denomU = linearU + angU_A + angU_B;
@@ -975,14 +917,12 @@ namespace P64::Coll {
           fm_vec3_cross(&rbCrossV, &cp.bToContact, &cc.tangentV);
           float angV_A = 0.0f;
           if(aCanRotate) {
-            fm_vec3_t inertia = a->applyWorldInertia(raCrossV);
-            if(aHasAngularConstraints) inertia = constrainAngularWorld(a, inertia);
+            fm_vec3_t inertia = a->applyConstrainedWorldInertia(raCrossV);
             angV_A = fm_vec3_dot(&raCrossV, &inertia);
           }
           float angV_B = 0.0f;
           if(bCanRotate) {
-            fm_vec3_t inertia = b->applyWorldInertia(rbCrossV);
-            if(bHasAngularConstraints) inertia = constrainAngularWorld(b, inertia);
+            fm_vec3_t inertia = b->applyConstrainedWorldInertia(rbCrossV);
             angV_B = fm_vec3_dot(&rbCrossV, &inertia);
           }
           float denomV = linearV + angV_A + angV_B;
@@ -1049,7 +989,7 @@ namespace P64::Coll {
         const bool bHasMotionAngular = canApplyAngularResponse(b);
         const bool aCanRotate = cc.respondsA && aHasMotionAngular;
         const bool bCanRotate = cc.respondsB && bHasMotionAngular;
-        const bool hasFriction = cc.combinedFriction > 0.0f;
+        const bool hasFriction = cc.combinedFriction > FM_EPSILON;
 
         for(int j = 0; j < cc.pointCount; ++j) {
           ContactPoint &cp = cc.points[j];
@@ -1162,8 +1102,6 @@ namespace P64::Coll {
       RigidBody *b = cc.rigidBodyB;
       const bool aCanRotate = cc.respondsA && canApplyAngularResponse(a);
       const bool bCanRotate = cc.respondsB && canApplyAngularResponse(b);
-      const bool aHasAngularConstraints = hasAngularConstraints(a);
-      const bool bHasAngularConstraints = hasAngularConstraints(b);
       const float invMassA = cc.respondsA ? constrainedLinearInvMassAlong(a, cc.normal) : 0.0f;
       const float invMassB = cc.respondsB ? constrainedLinearInvMassAlong(b, cc.normal) : 0.0f;
 
@@ -1184,15 +1122,13 @@ namespace P64::Coll {
         if(aCanRotate) {
           fm_vec3_t rCrossN;
           fm_vec3_cross(&rCrossN, &cp.aToContact, &cc.normal);
-          fm_vec3_t inertia = a->applyWorldInertia(rCrossN);
-          if(aHasAngularConstraints) inertia = constrainAngularWorld(a, inertia);
+          fm_vec3_t inertia = a->applyConstrainedWorldInertia(rCrossN);
           invMassSum += fm_vec3_dot(&rCrossN, &inertia);
         }
         if(bCanRotate) {
           fm_vec3_t rCrossN;
           fm_vec3_cross(&rCrossN, &cp.bToContact, &cc.normal);
-          fm_vec3_t inertia = b->applyWorldInertia(rCrossN);
-          if(bHasAngularConstraints) inertia = constrainAngularWorld(b, inertia);
+          fm_vec3_t inertia = b->applyConstrainedWorldInertia(rCrossN);
           invMassSum += fm_vec3_dot(&rCrossN, &inertia);
         }
 
@@ -1211,8 +1147,7 @@ namespace P64::Coll {
           if(aCanRotate) {
             fm_vec3_t angImpulse;
             fm_vec3_cross(&angImpulse, &cp.aToContact, &impulse);
-            fm_vec3_t rotChange = a->applyWorldInertia(angImpulse);
-            if(aHasAngularConstraints) rotChange = constrainAngularWorld(a, rotChange);
+            fm_vec3_t rotChange = a->applyConstrainedWorldInertia(angImpulse);
             float angle = fm_vec3_len(&rotChange);
             if(angle > FM_EPSILON) {
               fm_vec3_t axis = rotChange / angle;
@@ -1234,8 +1169,7 @@ namespace P64::Coll {
             fm_vec3_t angImpulse;
             fm_vec3_cross(&angImpulse, &cp.bToContact, &impulse);
             angImpulse = -angImpulse;
-            fm_vec3_t rotChange = b->applyWorldInertia(angImpulse);
-            if(bHasAngularConstraints) rotChange = constrainAngularWorld(b, rotChange);
+            fm_vec3_t rotChange = b->applyConstrainedWorldInertia(angImpulse);
             float angle = fm_vec3_len(&rotChange);
             if(angle > FM_EPSILON) {
               fm_vec3_t axis = rotChange / angle;

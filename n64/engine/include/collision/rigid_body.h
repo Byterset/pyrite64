@@ -85,7 +85,6 @@ namespace P64::Coll {
 
     // Collision
     AABB worldAABB{};
-    fm_vec3_t centerOffset{};
 
     // Cached transforms
     Matrix3x3 invWorldInertiaTensor{};
@@ -98,13 +97,9 @@ namespace P64::Coll {
     fm_vec3_t prevStepPos{};
     fm_quat_t prevStepRot{};
     fm_vec3_t prevStepScale{};
-    fm_vec3_t localInertiaTensor{};
-    fm_vec3_t invLocalInertiaTensor{};
-    fm_vec3_t compoundScale{};
 
     P64::Object *owner{};
     NodeProxy aabbTreeNodeId{NULL_NODE};
-    Constraint constraints{Constraint::None};
     uint16_t sleepCounter{0};
     uint16_t collisionLayers{0};
     uint16_t collisionGroup{0};
@@ -112,13 +107,33 @@ namespace P64::Coll {
     bool hasGravity{true};
     bool isKinematic{false};
     bool isSleeping{false};
-    bool compoundPropertiesDirty{true};
 
     // Methods
     void init(P64::Object *object, float m);
 
     float getMass() const { return mass_; }
     void setMass(float newMass);
+    Constraint getConstraints() const { return constraints_; }
+    void setConstraints(Constraint newConstraints);
+
+    bool hasLinearConstraints() const { return hasLinearConstraints_; }
+    bool hasAngularConstraints() const { return hasAngularConstraints_; }
+    bool canApplyAngularResponse() const { return !isKinematic && rotation && !hasFlag(constraints_, Constraint::FreezeRotAll); }
+
+    bool compoundPropertiesDirty() const { return compoundPropertiesDirty_; }
+    const fm_vec3_t &getCenterOffset() const { return centerOffset_; }
+    const fm_vec3_t &getLocalInertiaTensor() const { return localInertiaTensor_; }
+    const fm_vec3_t &getDefaultLocalInertiaTensor() const { return defaultLocalInertiaTensor_; }
+    const fm_vec3_t &getCompoundScale() const { return compoundScale_; }
+    void markCompoundPropertiesDirty() { compoundPropertiesDirty_ = true; }
+    void applyCompoundProperties(const fm_vec3_t &centerOffset, const fm_vec3_t &localInertiaTensor, const fm_vec3_t &compoundScale);
+    void setKinematic(bool newIsKinematic) { isKinematic = newIsKinematic; }
+
+    fm_vec3_t constrainLinearWorld(const fm_vec3_t &worldLinear) const;
+    fm_vec3_t constrainAngularWorld(const fm_vec3_t &worldAngular) const;
+    void applyConstrainedLinearVelocityDelta(const fm_vec3_t &deltaLinearVelocity);
+    void applyConstrainedImpulseAtContact(const fm_vec3_t &impulse, const fm_vec3_t &toContact);
+    float constrainedLinearInvMassAlong(const fm_vec3_t &direction) const;
 
     void integrateVelocity(float fixedDt, const fm_vec3_t &gravity);
     void integrateAngularVelocity(float fixedDt);
@@ -148,8 +163,30 @@ namespace P64::Coll {
       return matrix3Vec3Mul(invWorldInertiaTensor, in);
     }
 
+    fm_vec3_t applyConstrainedWorldInertia(const fm_vec3_t &in) const {
+      if(!hasAngularConstraints_) return applyWorldInertia(in);
+      return matrix3Vec3Mul(constrainedInvWorldInertiaTensor_, in);
+    }
+
   private:
     float mass_{1.0f};
+    Constraint constraints_{Constraint::None};
+    fm_vec3_t centerOffset_{};
+    fm_vec3_t localInertiaTensor_{};
+    fm_vec3_t invLocalInertiaTensor_{};
+    fm_vec3_t defaultLocalInertiaTensor_{};
+    fm_vec3_t compoundScale_{};
+    fm_vec3_t linearConstraintScale_ = fm_vec3_t{{1.0f, 1.0f, 1.0f}};
+    fm_vec3_t linearInvMassScale_{};
+    Matrix3x3 angularConstraintProjection_ = Matrix3x3::identity();
+    Matrix3x3 constrainedInvWorldInertiaTensor_{};
+    bool hasLinearConstraints_{false};
+    bool hasAngularConstraints_{false};
+    bool compoundPropertiesDirty_{true};
+
+    void refreshConstraintCaches();
+    void refreshAngularConstraintProjection();
+    void refreshConstrainedInertiaTensor();
 
   };
 

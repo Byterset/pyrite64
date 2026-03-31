@@ -147,8 +147,14 @@ namespace P64::Coll {
     fm_vec3_t capCenterBottom = {0.0f, -coll->capsule.innerHalfHeight, 0.0f};
 
     RaycastHit capHitTop, capHitBottom;
-    Collider sphereTop = {.type=ShapeType::Sphere, .sphere={.radius=coll->capsule.radius}, .worldCenter=coll->toWorldSpace(capCenterTop)};
-    Collider sphereBottom = {.type=ShapeType::Sphere, .sphere={.radius=coll->capsule.radius}, .worldCenter=coll->toWorldSpace(capCenterBottom)};
+    Collider sphereTop;
+    sphereTop.type = ShapeType::Sphere;
+    sphereTop.sphere.radius = coll->capsule.radius;
+    sphereTop.worldCenter = coll->toWorldSpace(capCenterTop);
+    Collider sphereBottom;
+    sphereBottom.type = ShapeType::Sphere;
+    sphereBottom.sphere.radius = coll->capsule.radius;
+    sphereBottom.worldCenter = coll->toWorldSpace(capCenterBottom);
     bool hitTop = ray_sphere_intersection(localRay, &sphereTop, capHitTop);
     bool hitBottom = ray_sphere_intersection(localRay, &sphereBottom, capHitBottom);
 
