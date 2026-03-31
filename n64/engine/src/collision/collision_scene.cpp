@@ -44,17 +44,6 @@ namespace P64::Coll {
     return body && body->canApplyAngularResponse();
   }
 
-  static bool colliderReadsCollider(const Collider *reader, const Collider *writer) {
-    return reader && writer && ((reader->maskRead & writer->maskWrite) != 0);
-  }
-
-  static bool collidersShouldGenerateContact(const Collider *colliderA, const Collider *colliderB) {
-    return colliderReadsCollider(colliderA, colliderB) || colliderReadsCollider(colliderB, colliderA);
-  }
-  static bool colliderShouldTestMesh(const Collider *collider) {
-    return collider && !collider->isTrigger && (collider->maskWrite != 0);
-  }
-
   static fm_vec3_t constrainLinearWorld(const RigidBody *body, const fm_vec3_t &worldLinear) {
     return body ? body->constrainLinearWorld(worldLinear) : worldLinear;
   }
@@ -71,6 +60,54 @@ namespace P64::Coll {
 
   static float constrainedLinearInvMassAlong(const RigidBody *body, const fm_vec3_t &direction) {
     return body ? body->constrainedLinearInvMassAlong(direction) : 0.0f;
+  }
+
+  static Object *collisionEventSelfObject(const CollEvent &event) {
+    if(event.selfCollider) return event.selfCollider->owner;
+    if(event.selfMeshCollider) return event.selfMeshCollider->owner;
+    return nullptr;
+  }
+
+  static bool collisionEventMasksOverlap(const CollEvent &event) {
+    if(event.selfCollider) {
+      if(event.hitCollider) return event.selfCollider->readsCollider(event.hitCollider);
+      if(event.hitMeshCollider) return event.selfCollider->readsMeshCollider(event.hitMeshCollider);
+      return false;
+    }
+
+    if(event.selfMeshCollider) {
+      if(event.hitCollider) return event.selfMeshCollider->readsCollider(event.hitCollider);
+    }
+
+    return false;
+  }
+
+  static std::pair<const Object *, const Object *> makeObjectPairKey(const Object *objectA, const Object *objectB) {
+    if(std::less<const Object *>{}(objectB, objectA)) {
+      std::swap(objectA, objectB);
+    }
+    return {objectA, objectB};
+  }
+
+  static CollEvent makeMirroredCollisionEvent(const CollEvent &event) {
+    CollEvent mirrored{};
+    mirrored.selfCollider = event.hitCollider;
+    mirrored.hitCollider = event.selfCollider;
+    mirrored.selfMeshCollider = event.hitMeshCollider;
+    mirrored.hitMeshCollider = event.selfMeshCollider;
+    mirrored.selfRigidBody = event.hitRigidBody;
+    mirrored.hitRigidBody = event.selfRigidBody;
+    mirrored.contactCount = event.contactCount;
+    mirrored.otherObject = collisionEventSelfObject(event);
+
+    for(uint16_t i = 0; i < event.contactCount; ++i) {
+      mirrored.contacts[i] = event.contacts[i];
+      std::swap(mirrored.contacts[i].contactA, mirrored.contacts[i].contactB);
+      std::swap(mirrored.contacts[i].localPointA, mirrored.contacts[i].localPointB);
+      std::swap(mirrored.contacts[i].aToContact, mirrored.contacts[i].bToContact);
+    }
+
+    return mirrored;
   }
 
   bool CollisionScene::shouldTrackSleepState(const RigidBody *rigidBody) {
@@ -551,20 +588,50 @@ namespace P64::Coll {
 
     struct ObjectPairHash
     {
-      size_t operator()(std::pair<const Object *, const Object *> p) const
+      size_t operator()(const std::pair<const Object *, const Object *> &p) const
       {
-        uintptr_t a = (uintptr_t)p.first;
-        uintptr_t b = (uintptr_t)p.second;
-        // Canonical order so (a,b) == (b,a)
-        if (a > b)
-          std::swap(a, b);
-        // Combine with a good mixer
-        return a * 2654435761ULL ^ (b * 2246822519ULL);
+        std::size_t hash = 0;
+        const auto combine = [&hash](std::size_t value) {
+          hash ^= value + 0x9e3779b97f4a7c15ull + (hash << 6) + (hash >> 2);
+        };
+
+        combine(reinterpret_cast<std::uintptr_t>(p.first));
+        combine(reinterpret_cast<std::uintptr_t>(p.second));
+        return hash;
       }
     };
-    std::vector<CollEvent> pendingEvents;
-    pendingEvents.reserve(cachedConstraintCount_);
-    std::unordered_set<std::pair<const Object *, const Object *>, ObjectPairHash> processedPairs;
+
+    struct PendingPairDispatch {
+      std::pair<const Object *, const Object *> key{};
+      bool hasFirstEvent{false};
+      bool hasSecondEvent{false};
+      CollEvent firstEvent{};
+      CollEvent secondEvent{};
+    };
+
+    std::vector<PendingPairDispatch> pendingDispatches;
+    pendingDispatches.reserve(cachedConstraintCount_);
+    std::unordered_map<std::pair<const Object *, const Object *>, std::size_t, ObjectPairHash> dispatchLookup;
+
+    auto captureDirectionalEvent = [](PendingPairDispatch &dispatch, const CollEvent &event) {
+      if(!collisionEventMasksOverlap(event)) return;
+
+      Object *selfObject = collisionEventSelfObject(event);
+      if(!selfObject) return;
+
+      if(selfObject == dispatch.key.first) {
+        if(!dispatch.hasFirstEvent) {
+          dispatch.firstEvent = event;
+          dispatch.hasFirstEvent = true;
+        }
+        return;
+      }
+
+      if(selfObject == dispatch.key.second && !dispatch.hasSecondEvent) {
+        dispatch.secondEvent = event;
+        dispatch.hasSecondEvent = true;
+      }
+    };
 
     for(int i = 0; i < cachedConstraintCount_; ++i) {
       const ContactConstraint &constraint = cachedConstraints_[i];
@@ -572,18 +639,28 @@ namespace P64::Coll {
       if(!constraint.objectA || !constraint.objectB) continue;
       if(!constraint.objectA->isEnabled() || !constraint.objectB->isEnabled()) continue;
 
-      auto key = std::make_pair(constraint.objectA, constraint.objectB);
-      // make sure we only send one event per object pair, even if they have multiple contact constraints
-      if (processedPairs.insert(key).second)
-      {
-        // first time seeing this pair
-        pendingEvents.push_back(makeCollisionEvent(constraint));
+      const auto key = makeObjectPairKey(constraint.objectA, constraint.objectB);
+
+      auto lookupIt = dispatchLookup.find(key);
+      if(lookupIt == dispatchLookup.end()) {
+        pendingDispatches.push_back(PendingPairDispatch{});
+        pendingDispatches.back().key = key;
+        lookupIt = dispatchLookup.emplace(key, pendingDispatches.size() - 1).first;
       }
-      
+
+      PendingPairDispatch &dispatch = pendingDispatches[lookupIt->second];
+      const CollEvent event = makeCollisionEvent(constraint);
+      captureDirectionalEvent(dispatch, event);
+      captureDirectionalEvent(dispatch, makeMirroredCollisionEvent(event));
     }
 
-    for(const CollEvent &event : pendingEvents) {
-      SceneManager::getCurrent().onObjectCollision(event);
+    for(const PendingPairDispatch &dispatch : pendingDispatches) {
+      if(dispatch.hasFirstEvent) {
+        SceneManager::getCurrent().onObjectCollision(dispatch.firstEvent);
+      }
+      if(dispatch.hasSecondEvent) {
+        SceneManager::getCurrent().onObjectCollision(dispatch.secondEvent);
+      }
     }
   }
 
@@ -784,7 +861,7 @@ namespace P64::Coll {
           if (collider->owner == collB->owner)
             continue;
 
-          if (!collidersShouldGenerateContact(collider, collB))
+          if (!collider->readsCollider(collB) && !collB->readsCollider(collider))
             continue;
           RigidBody *rbB = findRigidBodyByOwner(collB->owner);
           if((rbA && rbA->isSleeping) && (rbB && rbB->isSleeping)) {
@@ -820,10 +897,10 @@ namespace P64::Coll {
         if(!collA || !collA->owner)
           continue;
 
-        RigidBody *rigidBodyA = findRigidBodyByOwner(collA->owner);
-        if (!colliderShouldTestMesh(collA))
+        if (!collA->readsMeshCollider(mesh) && !mesh->readsCollider(collA))
           continue;
 
+        RigidBody *rigidBodyA = findRigidBodyByOwner(collA->owner);
         //prevent perpetural collision checks of sleeping objects with meshes
         if(!mesh->transformChanged && rigidBodyA && rigidBodyA->isSleeping && !collA->isTrigger)
           continue;

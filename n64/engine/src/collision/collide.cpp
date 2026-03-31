@@ -32,14 +32,6 @@ namespace P64::Coll {
     return quatToMatrix3(colliderOrientation(collider));
   }
 
-  static bool colliderReadsCollider(const Collider *reader, const Collider *writer) {
-    return reader && writer && ((reader->maskRead & writer->maskWrite) != 0);
-  }
-
-  static bool collidersShouldGenerateContact(const Collider *colliderA, const Collider *colliderB) {
-    return colliderReadsCollider(colliderA, colliderB) || colliderReadsCollider(colliderB, colliderA);
-  }
-
   static fm_vec3_t makeSafeContactNormal(const fm_vec3_t &normal, const fm_vec3_t &contactA, const fm_vec3_t &contactB) {
     if(fm_vec3_len2(&normal) > FM_EPSILON * FM_EPSILON) {
       fm_vec3_t normalized;
@@ -618,9 +610,14 @@ namespace P64::Coll {
   /// @return True if a collision is detected, false otherwise.
   bool collideDetectObjectToTriangle(ColliderProxy *colliderProxyMeshSpace, RigidBody *rigidBody, const MeshCollider &mesh, int triangleIndex) {
     const bool isTriggerContact = colliderProxyMeshSpace->collider->isTrigger;
+    const bool colliderRespondsToMesh = colliderProxyMeshSpace->collider->readsMeshCollider(&mesh);
 
     Object *objectA = colliderProxyMeshSpace->collider->owner;
     Object *objectB = mesh.owner;
+
+    if(!colliderRespondsToMesh && !mesh.readsCollider(colliderProxyMeshSpace->collider)) {
+      return false;
+    }
 
     const float combinedFriction = fminf(colliderProxyMeshSpace->collider->friction, mesh.friction);
     const float combinedBounce = fmaxf(colliderProxyMeshSpace->collider->bounce, mesh.bounce);
@@ -635,7 +632,7 @@ namespace P64::Coll {
       CollisionScene *scene = collisionSceneGetInstance();
       ContactConstraint *existing = scene->findCachedConstraint(
         makeColliderMeshConstraintKey(colliderProxyMeshSpace->collider, const_cast<MeshCollider *>(&mesh), static_cast<uint16_t>(triangleIndex)));
-      if(existing && refreshCachedTriangleConstraint(*existing, rigidBody, tri, mesh, combinedFriction, combinedBounce, true, false) &&
+      if(existing && refreshCachedTriangleConstraint(*existing, rigidBody, tri, mesh, combinedFriction, combinedBounce, colliderRespondsToMesh, false) &&
          canSkipTriangleEpaWithCachedConstraint(*existing, *colliderProxyMeshSpace->collider)) {
         existing->rigidBodyA = rigidBody;
         existing->colliderA = colliderProxyMeshSpace->collider;
@@ -699,7 +696,7 @@ namespace P64::Coll {
       collideCacheContactConstraint(
           rigidBody, colliderProxyMeshSpace->collider, nullptr, objectA,
           nullptr, nullptr, const_cast<MeshCollider *>(&mesh), objectB,
-          epaResult, combinedFriction, combinedBounce, isTriggerContact, !isTriggerContact, false, triangleIndex);
+          epaResult, combinedFriction, combinedBounce, isTriggerContact, colliderRespondsToMesh, false, triangleIndex);
 
       return true;
     }
@@ -760,14 +757,14 @@ namespace P64::Coll {
     if(!colliderA || !colliderB) return;
 
     CollisionScene *scene = collisionSceneGetInstance();
-    const bool aReadsB = colliderReadsCollider(colliderA, colliderB);
-    const bool bReadsA = colliderReadsCollider(colliderB, colliderA);
+    const bool aReadsB = colliderA->readsCollider(colliderB);
+    const bool bReadsA = colliderB->readsCollider(colliderA);
 
     if(rbA && rbB && rbA->isSleeping && rbB->isSleeping && !colliderA->isTrigger && !colliderB->isTrigger) return;
 
     // If both have rigidbodies, evaluate rigidbody-level filters.
     if(colliderA && colliderB) {
-      if(!collidersShouldGenerateContact(colliderA, colliderB)) return;
+      if(!aReadsB && !bReadsA) return;
       if(colliderA->isTrigger && colliderB->isTrigger) return;
     }
 

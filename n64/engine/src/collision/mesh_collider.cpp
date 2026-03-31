@@ -4,6 +4,7 @@
  * @brief Mesh Collider definitions and functions (see mesh_collider.h)
  */
 #include "collision/mesh_collider.h"
+#include "collision/collider_shape.h"
 #include "scene/object.h"
 
 namespace P64::Coll {
@@ -131,6 +132,14 @@ namespace P64::Coll {
   bool MeshCollider::hasScale() const {
     if(!owner) return false;
     return (fabsf(owner->scale.x - 1.0f) > FM_EPSILON) || (fabsf(owner->scale.y - 1.0f) > FM_EPSILON) || (fabsf(owner->scale.z - 1.0f) > FM_EPSILON);
+  }
+
+  bool MeshCollider::readsCollider(const Collider *other) const {
+    return other && ((maskRead & other->maskWrite) != 0);
+  }
+
+  bool MeshCollider::readsMeshCollider(const MeshCollider *other) const {
+    return other && ((maskRead & other->maskWrite) != 0);
   }
 
   bool MeshCollider::ownerTransformChanged() const {

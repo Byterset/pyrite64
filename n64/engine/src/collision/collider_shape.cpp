@@ -4,6 +4,7 @@
  * @brief Defines the Basic (non-mesh) Colliders (see collider_shape.h)
  */
 #include "collision/collider_shape.h"
+#include "collision/mesh_collider.h"
 #include "scene/object.h"
 
 using namespace P64::Coll;
@@ -60,6 +61,14 @@ fm_vec3_t Collider::rotateToWorld(const fm_vec3_t &localDir) const {
 fm_vec3_t Collider::rotateToLocal(const fm_vec3_t &worldDir) const {
   if(!owner) return worldDir;
   return quatConjugate(owner->rot) * worldDir;
+}
+
+bool Collider::readsCollider(const Collider *other) const {
+  return other && ((maskRead & other->maskWrite) != 0);
+}
+
+bool Collider::readsMeshCollider(const MeshCollider *other) const {
+  return other && ((maskRead & other->maskWrite) != 0);
 }
 
 void P64::Coll::colliderGjkSupport(const void *data, const fm_vec3_t &direction, fm_vec3_t &output) {

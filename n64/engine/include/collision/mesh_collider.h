@@ -14,6 +14,8 @@ namespace P64 { class Object; }
 
 namespace P64::Coll {
 
+  struct Collider;
+
   struct MeshCollider; // forward declare
 
   struct MeshTriangleIndices {
@@ -98,6 +100,9 @@ namespace P64::Coll {
     bool hasPosition() const;
     /// Returns true if the mesh has a non-uniform (1,1,1) scale
     bool hasScale() const;
+
+    bool readsCollider(const Collider *other) const;
+    bool readsMeshCollider(const MeshCollider *other) const;
 
     /// Create a MeshCollider directly from collision asset raw data, binding to the given Object's transform.
     /// The returned collider owns newly allocated arrays (vertices, triangles, normals).

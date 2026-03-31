@@ -17,6 +17,8 @@ namespace P64
 
 namespace P64::Coll {
 
+  struct MeshCollider;
+
   struct Collider {
     ShapeType type{ShapeType::Sphere};
     union {
@@ -45,6 +47,8 @@ namespace P64::Coll {
     fm_vec3_t toLocalSpace(const fm_vec3_t &worldPoint) const;
     fm_vec3_t rotateToWorld(const fm_vec3_t &localDir) const;
     fm_vec3_t rotateToLocal(const fm_vec3_t &worldDir) const;
+    bool readsCollider(const Collider *other) const;
+    bool readsMeshCollider(const MeshCollider *other) const;
   };
 
   /// GJK-compatible support wrapper

@@ -50,6 +50,26 @@ namespace
       });
     }
   }
+
+  P64::Object* collisionEventSelfObject(const P64::Coll::CollEvent &event)
+  {
+    if(event.selfCollider) return event.selfCollider->owner;
+    if(event.selfMeshCollider) return event.selfMeshCollider->owner;
+    return nullptr;
+  }
+
+  void dispatchObjectCollisionEvent(P64::Object &obj, const P64::Coll::CollEvent &event)
+  {
+    auto compRefs = obj.getCompRefs();
+    for(uint32_t i = 0; i < obj.compCount; ++i)
+    {
+      const auto &compDef = P64::COMP_TABLE[compRefs[i].type];
+      if(!compDef.onColl) continue;
+
+      char *dataPtr = (char *)&obj + compRefs[i].offset;
+      compDef.onColl(obj, dataPtr, event);
+    }
+  }
 #if RSPQ_PROFILE
   uint32_t frameCount = 0;
 #endif
@@ -348,68 +368,12 @@ void P64::Scene::draw([[maybe_unused]] float deltaTime)
 
 void P64::Scene::onObjectCollision(const Coll::CollEvent &event)
 {
-  auto objA = event.selfCollider ? event.selfCollider->owner
-                                 : (event.selfMeshCollider ? event.selfMeshCollider->owner : nullptr);
-  auto objB = event.otherObject;
-  if(!objA || !objB)return;
-  if(!objA->isEnabled() || !objB->isEnabled()) return;
+  auto *selfObject = collisionEventSelfObject(event);
+  auto *otherObject = event.otherObject;
+  if(!selfObject || !otherObject) return;
+  if(!selfObject->isEnabled() || !otherObject->isEnabled()) return;
 
-  // Only generate event for the components of objA if the collider that generated the contact
-  // is set to be affected by the other collider's layer (maskRead & maskWrite != 0).
-  // alternatively, always generate event for objA if it collided with a mesh collider since they have no masks
-  bool objACollidedWitMesh = (event.hitMeshCollider != nullptr);
-  bool generateEventForA = objACollidedWitMesh || ((event.selfCollider && event.hitCollider) && (event.selfCollider->maskRead & event.hitCollider->maskWrite) != 0);
-  if (generateEventForA)
-  {
-    auto compRefsA = objA->getCompRefs();
-    for (uint32_t i = 0; i < objA->compCount; ++i)
-    {
-      const auto &compDef = COMP_TABLE[compRefsA[i].type];
-      if (compDef.onColl)
-      {
-        char *dataPtr = (char *)objA + compRefsA[i].offset;
-        compDef.onColl(*objA, dataPtr, event);
-      }
-    }
-  }
-
-  if(!objA->isEnabled() || !objB->isEnabled()) return;
-
-  //if(!event.otherBCS)return;
-
-
-  Coll::CollEvent eventOther{
-    .selfCollider = event.hitCollider,
-    .hitCollider = event.selfCollider,
-    .selfMeshCollider = event.hitMeshCollider,
-    .hitMeshCollider = event.selfMeshCollider,
-    .selfRigidBody = event.hitRigidBody,
-    .hitRigidBody = event.selfRigidBody,
-    .contactCount = event.contactCount,
-    .otherObject = objA
-  };
-
-  bool objBCollidedWitMesh = (eventOther.hitMeshCollider != nullptr);
-  bool generateEventForB = objBCollidedWitMesh || ((eventOther.selfCollider && eventOther.hitCollider) && (eventOther.selfCollider->maskRead & eventOther.hitCollider->maskWrite) != 0);
-
-  if(!generateEventForB)return;
-
-  for(uint16_t i = 0; i < event.contactCount; ++i) {
-    eventOther.contacts[i] = event.contacts[i];
-    std::swap(eventOther.contacts[i].contactA, eventOther.contacts[i].contactB);
-    std::swap(eventOther.contacts[i].localPointA, eventOther.contacts[i].localPointB);
-    std::swap(eventOther.contacts[i].aToContact, eventOther.contacts[i].bToContact);
-  }
-
-  auto compRefsB = objB->getCompRefs();
-  for (uint32_t i=0; i<objB->compCount; ++i)
-  {
-    const auto &compDef = COMP_TABLE[compRefsB[i].type];
-    if(compDef.onColl) {
-      char* dataPtr = (char*)objB + compRefsB[i].offset;
-      compDef.onColl(*objB, dataPtr, eventOther);
-    }
-  }
+  dispatchObjectCollisionEvent(*selfObject, event);
 }
 
 uint16_t P64::Scene::addObject(
