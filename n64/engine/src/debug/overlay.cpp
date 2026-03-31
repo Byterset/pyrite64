@@ -157,9 +157,20 @@ void Debug::Overlay::draw(P64::Scene &scene, surface_t* surf)
   uint64_t newTicksSelf = get_user_ticks();
   MEMORY_BARRIER();
 
-  Debug::draw(surf);
-
   auto btn = joypad_get_buttons_pressed(JOYPAD_PORT_1);
+
+  if(showFrameTime) {
+    rdpq_sync_pipe();
+    Debug::printStart();
+    Debug::printf(24, 24, "%.2f", (double)P64::VI::SwapChain::getFPS());
+
+    if(btn.d_left || btn.d_right) {
+      showFrameTime = false;
+    }
+    return;
+  }
+
+  Debug::draw(surf);
 
   if(menu.items.empty()) {
     addActionItem(menu, "Scenes", []([[maybe_unused]] auto &item) { showMenuScene = true; });
@@ -167,7 +178,7 @@ void Debug::Overlay::draw(P64::Scene &scene, surface_t* surf)
     addBoolItem(menu, "Coll-Obj", showColliders);
     addBoolItem(menu, "Coll-Tri", showCollMesh);
     addBoolItem(menu, "Memory", matrixDebug);
-    addBoolItem(menu, "Frames", showFrameTime);
+    addActionItem(menu, "FPS", []([[maybe_unused]] auto &item) { showFrameTime = true; });
 
     addActionItem(menuScenes, "< Back >", []([[maybe_unused]] auto &item) {
       showMenuScene = false;
@@ -201,34 +212,6 @@ void Debug::Overlay::draw(P64::Scene &scene, surface_t* surf)
   float posX = 16;
   float posY = 130;
 
-  if(showFrameTime) {
-    rdpq_sync_pipe();
-
-    constexpr uint32_t fbCount = 3;
-    float viBarWidth = 300;
-
-    color_t fbStateCol[6];
-    fbStateCol[0] = {0x00, 0x00, 0x00, 0xFF};
-    fbStateCol[1] = {0x33, 0xFF, 0x33, 0xFF};
-    fbStateCol[2] = {0x22, 0x77, 0x77, 0xFF};
-    fbStateCol[3] = {0x22, 0xAA, 0xAA, 0xFF};
-    fbStateCol[4] = {0xAA, 0xAA, 0xAA, 0xFF};
-    fbStateCol[5] = {0xAA, 0x22, 0xAA, 0xFF};
-
-    rdpq_mode_push();
-    rdpq_set_mode_fill({0,0,0, 0xFF});
-    rdpq_fill_rectangle(posX, posY-2, posX + viBarWidth, posY + 7 * fbCount+1);
-    rdpq_fill_rectangle(posX, posY-10, posX + viBarWidth, posY - 6);
-
-    rdpq_mode_pop();
-
-    Debug::printStart();
-
-    posY = 64;
-    Debug::printf(posX + 200, posY-8, "FPS: %.2f", (double)P64::VI::SwapChain::getFPS());
-
-    return;
-  }
   Debug::printStart();
 
   posY = 24;
