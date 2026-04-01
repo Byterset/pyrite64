@@ -696,20 +696,53 @@ namespace P64::Coll {
       if(!shouldTrackSleepState(body) || body->isSleeping_) continue;
       if(visited.find(body) != visited.end()) continue;
 
+      // Build the island of AWAKE, connected bodies only.
+      // Bullet's btSimulationIslandManager excludes sleeping bodies from island
+      // formation — they are only woken explicitly when a new dynamic contact
+      // forces it.  The old code included sleeping neighbours and then woke them
+      // (line 706), which caused a chain reaction: a resting stack would keep
+      // bouncing between "almost sleeping" and "just woken" states, preventing
+      // the island from ever reaching the SLEEP_STEPS threshold.
       std::vector<RigidBody *> island;
-      collectConnectedIsland(body, island, visited);
+      {
+        std::vector<RigidBody *> stack;
+        stack.push_back(body);
+        while(!stack.empty()) {
+          RigidBody *current = stack.back();
+          stack.pop_back();
+
+          if(!shouldTrackSleepState(current)) continue;
+          if(current->isSleeping_) continue; // ← key difference: skip sleeping bodies
+          if(visited.find(current) != visited.end()) continue;
+          visited.insert(current);
+          island.push_back(current);
+
+          for(int i = 0; i < cachedConstraintCount_; ++i) {
+            const ContactConstraint &cc = cachedConstraints_[i];
+            if(!cc.isActive || cc.isTrigger) continue;
+
+            RigidBody *other = nullptr;
+            if(cc.rigidBodyA == current)      other = cc.rigidBodyB;
+            else if(cc.rigidBodyB == current) other = cc.rigidBodyA;
+
+            if(!other) continue;
+            if(!shouldTrackSleepState(other)) continue;
+            if(other->isSleeping_) continue; // skip sleeping neighbours
+            if(visited.find(other) == visited.end()) {
+              stack.push_back(other);
+            }
+          }
+        }
+      }
       if(island.empty()) continue;
 
       bool islandCanSleep = true;
       for(RigidBody *islandBody : island) {
-        if(islandBody->isSleeping_) {
-          islandBody->wake();
-        }
-
         const bool transformChangedTooMuch = rigidBodyTransformExceededSleepThreshold(islandBody);
         const bool velocitiesTooHigh = rigidBodyVelocitiesExceededSleepThreshold(islandBody);
         if(transformChangedTooMuch || velocitiesTooHigh) {
           islandCanSleep = false;
+          break; // early-out: one active body prevents the whole island from sleeping
         }
       }
 
@@ -1032,6 +1065,14 @@ namespace P64::Coll {
   // ── Warm start ────────────────────────────────────────────────────
 
   void CollisionScene::warmStart() {
+    // Minimum impulse threshold: below this, accumulated impulses are zeroed to
+    // prevent infinitesimal residual forces from keeping bodies awake.
+    // Bullet's btSequentialImpulseConstraintSolver similarly discards negligible
+    // cached impulses.  The warm starting factor (0.85) exponentially decays
+    // impulses each frame; without this floor they asymptotically approach but
+    // never reach zero, producing micro-velocity perturbations every step.
+    constexpr float IMPULSE_ZERO_THRESHOLD = 1e-6f;
+
     for(ContactConstraint *constraint : solverConstraints_) {
       ContactConstraint &cc = *constraint;
 
@@ -1047,6 +1088,11 @@ namespace P64::Coll {
         cp.accumulatedNormalImpulse *= WARM_STARTING_FACTOR;
         cp.accumulatedTangentImpulseU *= WARM_STARTING_FACTOR;
         cp.accumulatedTangentImpulseV *= WARM_STARTING_FACTOR;
+
+        // Zero out decayed impulses to prevent persistent micro-perturbations
+        if(fabsf(cp.accumulatedNormalImpulse) < IMPULSE_ZERO_THRESHOLD) cp.accumulatedNormalImpulse = 0.0f;
+        if(fabsf(cp.accumulatedTangentImpulseU) < IMPULSE_ZERO_THRESHOLD) cp.accumulatedTangentImpulseU = 0.0f;
+        if(fabsf(cp.accumulatedTangentImpulseV) < IMPULSE_ZERO_THRESHOLD) cp.accumulatedTangentImpulseV = 0.0f;
 
         fm_vec3_t impulse = cc.normal * cp.accumulatedNormalImpulse;
         impulse += cc.tangentU * cp.accumulatedTangentImpulseU;
@@ -1588,7 +1634,6 @@ namespace P64::Coll {
       const std::vector<Collider *> *ownerColliders = findCollidersForOwner(body->owner_);
       if(!ownerColliders || ownerColliders->empty()) continue;
 
-      fm_vec3_t worldCenterSum = VEC3_ZERO;
       for (Collider *collider : *ownerColliders)
       {
         if (!collider) continue;
@@ -1597,6 +1642,16 @@ namespace P64::Coll {
         body->worldAabb_.max = vec3Max(body->worldAabb_.max, collider->worldAabb_.max);
         colliderAABBTree.moveNode(collider->aabbTreeNodeId_, collider->worldAabb_, displacement);
       }
+
+      // Snapshot the fully-corrected transform for sleep evaluation.
+      // This must happen AFTER the position solver and split impulse push so that
+      // solver corrections (penetration resolution) do not register as "movement"
+      // in the sleep threshold check.  Bullet's btSimulationIslandManager evaluates
+      // sleep on the final integrated + corrected state; without this, continuous
+      // micro-corrections from the position solver keep bodies awake indefinitely.
+      if(body->position_) body->previousStepPosition_ = *body->position_;
+      if(body->rotation_) body->previousStepRotation_ = *body->rotation_;
+      if(body->owner_)    body->previousStepScale_ = body->owner_->scale;
     }
 
     // Update RigidBody sleep states
