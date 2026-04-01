@@ -1060,8 +1060,26 @@ namespace P64::Coll {
 
   // ── Velocity constraint solver ────────────────────────────────────
 
+  /// Fast xorshift32 PRNG for constraint randomization (Bullet's SOLVER_RANDMIZE_ORDER)
+  static uint32_t s_solverRngState = 0x12345678u;
+  static uint32_t solverRand() {
+    uint32_t x = s_solverRngState;
+    x ^= x << 13;
+    x ^= x >> 17;
+    x ^= x << 5;
+    s_solverRngState = x;
+    return x;
+  }
+
   void CollisionScene::solveVelocityConstraints() {
+    const auto constraintCount = solverConstraints_.size();
     for(uint8_t iter = 0; iter < velocitySolverIterations_; ++iter) {
+      // Shuffle constraint processing order each iteration (Bullet's SOLVER_RANDMIZE_ORDER)
+      // Prevents systematic bias where one constraint always "wins" in Gauss-Seidel iteration
+      for(std::size_t i = constraintCount; i > 1; --i) {
+        std::size_t j = solverRand() % i;
+        std::swap(solverConstraints_[i - 1], solverConstraints_[j]);
+      }
       for(ContactConstraint *constraint : solverConstraints_) {
         ContactConstraint &cc = *constraint;
 

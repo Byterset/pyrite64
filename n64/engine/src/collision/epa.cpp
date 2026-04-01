@@ -202,13 +202,11 @@ namespace {
   //   return es.triangles[es.triangleHeap[0]];
   // }
 
+  // Use the min-heap to efficiently find the closest face (O(1) lookup).
+  // The heap is maintained by siftDown/siftUp/fixHeap during polytope expansion.
   inline SimplexTriangle& closestFace(ExpandingSimplex& es) {
-    int best = 0;
-    for (int i = 1; i < es.triangleCount; ++i)
-        if (es.triangles[i].distanceToOrigin < es.triangles[best].distanceToOrigin)
-            best = i;
-    return es.triangles[best];
-}
+    return es.triangles[es.triangleHeap[0]];
+  }
 
   // --- Edge rotation for convexity ---
 
