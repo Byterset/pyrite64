@@ -193,19 +193,6 @@ namespace P64::Coll {
     colliderAABBTree.init(32); // Initial capacity (will grow as needed)
   }
 
-  /// @brief Updates the world state of a collider.
-  /// Recalculates the world center and world AABB of the collider based on its owner's transform.
-  /// @param collider The collider to update.
-  void CollisionScene::updateColliderWorldState(Collider *collider) const {
-    if(!collider || !collider->owner) return;
-    const Object *owner = collider->owner;
-    collider->worldCenter = owner->pos + (owner->rot * (collider->parentOffset * owner->scale));
-
-    const AABB local = collider->boundingBox(&owner->rot);
-    collider->worldAABB.min = local.min + collider->worldCenter;
-    collider->worldAABB.max = local.max + collider->worldCenter;
-  }
-
   RigidBody *CollisionScene::findRigidBodyByOwner(const Object *owner) const {
     if(!owner) return nullptr;
     auto it = ownerRigidBodies_.find(owner);
@@ -350,7 +337,7 @@ namespace P64::Coll {
     if(!collider || !collider->owner) return;
     colliders_.push_back(collider);
     ownerColliders_[collider->owner].push_back(collider);
-    updateColliderWorldState(collider);
+    collider->syncWorldState();
 
     RigidBody *rigidBody = findRigidBodyByOwner(collider->owner);
     if (rigidBody)
@@ -762,6 +749,12 @@ namespace P64::Coll {
         continue;
       }
 
+      const uint32_t versionA = contactTransformVersion(cc.rigidBodyA, cc.colliderA, cc.meshColliderA);
+      const uint32_t versionB = contactTransformVersion(cc.rigidBodyB, cc.colliderB, cc.meshColliderB);
+      if(cc.transformVersionA == versionA && cc.transformVersionB == versionB) {
+        continue;
+      }
+
       for(int j = 0; j < cc.pointCount; ++j) {
         ContactPoint &cp = cc.points[j];
         if(!cp.active) continue;
@@ -785,6 +778,8 @@ namespace P64::Coll {
         }
       }
       cc.pointCount = writeIdx;
+      cc.transformVersionA = versionA;
+      cc.transformVersionB = versionB;
     }
   }
 
@@ -814,7 +809,6 @@ namespace P64::Coll {
 
   void CollisionScene::detectAllContacts() {
 
-    uint64_t stageStart = get_ticks();
     // Mark all constraints as inactive; detection will re-activate them
     for(int i = 0; i < cachedConstraintCount_; ++i) {
       cachedConstraints_[i].isActive = false;
@@ -829,6 +823,7 @@ namespace P64::Coll {
     
     
     candidateColliders.resize(colliders_.size());
+    const uint64_t bodyDetectStart = get_ticks();
     for (Collider *collider : colliders_)
     {
       if (!collider || !collider->owner)
@@ -874,6 +869,9 @@ namespace P64::Coll {
         }
       }
     }
+    ticksDetectBodyPairs = get_ticks() - bodyDetectStart;
+
+    const uint64_t meshDetectStart = get_ticks();
     for (std::size_t m = 0; m < meshColliders_.size(); ++m)
     {
 
@@ -908,6 +906,7 @@ namespace P64::Coll {
       }
 
     }
+    ticksDetectMeshPairs = get_ticks() - meshDetectStart;
     //TODO: possibly offer mesh-mesh collision detection in the future, but not needed for current use cases
 
     removeInactiveContacts();
@@ -1363,21 +1362,21 @@ namespace P64::Coll {
 
     uint64_t stageStart = get_ticks();
 
-    // 0. Update mesh collider world states (in case transforms changed)
+    // Update mesh collider world states (in case transforms changed)
     // recalculates world AABBs and marks if transform changed for potential broadphase optimization
     updateMeshColliderWorldStates();
 
-    // 0.5 Wake sleeping dynamic bodies that were moved or rotated externally.
+    // Wake sleeping rigid bodies that were moved or rotated externally.
     wakeBodiesTransformedExternally();
     ticksWakePrep = get_ticks() - stageStart;
 
     stageStart = get_ticks();
-    // 1. Refresh collider world state
+    // Refresh collider world state
     for(Collider *collider : colliders_) {
-      updateColliderWorldState(collider);
+      if(collider) collider->syncWorldState();
     }
 
-    // 2. Update compound CoM/inertia on demand and refresh world inertia tensors.
+    // Update compound CoM/inertia on demand and refresh world inertia tensors.
     for (RigidBody *body : rigidBodies_){
       syncCompoundProperties(body);
       if(body->isSleeping) continue;
@@ -1386,7 +1385,7 @@ namespace P64::Coll {
     ticksWorldUpdate = get_ticks() - stageStart;
 
     stageStart = get_ticks();
-    // 3. Integrate velocities
+    // Integrate velocities
     for(RigidBody *body : rigidBodies_) {
       if(!body->isSleeping) {
         body->integrateVelocity(fixedDt_, gravity_);
@@ -1395,7 +1394,7 @@ namespace P64::Coll {
     }
     ticksIntegrateVel = get_ticks() - stageStart;
 
-    // 4. Detect all contacts (broad + narrow phase)
+    // Detect all contacts (broad + narrow phase)
     const uint64_t detectStart = get_ticks();
     detectAllContacts();
     ticksDetect = get_ticks() - detectStart;
@@ -1408,22 +1407,22 @@ namespace P64::Coll {
     dispatchCollisionCallbacks();
     ticksRefreshCallbacks = get_ticks() - stageStart;
 
-    // 5. Pre-solve contacts (compute effective masses)
+    // Pre-solve contacts (compute effective masses)
     stageStart = get_ticks();
     preSolveContacts();
     ticksPreSolve = get_ticks() - stageStart;
 
-    // 6. Warm start
+    // Warm start
     stageStart = get_ticks();
     warmStart();
     ticksWarmStart = get_ticks() - stageStart;
 
-    // 7. Velocity constraint solver
+    // Velocity constraint solver
     stageStart = get_ticks();
     solveVelocityConstraints();
     ticksVelocitySolve = get_ticks() - stageStart;
 
-    // 8. Integrate positions and rotations
+    // Integrate positions and rotations
     stageStart = get_ticks();
     for(RigidBody *body : rigidBodies_) {
       if(body->isSleeping) continue;
@@ -1433,7 +1432,7 @@ namespace P64::Coll {
     }
     ticksIntegration = get_ticks() - stageStart;
 
-    // 9. Position constraint solver
+    // Position constraint solver
     stageStart = get_ticks();
     for(uint8_t iter = 0; iter < positionSolverIterations_; ++iter) {
       if(!solvePositionConstraints()) {
@@ -1442,31 +1441,30 @@ namespace P64::Coll {
     }
     ticksPositionSolve = get_ticks() - stageStart;
 
-    // 10. Apply position constraints, inertia and world state of rigidbodies and colliders
+    // Apply position constraints, inertia and world state of rigidbodies and colliders
     stageStart = get_ticks();
     for(RigidBody *body : rigidBodies_) {
 
-      if(!body) continue;
+      if(!body || !body->owner) continue;
 
       body->applyPositionConstraints();
       body->updateWorldInertia();
-    }
-    for(Collider *collider : colliders_) {
-      if(!collider) continue;
-      RigidBody *body = findRigidBodyByOwner(collider->owner);
-      updateColliderWorldState(collider);
-      fm_vec3_t displacement = body ? (*body->position - body->prevStepPos) : VEC3_ZERO;
-      if(body){
+
+      const std::vector<Collider *> *ownerColliders = findCollidersForOwner(body->owner);
+      if(!ownerColliders || ownerColliders->empty()) continue;
+
+      fm_vec3_t worldCenterSum = VEC3_ZERO;
+      for (Collider *collider : *ownerColliders)
+      {
+        if (!collider) continue;
+        fm_vec3_t displacement = *body->position - body->prevStepPos;
         body->worldAABB.min = vec3Min(body->worldAABB.min, collider->worldAABB.min);
         body->worldAABB.max = vec3Max(body->worldAABB.max, collider->worldAABB.max);
-      }
-      if(collider->aabbTreeNodeId != NULL_NODE)
-      {
         colliderAABBTree.moveNode(collider->aabbTreeNodeId, collider->worldAABB, displacement);
       }
     }
 
-    // 11. Update RigidBody Sleep
+    // Update RigidBody sleep states
     updateSleepStates();
     ticksFinalize = get_ticks() - stageStart;
 

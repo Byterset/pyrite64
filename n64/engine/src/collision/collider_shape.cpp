@@ -54,13 +54,54 @@ fm_vec3_t Collider::toLocalSpace(const fm_vec3_t &worldPoint) const {
 }
 
 fm_vec3_t Collider::rotateToWorld(const fm_vec3_t &localDir) const {
-  if(!owner) return localDir;
-  return owner->rot * localDir;
+  return matrix3Vec3Mul(rotationMatrix, localDir);
 }
 
 fm_vec3_t Collider::rotateToLocal(const fm_vec3_t &worldDir) const {
-  if(!owner) return worldDir;
-  return quatConjugate(owner->rot) * worldDir;
+  return matrix3Vec3Mul(inverseRotationMatrix, worldDir);
+}
+
+bool Collider::ownerTransformChanged() const {
+  if(!owner) return false;
+  if(!hasCachedOwnerTransform) return true;
+
+  if(fm_vec3_distance2(&owner->pos, &lastOwnerPos) > FM_EPSILON * FM_EPSILON) return true;
+  if(fm_vec3_distance2(&owner->scale, &lastOwnerScale) > FM_EPSILON * FM_EPSILON) return true;
+
+  const float rotSim = fabsf(quatDot(owner->rot, lastOwnerRot));
+  return rotSim < (1.0f - FM_EPSILON);
+}
+
+void Collider::syncOwnerTransform() {
+  if(!owner) {
+    lastOwnerPos = VEC3_ZERO;
+    lastOwnerRot = QUAT_IDENTITY;
+    lastOwnerScale = fm_vec3_t{{1.0f, 1.0f, 1.0f}};
+  } else {
+    lastOwnerPos = owner->pos;
+    lastOwnerRot = owner->rot;
+    lastOwnerScale = owner->scale;
+  }
+
+  rotationMatrix = quatToMatrix3(lastOwnerRot);
+  inverseRotationMatrix = quatToMatrix3(quatConjugate(lastOwnerRot));
+  hasCachedOwnerTransform = true;
+}
+
+bool Collider::syncWorldState() {
+  if(!owner) return false;
+
+  const bool transformChanged = !hasCachedOwnerTransform || ownerTransformChanged();
+  if(!transformChanged) return false;
+
+  syncOwnerTransform();
+  worldCenter = lastOwnerPos + matrix3Vec3Mul(rotationMatrix, parentOffset * lastOwnerScale);
+
+  const AABB local = boundingBox(&lastOwnerRot);
+  worldAABB.min = local.min + worldCenter;
+  worldAABB.max = local.max + worldCenter;
+  ++worldStateVersion;
+  return true;
 }
 
 bool Collider::readsCollider(const Collider *other) const {

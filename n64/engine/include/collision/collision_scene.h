@@ -119,7 +119,6 @@ namespace P64::Coll {
     static bool rigidBodyCompoundPropertiesNeedUpdate(const RigidBody *rigidBody);
     RigidBody *findRigidBodyByOwner(const Object *owner) const;
     const std::vector<Collider *> *findCollidersForOwner(const Object *owner) const;
-    void updateColliderWorldState(Collider *collider) const;
     void updateCompoundProperties(RigidBody *rigidBody) const;
     void syncCompoundProperties(RigidBody *rigidBody) const;
     void collectConnectedIsland(RigidBody *seed, std::vector<RigidBody *> &island, std::unordered_set<RigidBody *> &visited) const;

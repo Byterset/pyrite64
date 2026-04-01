@@ -1,9 +1,29 @@
 #pragma once
 
 #include "contact.h"
+#include "rigid_body.h"
 #include "mesh_collider.h"
 
 namespace P64::Coll {
+
+  inline uint32_t contactTransformVersion(
+    const RigidBody *rigidBody,
+    const Collider *collider,
+    const MeshCollider *meshCollider) {
+    if(rigidBody) {
+      return rigidBody->transformVersion;
+    }
+
+    if(meshCollider) {
+      return meshCollider->worldTransformVersion;
+    }
+
+    if(collider) {
+      return collider->worldStateVersion;
+    }
+
+    return 0;
+  }
 
   inline fm_vec3_t contactLocalPointFromWorldPoint(
     const fm_vec3_t &worldPoint,

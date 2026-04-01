@@ -21,17 +21,6 @@ namespace P64::Coll {
     Matrix3x3 rotationT{};
   };
 
-  static fm_quat_t colliderOrientation(const Collider *collider) {
-    if(collider && collider->owner) {
-      return collider->owner->rot;
-    }
-    return QUAT_IDENTITY;
-  }
-
-  static Matrix3x3 colliderRotationMatrix(const Collider *collider) {
-    return quatToMatrix3(colliderOrientation(collider));
-  }
-
   static fm_vec3_t makeSafeContactNormal(const fm_vec3_t &normal, const fm_vec3_t &contactA, const fm_vec3_t &contactB) {
     if(fm_vec3_len2(&normal) > FM_EPSILON * FM_EPSILON) {
       fm_vec3_t normalized;
@@ -330,8 +319,8 @@ namespace P64::Coll {
     fm_vec3_t halfSize = box->box.halfSize;
 
     // Transform sphere center to box local space
-    Matrix3x3 boxRot = colliderRotationMatrix(box);
-    Matrix3x3 boxRotT = matrix3Transpose(boxRot);
+    const Matrix3x3 &boxRot = box->rotationMatrix;
+    const Matrix3x3 &boxRotT = box->inverseRotationMatrix;
     fm_vec3_t localCenter = sphere->worldCenter - box->worldCenter;
     fm_vec3_t localSpherePos = matrix3Vec3Mul(boxRotT, localCenter);
 
@@ -386,8 +375,7 @@ namespace P64::Coll {
 
     // Capsule axis endpoints in world space
     fm_vec3_t localUp = fm_vec3_t{{0.0f, hh, 0.0f}};
-    const fm_quat_t capsuleRot = colliderOrientation(capsule);
-    fm_vec3_t rotUp = capsuleRot * localUp;
+    fm_vec3_t rotUp = matrix3Vec3Mul(capsule->rotationMatrix, localUp);
     fm_vec3_t capTop = capsule->worldCenter + rotUp;
     fm_vec3_t capBot = capsule->worldCenter - rotUp;
 
@@ -726,8 +714,8 @@ namespace P64::Coll {
     colliderInMeshSpace.worldCenter = meshHasTransform ? mesh.toLocalSpace(collider->worldCenter) : collider->worldCenter;
     // apply mesh rotation to collider's orientation so GJK can work in mesh local space
     colliderInMeshSpace.rotation = meshHasTransform
-                                       ? matrix3Mul(mesh.inverseRotation, colliderRotationMatrix(collider))
-                                       : colliderRotationMatrix(collider);
+                                       ? matrix3Mul(mesh.inverseRotation, collider->rotationMatrix)
+                                       : collider->rotationMatrix;
     colliderInMeshSpace.rotationT = matrix3Transpose(colliderInMeshSpace.rotation);
 
 
@@ -816,13 +804,13 @@ namespace P64::Coll {
 
       proxyA.collider = colliderA;
       proxyA.worldCenter = colliderA->worldCenter;
-      proxyA.rotation = colliderRotationMatrix(colliderA);
-      proxyA.rotationT = matrix3Transpose(proxyA.rotation);
+      proxyA.rotation = colliderA->rotationMatrix;
+      proxyA.rotationT = colliderA->inverseRotationMatrix;
 
       proxyB.collider = colliderB;
       proxyB.worldCenter = colliderB->worldCenter;
-      proxyB.rotation = colliderRotationMatrix(colliderB);
-      proxyB.rotationT = matrix3Transpose(proxyB.rotation);
+      proxyB.rotation = colliderB->rotationMatrix;
+      proxyB.rotationT = colliderB->inverseRotationMatrix;
 
       simplex.nPoints = 0;
       bool overlapping = gjkCheckForOverlap(

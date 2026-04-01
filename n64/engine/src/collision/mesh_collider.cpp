@@ -165,6 +165,7 @@ namespace P64::Coll {
     }
     inverseRotation = quatToMatrix3(quatConjugate(lastOwnerRot));
     hasCachedOwnerTransform = true;
+    ++worldTransformVersion;
   }
 
   void MeshCollider::computeLocalRootAABB() {

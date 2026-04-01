@@ -8,6 +8,7 @@
 #include "gjk.h"
 #include "types.h"
 #include "shapes.h"
+#include "matrix3x3.h"
 #include "aabb_tree.h"
 
 namespace P64
@@ -35,6 +36,13 @@ namespace P64::Coll {
     float friction{0.8f};
     P64::Object *owner{};
     AABB worldAABB{}; // used for culling
+    Matrix3x3 rotationMatrix{Matrix3x3::identity()};
+    Matrix3x3 inverseRotationMatrix{Matrix3x3::identity()};
+    fm_vec3_t lastOwnerPos{};
+    fm_quat_t lastOwnerRot{QUAT_IDENTITY};
+    fm_vec3_t lastOwnerScale{1.0f, 1.0f, 1.0f};
+    uint32_t worldStateVersion{0};
+    bool hasCachedOwnerTransform{false};
     bool isTrigger{false}; // whether this collider is a trigger (generates contacts for events, but no physical response)
     uint8_t maskRead{0x00};  // which collision layers this collider get's affected by
     uint8_t maskWrite{0x00}; // which collision layers this collider affects
@@ -47,6 +55,9 @@ namespace P64::Coll {
     fm_vec3_t toLocalSpace(const fm_vec3_t &worldPoint) const;
     fm_vec3_t rotateToWorld(const fm_vec3_t &localDir) const;
     fm_vec3_t rotateToLocal(const fm_vec3_t &worldDir) const;
+    bool ownerTransformChanged() const;
+    void syncOwnerTransform();
+    bool syncWorldState();
     bool readsCollider(const Collider *other) const;
     bool readsMeshCollider(const MeshCollider *other) const;
   };

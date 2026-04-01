@@ -6,8 +6,8 @@
 #pragma once
 
 #include "vec_math.h"
+#include "matrix3x3.h"
 #include "aabb_tree.h"
-#include "rigid_body.h"
 #include <cstdint>
 
 namespace P64 { class Object; }
@@ -64,6 +64,7 @@ namespace P64::Coll {
     fm_vec3_t lastOwnerPos{};
     fm_quat_t lastOwnerRot{QUAT_IDENTITY};
     fm_vec3_t lastOwnerScale{1.0f, 1.0f, 1.0f};
+    uint32_t worldTransformVersion{0};
     bool hasCachedOwnerTransform{false};
     bool transformChanged{false}; ///< Set to true when owner transform changes, used to trigger AABB tree updates
 

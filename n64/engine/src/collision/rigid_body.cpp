@@ -10,6 +10,18 @@
 
 namespace P64::Coll {
 
+  static bool matrix3Equals(const Matrix3x3 &lhs, const Matrix3x3 &rhs) {
+    for(int row = 0; row < 3; ++row) {
+      for(int col = 0; col < 3; ++col) {
+        if(fabsf(lhs.m[row][col] - rhs.m[row][col]) > FM_EPSILON) {
+          return false;
+        }
+      }
+    }
+
+    return true;
+  }
+
   static fm_vec3_t scaleVec3Components(const fm_vec3_t &lhs, const fm_vec3_t &rhs) {
     return fm_vec3_t{{
       lhs.x * rhs.x,
@@ -225,8 +237,7 @@ namespace P64::Coll {
     }
 
     const Matrix3x3 localProjection = diagonalMatrix(angularConstraintScale(constraints_));
-    const Matrix3x3 rotationTranspose = matrix3Transpose(rotationMatrix);
-    angularConstraintProjection_ = matrix3Mul(matrix3Mul(rotationMatrix, localProjection), rotationTranspose);
+    angularConstraintProjection_ = matrix3Mul(matrix3Mul(rotationMatrix, localProjection), matrix3Transpose(rotationMatrix));
   }
 
   void RigidBody::refreshConstrainedInertiaTensor() {
@@ -400,20 +411,32 @@ namespace P64::Coll {
   }
 
   void RigidBody::updateWorldInertia() {
-    if(rotation) {
-      rotationMatrix = quatToMatrix3(*rotation);
-    } else {
-      rotationMatrix = Matrix3x3::identity();
-    }
+    Matrix3x3 newRotationMatrix = rotation ? quatToMatrix3(*rotation) : Matrix3x3::identity();
+    Matrix3x3 newInverseRotationMatrix = rotation ? quatToMatrix3(quatConjugate(*rotation)) : Matrix3x3::identity();
 
     const Matrix3x3 localInv = diagonalMatrix(invLocalInertiaTensor_);
-    const Matrix3x3 rTranspose = matrix3Transpose(rotationMatrix);
-    invWorldInertiaTensor = matrix3Mul(matrix3Mul(rotationMatrix, localInv), rTranspose);
+    Matrix3x3 newInvWorldInertiaTensor = matrix3Mul(matrix3Mul(newRotationMatrix, localInv), matrix3Transpose(newRotationMatrix));
+
+    const fm_vec3_t worldOffset = matrix3Vec3Mul(newRotationMatrix, centerOffset_);
+    const fm_vec3_t newWorldCenterOfMass = position ? *position + worldOffset : worldOffset;
+    const bool transformChanged = !matrix3Equals(rotationMatrix, newRotationMatrix) ||
+                                  !matrix3Equals(inverseRotationMatrix, newInverseRotationMatrix) ||
+                                  !matrix3Equals(invWorldInertiaTensor, newInvWorldInertiaTensor) ||
+                                  fm_vec3_distance2(&worldCenterOfMass, &newWorldCenterOfMass) > FM_EPSILON * FM_EPSILON;
+
+    rotationMatrix = newRotationMatrix;
+    inverseRotationMatrix = newInverseRotationMatrix;
+    invWorldInertiaTensor = newInvWorldInertiaTensor;
+
+    if(rotation) {
+      rotationMatrix = newRotationMatrix;
+    }
     refreshAngularConstraintProjection();
     refreshConstrainedInertiaTensor();
-
-    const fm_vec3_t worldOffset = rotateToWorld(centerOffset_);
-    worldCenterOfMass = position ? *position + worldOffset : worldOffset;
+    worldCenterOfMass = newWorldCenterOfMass;
+    if(transformChanged) {
+      ++transformVersion;
+    }
   }
 
   fm_vec3_t RigidBody::toWorldSpace(const fm_vec3_t &localPoint) const {

@@ -6,6 +6,7 @@
 #pragma once
 
 #include "vec_math.h"
+#include "matrix3x3.h"
 #include "collider_shape.h"
 #include "aabb_tree.h"
 #include "contact.h"
@@ -55,22 +56,6 @@ namespace P64::Coll {
     return (c & flag) == flag;
   }
 
-  /// Simple 3x3 matrix for inertia tensor
-  struct Matrix3x3 {
-    float m[3][3]{};
-
-    static Matrix3x3 identity() {
-      Matrix3x3 r{};
-      r.m[0][0] = r.m[1][1] = r.m[2][2] = 1.0f;
-      return r;
-    }
-  };
-
-  fm_vec3_t matrix3Vec3Mul(const Matrix3x3 &mat, const fm_vec3_t &v);
-  Matrix3x3 matrix3Mul(const Matrix3x3 &a, const Matrix3x3 &b);
-  Matrix3x3 matrix3Transpose(const Matrix3x3 &m);
-  Matrix3x3 quatToMatrix3(const fm_quat_t &q);
-
   struct RigidBody {
     // Hot data
     fm_vec3_t *position{nullptr};
@@ -89,6 +74,7 @@ namespace P64::Coll {
     // Cached transforms
     Matrix3x3 invWorldInertiaTensor{};
     Matrix3x3 rotationMatrix{};
+    Matrix3x3 inverseRotationMatrix{};
     fm_vec3_t worldCenterOfMass{};
 
     // State
@@ -97,6 +83,7 @@ namespace P64::Coll {
     fm_vec3_t prevStepPos{};
     fm_quat_t prevStepRot{};
     fm_vec3_t prevStepScale{};
+    uint32_t transformVersion{0};
 
     P64::Object *owner{};
     NodeProxy aabbTreeNodeId{NULL_NODE};

@@ -29,6 +29,7 @@ namespace {
   constexpr float barRefTimeMs = 1000.0f / 30.0f; // FPS
 
   constexpr color_t COLOR_COLL_DETECT{ 0x00, 0xAA, 0x22, 0xFF};
+  constexpr color_t COLOR_COLL_DETECT_MESH{0x00, 0x88, 0xEE, 0xFF};
   constexpr color_t COLOR_COLL{0x22,0xFF,0x00, 0xFF};
   constexpr color_t COLOR_COLL_WAKE{0x00, 0x88, 0xCC, 0xFF};
   constexpr color_t COLOR_COLL_WORLD{0x00, 0xCC, 0x88, 0xFF};
@@ -283,7 +284,8 @@ void Debug::Overlay::draw(P64::Scene &scene, surface_t* surf)
     {"Wake", collScene.ticksWakePrep, COLOR_COLL_WAKE},
     {"World", collScene.ticksWorldUpdate, COLOR_COLL_WORLD},
     {"IntV", collScene.ticksIntegrateVel, COLOR_COLL_INTEGRATE_VEL},
-    {"Detect", collScene.ticksDetect, COLOR_COLL_DETECT},
+    {"DetB", collScene.ticksDetectBodyPairs, COLOR_COLL_DETECT},
+    {"DetM", collScene.ticksDetectMeshPairs, COLOR_COLL_DETECT_MESH},
     {"Refresh", collScene.ticksRefreshCallbacks, COLOR_COLL_REFRESH},
     {"Pre", collScene.ticksPreSolve, COLOR_COLL_PRESOLVE},
     {"Warm", collScene.ticksWarmStart, COLOR_COLL_WARM},

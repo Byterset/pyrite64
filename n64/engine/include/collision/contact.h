@@ -140,6 +140,8 @@ namespace P64::Coll {
     float combinedBounce{0.0f};
 
     int pointCount{0};
+    uint32_t transformVersionA{0};
+    uint32_t transformVersionB{0};
 
     bool isActive{false};
     bool isTrigger{false};
