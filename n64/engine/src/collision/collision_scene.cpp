@@ -1060,7 +1060,9 @@ namespace P64::Coll {
 
   // ── Velocity constraint solver ────────────────────────────────────
 
-  /// Fast xorshift32 PRNG for constraint randomization (Bullet's SOLVER_RANDMIZE_ORDER)
+  /// Fast xorshift32 PRNG for constraint randomization (Bullet's SOLVER_RANDMIZE_ORDER).
+  /// N64 is single-threaded so no thread-safety concern. Uses simple modulo for performance
+  /// (modulo bias is negligible for typical constraint counts on N64).
   static uint32_t s_solverRngState = 0x12345678u;
   static uint32_t solverRand() {
     uint32_t x = s_solverRngState;
@@ -1195,6 +1197,7 @@ namespace P64::Coll {
   /// This prevents the "bouncy stacking" artifact of pure Baumgarte stabilization.
   void CollisionScene::solveSplitImpulse() {
     const float splitThreshold = SPLIT_IMPULSE_PENETRATION_THRESHOLD * physicsScale_;
+    const float erpOverDt = SPLIT_IMPULSE_ERP / fixedDt_; // Precomputed to avoid per-contact division
 
     for(ContactConstraint *constraint : solverConstraints_) {
       ContactConstraint &cc = *constraint;
@@ -1237,7 +1240,7 @@ namespace P64::Coll {
         }
 
         // Split impulse: push velocity to resolve penetration
-        float pushImpulse = cp.normalMass * (SPLIT_IMPULSE_ERP * penetrationError / fixedDt_ - relPushVelN);
+        float pushImpulse = cp.normalMass * (erpOverDt * penetrationError - relPushVelN);
         if(pushImpulse <= 0.0f) continue;
 
         fm_vec3_t pushN = cc.normal * pushImpulse;

@@ -681,9 +681,8 @@ namespace P64::Coll {
         // Full manifold: use Bullet-style area-maximizing heuristic to select which point to replace.
         // This keeps the deepest point and maximizes contact polygon coverage for better torque resistance.
         int replaceIdx = selectContactPointToReplace(existing->points, existing->pointCount, orderedResult.contactA, orderedResult.penetration);
-        // Only replace if new point is deeper than the candidate, or new point brings area improvement
-        if(orderedResult.penetration > existing->points[replaceIdx].penetration ||
-           existing->points[replaceIdx].penetration < 0.0f) {
+        // Replace if new point is deeper than the selected candidate
+        if(orderedResult.penetration > existing->points[replaceIdx].penetration) {
           target = &existing->points[replaceIdx];
           target->accumulatedNormalImpulse = 0.0f;
           target->accumulatedTangentImpulseU = 0.0f;
