@@ -410,6 +410,110 @@ namespace P64::Coll {
     return true;
   }
 
+  /// Analytical capsule-capsule collision using closest-points-between-segments + radius check.
+  /// Avoids full GJK+EPA for this common collision pair. Based on the same segment-distance
+  /// approach used in Bullet's btCapsuleShape collision algorithm.
+  static bool analyticalCapsuleCapsule(const Collider *capsuleA, const Collider *capsuleB, EpaResult &result) {
+    if(!capsuleA || !capsuleB) return false;
+    if(capsuleA->shapeType() != ShapeType::Capsule || capsuleB->shapeType() != ShapeType::Capsule) return false;
+
+    float rA = capsuleA->capsuleShape().radius;
+    float rB = capsuleB->capsuleShape().radius;
+    float hhA = capsuleA->capsuleShape().innerHalfHeight;
+    float hhB = capsuleB->capsuleShape().innerHalfHeight;
+
+    // Capsule A axis endpoints in world space
+    fm_vec3_t localUpA = fm_vec3_t{{0.0f, hhA, 0.0f}};
+    fm_vec3_t rotUpA = matrix3Vec3Mul(capsuleA->rotationMatrix(), localUpA);
+    fm_vec3_t topA = capsuleA->worldCenter() + rotUpA;
+    fm_vec3_t botA = capsuleA->worldCenter() - rotUpA;
+
+    // Capsule B axis endpoints in world space
+    fm_vec3_t localUpB = fm_vec3_t{{0.0f, hhB, 0.0f}};
+    fm_vec3_t rotUpB = matrix3Vec3Mul(capsuleB->rotationMatrix(), localUpB);
+    fm_vec3_t topB = capsuleB->worldCenter() + rotUpB;
+    fm_vec3_t botB = capsuleB->worldCenter() - rotUpB;
+
+    // Closest points between two line segments
+    fm_vec3_t d1 = topA - botA; // direction of segment A
+    fm_vec3_t d2 = topB - botB; // direction of segment B
+    fm_vec3_t r = botA - botB;
+
+    float a = fm_vec3_dot(&d1, &d1); // squared length of seg A
+    float e = fm_vec3_dot(&d2, &d2); // squared length of seg B
+    float f = fm_vec3_dot(&d2, &r);
+
+    float s = 0.0f;
+    float t = 0.0f;
+
+    if(a <= FM_EPSILON && e <= FM_EPSILON) {
+      // Both degenerate to points
+      s = 0.0f;
+      t = 0.0f;
+    } else if(a <= FM_EPSILON) {
+      // Segment A degenerates to a point
+      s = 0.0f;
+      t = f / e;
+      if(t < 0.0f) t = 0.0f;
+      if(t > 1.0f) t = 1.0f;
+    } else {
+      float c = fm_vec3_dot(&d1, &r);
+      if(e <= FM_EPSILON) {
+        // Segment B degenerates to a point
+        t = 0.0f;
+        s = -c / a;
+        if(s < 0.0f) s = 0.0f;
+        if(s > 1.0f) s = 1.0f;
+      } else {
+        // General case
+        float b = fm_vec3_dot(&d1, &d2);
+        float denom = a * e - b * b;
+
+        if(denom > FM_EPSILON) {
+          s = (b * f - c * e) / denom;
+          if(s < 0.0f) s = 0.0f;
+          if(s > 1.0f) s = 1.0f;
+        } else {
+          s = 0.0f;
+        }
+
+        t = (b * s + f) / e;
+        if(t < 0.0f) {
+          t = 0.0f;
+          s = -c / a;
+          if(s < 0.0f) s = 0.0f;
+          if(s > 1.0f) s = 1.0f;
+        } else if(t > 1.0f) {
+          t = 1.0f;
+          s = (b - c) / a;
+          if(s < 0.0f) s = 0.0f;
+          if(s > 1.0f) s = 1.0f;
+        }
+      }
+    }
+
+    fm_vec3_t closestA = botA + d1 * s;
+    fm_vec3_t closestB = botB + d2 * t;
+
+    float combinedRadius = rA + rB;
+    fm_vec3_t diff = closestA - closestB;
+    float distSq = fm_vec3_len2(&diff);
+
+    if(distSq >= combinedRadius * combinedRadius) return false;
+
+    float dist = sqrtf(distSq);
+    if(dist < FM_EPSILON) {
+      result.normal = VEC3_UP;
+    } else {
+      result.normal = diff * (1.0f / dist);
+    }
+
+    result.penetration = combinedRadius - dist;
+    result.contactA = closestA - result.normal * rA;
+    result.contactB = closestB + result.normal * rB;
+    return true;
+  }
+
 
   // ── Area-based contact point reduction (Bullet-style sortCachedPoints) ──
 
@@ -850,6 +954,9 @@ namespace P64::Coll {
         result.contactA = result.contactB;
         result.contactB = tmp;
       }
+    } else if(colliderA->shapeType() == ShapeType::Capsule && colliderB->shapeType() == ShapeType::Capsule) {
+      hasAnalyticalPath = true;
+      analyticalHit = analyticalCapsuleCapsule(colliderA, colliderB, result);
     }
     if(hasAnalyticalPath && !analyticalHit) return;
 
