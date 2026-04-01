@@ -798,7 +798,15 @@ namespace P64::Coll {
 
     if(!hasAnalyticalPath) {
       // Fall back to GJK + EPA
-      fm_vec3_t firstDir = colliderA->worldCenter() - colliderB->worldCenter();
+      // Try to reuse cached separating axis from previous frame (Bullet-style optimization)
+      fm_vec3_t firstDir = VEC3_ZERO;
+      ContactConstraintKey lookupKey = makeColliderPairConstraintKey(colliderA, colliderB);
+      ContactConstraint *cachedCC = scene->findCachedConstraint(lookupKey);
+      if(cachedCC && fm_vec3_len2(&cachedCC->cachedSeparatingAxis) > FM_EPSILON * FM_EPSILON) {
+        firstDir = cachedCC->cachedSeparatingAxis;
+      } else {
+        firstDir = colliderA->worldCenter() - colliderB->worldCenter();
+      }
       if(fm_vec3_len2(&firstDir) < FM_EPSILON * FM_EPSILON) firstDir = VEC3_UP;
 
       proxyA.collider = colliderA;
@@ -812,14 +820,22 @@ namespace P64::Coll {
       proxyB.rotationT = colliderB->inverseRotationMatrix();
 
       simplex.nPoints = 0;
+      fm_vec3_t separatingAxis{};
       bool overlapping = gjkCheckForOverlap(
         simplex,
         &proxyA, colliderProxyGjkSupport,
         &proxyB, colliderProxyGjkSupport,
-        firstDir
+        firstDir,
+        &separatingAxis
       );
 
-      if(!overlapping) return;
+      if(!overlapping) {
+        // Cache the last GJK search direction as separating axis for next frame
+        if(cachedCC) {
+          cachedCC->cachedSeparatingAxis = separatingAxis;
+        }
+        return;
+      }
       doEpa = true;
 
     }
