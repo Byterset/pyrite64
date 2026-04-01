@@ -53,8 +53,8 @@ namespace
 
   P64::Object* collisionEventSelfObject(const P64::Coll::CollEvent &event)
   {
-    if(event.selfCollider) return event.selfCollider->owner;
-    if(event.selfMeshCollider) return event.selfMeshCollider->owner;
+    if(event.selfCollider) return event.selfCollider->ownerObject();
+    if(event.selfMeshCollider) return event.selfMeshCollider->ownerObject();
     return nullptr;
   }
 

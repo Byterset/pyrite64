@@ -63,8 +63,8 @@ namespace P64::Coll {
   }
 
   static Object *collisionEventSelfObject(const CollEvent &event) {
-    if(event.selfCollider) return event.selfCollider->owner;
-    if(event.selfMeshCollider) return event.selfMeshCollider->owner;
+    if(event.selfCollider) return event.selfCollider->ownerObject();
+    if(event.selfMeshCollider) return event.selfMeshCollider->ownerObject();
     return nullptr;
   }
 
@@ -111,32 +111,32 @@ namespace P64::Coll {
   }
 
   bool CollisionScene::shouldTrackSleepState(const RigidBody *rigidBody) {
-    return rigidBody && !rigidBody->isKinematic && rigidBody->position;
+    return rigidBody && !rigidBody->isKinematic_ && rigidBody->position_;
   }
 
   bool CollisionScene::rigidBodyVelocitiesExceededSleepThreshold(const RigidBody *rigidBody) {
     if(!shouldTrackSleepState(rigidBody)) return false;
 
-    const float speedSq = fm_vec3_len2(&rigidBody->velocity);
+    const float speedSq = fm_vec3_len2(&rigidBody->linearVelocity_);
     if(speedSq > SPEED_SLEEP_THRESHOLD_SQ * (g_scene.physicsScale_ * g_scene.physicsScale_)) return true;
 
-    const float angSpeedSq = fm_vec3_len2(&rigidBody->angularVelocity);
+    const float angSpeedSq = fm_vec3_len2(&rigidBody->angularVelocity_);
     return angSpeedSq > ANGULAR_SLEEP_THRESHOLD_SQ;
   }
 
   bool CollisionScene::rigidBodyTransformExceededSleepThreshold(const RigidBody *rigidBody) {
     if(!shouldTrackSleepState(rigidBody)) return false;
 
-    const float posDeltaSq = fm_vec3_distance2(rigidBody->position, &rigidBody->prevStepPos);
+    const float posDeltaSq = fm_vec3_distance2(rigidBody->position_, &rigidBody->previousStepPosition_);
     if(posDeltaSq > POS_SLEEP_THRESHOLD_SQ * (g_scene.physicsScale_ * g_scene.physicsScale_)) return true;
 
-    if(rigidBody->rotation) {
-      const float rotSim = fabsf(quatDot(*rigidBody->rotation, rigidBody->prevStepRot));
+    if(rigidBody->rotation_) {
+      const float rotSim = fabsf(quatDot(*rigidBody->rotation_, rigidBody->previousStepRotation_));
       if(rotSim < ROT_SIMILARITY_SLEEP_THRESHOLD) return true;
     }
 
-    if(rigidBody->owner){
-      const float scaleDeltaSq = fm_vec3_distance2(&rigidBody->owner->scale, &rigidBody->prevStepScale);
+    if(rigidBody->owner_) {
+      const float scaleDeltaSq = fm_vec3_distance2(&rigidBody->owner_->scale, &rigidBody->previousStepScale_);
       if(scaleDeltaSq > POS_SLEEP_THRESHOLD_SQ * (g_scene.physicsScale_ * g_scene.physicsScale_)) return true;
     }
 
@@ -144,9 +144,9 @@ namespace P64::Coll {
   }
 
   bool CollisionScene::rigidBodyCompoundPropertiesNeedUpdate(const RigidBody *rigidBody) {
-    if(!rigidBody || !rigidBody->owner) return false;
+    if(!rigidBody || !rigidBody->owner_) return false;
     if(rigidBody->compoundPropertiesDirty()) return true;
-    return fm_vec3_distance2(&rigidBody->getCompoundScale(), &rigidBody->owner->scale) > FM_EPSILON * FM_EPSILON;
+    return fm_vec3_distance2(&rigidBody->getCompoundScale(), &rigidBody->owner_->scale) > FM_EPSILON * FM_EPSILON;
   }
 
   void CollisionScene::rebuildCachedConstraintLookup() {
@@ -207,13 +207,13 @@ namespace P64::Coll {
   }
 
   void CollisionScene::updateCompoundProperties(RigidBody *rigidBody) const {
-    if(!rigidBody || !rigidBody->owner || !rigidBody->position) return;
+    if(!rigidBody || !rigidBody->owner_ || !rigidBody->position_) return;
 
     const fm_vec3_t fallbackInertia = rigidBody->getDefaultLocalInertiaTensor();
 
-    const std::vector<Collider *> *ownerColliders = findCollidersForOwner(rigidBody->owner);
+    const std::vector<Collider *> *ownerColliders = findCollidersForOwner(rigidBody->owner_);
     if(!ownerColliders || ownerColliders->empty()) {
-      rigidBody->applyCompoundProperties(VEC3_ZERO, fallbackInertia, rigidBody->owner->scale);
+      rigidBody->applyCompoundProperties(VEC3_ZERO, fallbackInertia, rigidBody->owner_->scale);
       return;
     }
 
@@ -221,25 +221,25 @@ namespace P64::Coll {
     fm_vec3_t worldCenterSum = VEC3_ZERO;
     for(Collider *collider : *ownerColliders) {
       if(!collider) continue;
-      worldCenterSum = worldCenterSum + collider->worldCenter;
+      worldCenterSum = worldCenterSum + collider->worldCenter_;
       ++count;
     }
 
     if(count <= 0) {
-      rigidBody->applyCompoundProperties(VEC3_ZERO, fallbackInertia, rigidBody->owner->scale);
+      rigidBody->applyCompoundProperties(VEC3_ZERO, fallbackInertia, rigidBody->owner_->scale);
       return;
     }
 
     const float invCount = 1.0f / static_cast<float>(count);
     const fm_vec3_t worldCenter = worldCenterSum * invCount;
 
-    fm_vec3_t localCenterOffset = worldCenter - *rigidBody->position;
-    if(rigidBody->rotation) {
-      localCenterOffset = quatConjugate(*rigidBody->rotation) * localCenterOffset;
+    fm_vec3_t localCenterOffset = worldCenter - *rigidBody->position_;
+    if(rigidBody->rotation_) {
+      localCenterOffset = quatConjugate(*rigidBody->rotation_) * localCenterOffset;
     }
 
     if(rigidBody->getMass() <= FM_EPSILON) {
-      rigidBody->applyCompoundProperties(localCenterOffset, fallbackInertia, rigidBody->owner->scale);
+      rigidBody->applyCompoundProperties(localCenterOffset, fallbackInertia, rigidBody->owner_->scale);
       return;
     }
 
@@ -250,9 +250,9 @@ namespace P64::Coll {
       if(!collider) continue;
 
       fm_vec3_t colliderInertia = collider->inertiaTensor(massPerCollider);
-      fm_vec3_t r = collider->worldCenter - worldCenter;
-      if(rigidBody->rotation) {
-        r = quatConjugate(*rigidBody->rotation) * r;
+      fm_vec3_t r = collider->worldCenter_ - worldCenter;
+      if(rigidBody->rotation_) {
+        r = quatConjugate(*rigidBody->rotation_) * r;
       }
 
       const float x2 = r.x * r.x;
@@ -266,11 +266,11 @@ namespace P64::Coll {
       compoundInertia = compoundInertia + colliderInertia;
     }
 
-    rigidBody->applyCompoundProperties(localCenterOffset, compoundInertia, rigidBody->owner->scale);
+    rigidBody->applyCompoundProperties(localCenterOffset, compoundInertia, rigidBody->owner_->scale);
   }
 
   void CollisionScene::syncCompoundProperties(RigidBody *rigidBody) const {
-    if(!rigidBody || !rigidBody->owner) return;
+    if(!rigidBody || !rigidBody->owner_) return;
     if(!rigidBodyCompoundPropertiesNeedUpdate(rigidBody)) return;
 
     updateCompoundProperties(rigidBody);
@@ -279,15 +279,15 @@ namespace P64::Coll {
   // ── Object management ─────────────────────────────────────────────
 
   void CollisionScene::addRigidBody(RigidBody *rigidBody) {
-    if(!rigidBody || !rigidBody->owner) return;
+    if(!rigidBody || !rigidBody->owner_) return;
     rigidBodies_.push_back(rigidBody);
-    ownerRigidBodies_[rigidBody->owner] = rigidBody;
+    ownerRigidBodies_[rigidBody->owner_] = rigidBody;
     
 
     rigidBody->markCompoundPropertiesDirty();
     syncCompoundProperties(rigidBody);
-    const fm_vec3_t worldPos = rigidBody->position ? *rigidBody->position : VEC3_ZERO;
-    rigidBody->worldAABB = AABB{worldPos, worldPos};
+    const fm_vec3_t worldPos = rigidBody->position_ ? *rigidBody->position_ : VEC3_ZERO;
+    rigidBody->worldAabb_ = AABB{worldPos, worldPos};
   }
 
   void CollisionScene::removeRigidBody(RigidBody *rigidBody) {
@@ -295,8 +295,8 @@ namespace P64::Coll {
 
     std::vector<RigidBody *> wakeCandidates;
 
-    if(rigidBody->owner) {
-      auto ownerIt = ownerRigidBodies_.find(rigidBody->owner);
+    if(rigidBody->owner_) {
+      auto ownerIt = ownerRigidBodies_.find(rigidBody->owner_);
       if(ownerIt != ownerRigidBodies_.end() && ownerIt->second == rigidBody) {
         ownerRigidBodies_.erase(ownerIt);
       }
@@ -307,11 +307,11 @@ namespace P64::Coll {
     }, wakeCandidates, rigidBody);
 
     // Sleeping rigidBodies overlapping the removed body are likely support-dependent and should re-evaluate.
-    const AABB removedBounds = rigidBody->worldAABB;
+    const AABB removedBounds = rigidBody->worldAabb_;
     
     for(RigidBody *body : rigidBodies_) {
       if(!body || body == rigidBody) continue;
-      if(aabbOverlap(body->worldAABB, removedBounds)) {
+      if(aabbOverlap(body->worldAabb_, removedBounds)) {
         addWakeCandidate(wakeCandidates, body, rigidBody);
       }
     }
@@ -325,7 +325,7 @@ namespace P64::Coll {
   {
     for (RigidBody *body : rigidBodies_)
     {
-      if (body && body->owner && body->owner->id == id)
+      if (body && body->owner_ && body->owner_->id == id)
       {
         return body;
       }
@@ -334,23 +334,23 @@ namespace P64::Coll {
   }
 
   void CollisionScene::addCollider(Collider *collider) {
-    if(!collider || !collider->owner) return;
+    if(!collider || !collider->owner_) return;
     colliders_.push_back(collider);
-    ownerColliders_[collider->owner].push_back(collider);
+    ownerColliders_[collider->owner_].push_back(collider);
     collider->syncWorldState();
 
-    RigidBody *rigidBody = findRigidBodyByOwner(collider->owner);
+    RigidBody *rigidBody = findRigidBodyByOwner(collider->owner_);
     if (rigidBody)
     {
       rigidBody->markCompoundPropertiesDirty();
       syncCompoundProperties(rigidBody);
     }
-    collider->aabbTreeNodeId = colliderAABBTree.createNode(collider->worldAABB, collider);
+    collider->aabbTreeNodeId_ = colliderAABBTree.createNode(collider->worldAabb_, collider);
   }
 
   void CollisionScene::removeCollider(Collider *collider) {
     if(!collider) return;
-    Object *owner = collider->owner;
+    Object *owner = collider->owner_;
 
     std::vector<RigidBody *> wakeCandidates;
     removeCachedConstraints([collider](const ContactConstraint &cc) {
@@ -372,9 +372,9 @@ namespace P64::Coll {
 
     colliders_.erase(std::remove(colliders_.begin(), colliders_.end(), collider), colliders_.end());
 
-    if(collider->aabbTreeNodeId != NULL_NODE) {
-      colliderAABBTree.removeLeaf(collider->aabbTreeNodeId, true);
-      collider->aabbTreeNodeId = NULL_NODE;
+    if(collider->aabbTreeNodeId_ != NULL_NODE) {
+      colliderAABBTree.removeLeaf(collider->aabbTreeNodeId_, true);
+      collider->aabbTreeNodeId_ = NULL_NODE;
     }
 
     if(owner) {
@@ -389,8 +389,8 @@ namespace P64::Coll {
   void CollisionScene::addMeshCollider(MeshCollider *mesh) {
     if(!mesh) return;
 
-    mesh->computeLocalRootAABB();
-    mesh->recalculateWorldAABB();
+    mesh->computeLocalRootAabb();
+    mesh->recalculateWorldAabb();
     mesh->syncOwnerTransform();
 
     meshColliders_.push_back(mesh);
@@ -667,10 +667,10 @@ namespace P64::Coll {
 
     for(RigidBody *body : island) {
       if(!body) continue;
-      if(body->isSleeping) {
+      if(body->isSleeping_) {
         body->wake();
       } else {
-        body->sleepCounter = 0;
+        body->sleepCounter_ = 0;
       }
     }
   }
@@ -679,7 +679,7 @@ namespace P64::Coll {
     std::vector<RigidBody *> wakeCandidates;
 
     for(RigidBody *body : rigidBodies_) {
-      if(!body || !body->isSleeping) continue;
+      if(!body || !body->isSleeping_) continue;
       if(!rigidBodyTransformExceededSleepThreshold(body)) continue;
       wakeCandidates.push_back(body);
     }
@@ -693,7 +693,7 @@ namespace P64::Coll {
     std::unordered_set<RigidBody *> visited;
 
     for(RigidBody *body : rigidBodies_) {
-      if(!shouldTrackSleepState(body) || body->isSleeping) continue;
+      if(!shouldTrackSleepState(body) || body->isSleeping_) continue;
       if(visited.find(body) != visited.end()) continue;
 
       std::vector<RigidBody *> island;
@@ -702,7 +702,7 @@ namespace P64::Coll {
 
       bool islandCanSleep = true;
       for(RigidBody *islandBody : island) {
-        if(islandBody->isSleeping) {
+        if(islandBody->isSleeping_) {
           islandBody->wake();
         }
 
@@ -715,17 +715,17 @@ namespace P64::Coll {
 
       if(!islandCanSleep) {
         for(RigidBody *islandBody : island) {
-          islandBody->sleepCounter = 0;
+          islandBody->sleepCounter_ = 0;
         }
         continue;
       }
 
       bool shouldSleepIsland = true;
       for(RigidBody *islandBody : island) {
-        if(islandBody->sleepCounter < std::numeric_limits<uint16_t>::max()) {
-          islandBody->sleepCounter++;
+        if(islandBody->sleepCounter_ < std::numeric_limits<uint16_t>::max()) {
+          islandBody->sleepCounter_++;
         }
-        if(islandBody->sleepCounter < SLEEP_STEPS) {
+        if(islandBody->sleepCounter_ < SLEEP_STEPS) {
           shouldSleepIsland = false;
         }
       }
@@ -826,15 +826,15 @@ namespace P64::Coll {
     const uint64_t bodyDetectStart = get_ticks();
     for (Collider *collider : colliders_)
     {
-      if (!collider || !collider->owner)
+      if (!collider || !collider->owner_)
         continue;
-      if (collider->isTrigger)
+      if (collider->isTrigger_)
         continue;
 
-      RigidBody *rbA = findRigidBodyByOwner(collider->owner);
+      RigidBody *rbA = findRigidBodyByOwner(collider->owner_);
 
       const int candidateCount = colliderAABBTree.queryBounds(
-          collider->worldAABB,
+          collider->worldAabb_,
           candidateColliders.data(),
           static_cast<int>(candidateColliders.size()));
       for (int candidateIdx = 0; candidateIdx < candidateCount; ++candidateIdx)
@@ -846,22 +846,22 @@ namespace P64::Coll {
         Collider *collB = static_cast<Collider *>(data);
 
         // When you get a candidate pair:
-        auto key = AABBTree::makeNodePairKey(collider->aabbTreeNodeId, collB->aabbTreeNodeId);
+        auto key = AABBTree::makeNodePairKey(collider->aabbTreeNodeId_, collB->aabbTreeNodeId_);
         if (tested_pairs.insert(key).second)
         {
           // Was not present -> test this pair
           // don't let collider collide with itself or colliders of the same object
-          if (!collB || collB == collider || !collB->owner)
+          if (!collB || collB == collider || !collB->owner_)
             continue;
-          if (collider->owner == collB->owner)
+          if (collider->owner_ == collB->owner_)
             continue;
 
           if (!collider->readsCollider(collB) && !collB->readsCollider(collider))
             continue;
-          RigidBody *rbB = findRigidBodyByOwner(collB->owner);
-          if((rbA && rbA->isSleeping) && (rbB && rbB->isSleeping)) {
+          RigidBody *rbB = findRigidBodyByOwner(collB->owner_);
+          if((rbA && rbA->isSleeping_) && (rbB && rbB->isSleeping_)) {
             // Allow sleeping objects to generate contacts with triggers, but skip if both are sleeping non-triggers to save performance
-            if(!collider->isTrigger && !collB->isTrigger) {
+            if(!collider->isTrigger_ && !collB->isTrigger_) {
               continue;
             }
           }
@@ -877,11 +877,11 @@ namespace P64::Coll {
 
       MeshCollider *mesh = meshColliders_[m];
 
-      if (!mesh || mesh->triangleCount <= 0)
+      if (!mesh || mesh->triangleCount_ <= 0)
         continue;
 
       const int candidateCount = colliderAABBTree.queryBounds(
-          mesh->worldBoundingBox,
+          mesh->worldAabb_,
           candidateColliders.data(),
           static_cast<int>(candidateColliders.size()));
 
@@ -892,15 +892,15 @@ namespace P64::Coll {
           continue;
 
         Collider *collA = static_cast<Collider *>(data);
-        if(!collA || !collA->owner)
+        if(!collA || !collA->owner_)
           continue;
 
         if (!collA->readsMeshCollider(mesh) && !mesh->readsCollider(collA))
           continue;
 
-        RigidBody *rigidBodyA = findRigidBodyByOwner(collA->owner);
+        RigidBody *rigidBodyA = findRigidBodyByOwner(collA->owner_);
         //prevent perpetural collision checks of sleeping objects with meshes
-        if(!mesh->transformChanged && rigidBodyA && rigidBodyA->isSleeping && !collA->isTrigger)
+        if(!mesh->transformChanged_ && rigidBodyA && rigidBodyA->isSleeping_ && !collA->isTrigger_)
           continue;
         collideDetectObjectToMesh(collA, rigidBodyA, *mesh);
       }
@@ -941,8 +941,8 @@ namespace P64::Coll {
         if(!cp.active) continue;
 
         // Relative vectors from centers of mass
-        cp.aToContact = a ? cp.contactA - a->worldCenterOfMass : VEC3_ZERO;
-        cp.bToContact = b ? cp.contactB - b->worldCenterOfMass : VEC3_ZERO;
+        cp.aToContact = a ? cp.contactA - a->worldCenterOfMass() : VEC3_ZERO;
+        cp.bToContact = b ? cp.contactB - b->worldCenterOfMass() : VEC3_ZERO;
 
         // Normal effective mass: 1 / (invMassA + invMassB + (rA×n)·I_A^-1·(rA×n) + ...)
         fm_vec3_t raCrossN;
@@ -1013,13 +1013,13 @@ namespace P64::Coll {
         fm_vec3_t relVel = VEC3_ZERO;
         if(a) {
           fm_vec3_t aCross;
-          fm_vec3_cross(&aCross, &a->angularVelocity, &cp.aToContact);
-          relVel = a->velocity + aCross;
+          fm_vec3_cross(&aCross, &a->angularVelocity_, &cp.aToContact);
+          relVel = a->linearVelocity_ + aCross;
         }
         if(b) {
           fm_vec3_t bCross;
-          fm_vec3_cross(&bCross, &b->angularVelocity, &cp.bToContact);
-          relVel -= (b->velocity + bCross);
+          fm_vec3_cross(&bCross, &b->angularVelocity_, &cp.bToContact);
+          relVel -= (b->linearVelocity_ + bCross);
         }
         float relVelN = fm_vec3_dot(&relVel, &cc.normal);
         if(relVelN < -restitutionSlop) {
@@ -1074,18 +1074,18 @@ namespace P64::Coll {
           // Compute relative velocity at contact
           fm_vec3_t relVel = VEC3_ZERO;
           if(a) {
-            relVel = a->velocity;
+            relVel = a->linearVelocity_;
             if(aHasMotionAngular) {
               fm_vec3_t aCross;
-              fm_vec3_cross(&aCross, &a->angularVelocity, &cp.aToContact);
+              fm_vec3_cross(&aCross, &a->angularVelocity_, &cp.aToContact);
               relVel += aCross;
             }
           }
           if(b) {
-            fm_vec3_t velB = b->velocity;
+            fm_vec3_t velB = b->linearVelocity_;
             if(bHasMotionAngular) {
               fm_vec3_t bCross;
-              fm_vec3_cross(&bCross, &b->angularVelocity, &cp.bToContact);
+              fm_vec3_cross(&bCross, &b->angularVelocity_, &cp.bToContact);
               velB += bCross;
             }
             relVel -= velB;
@@ -1110,19 +1110,19 @@ namespace P64::Coll {
             // Recompute relative velocity after normal impulse.
             fm_vec3_t contactVelA = VEC3_ZERO;
             fm_vec3_t contactVelB = VEC3_ZERO;
-            if(a && !a->isKinematic) {
-              contactVelA = a->velocity;
+            if(a && !a->isKinematic_) {
+              contactVelA = a->linearVelocity_;
               if(aHasMotionAngular) {
                 fm_vec3_t aCross;
-                fm_vec3_cross(&aCross, &a->angularVelocity, &cp.aToContact);
+                fm_vec3_cross(&aCross, &a->angularVelocity_, &cp.aToContact);
                 contactVelA += aCross;
               }
             }
-            if(b && !b->isKinematic) {
-              contactVelB = b->velocity;
+            if(b && !b->isKinematic_) {
+              contactVelB = b->linearVelocity_;
               if(bHasMotionAngular) {
                 fm_vec3_t bCross;
-                fm_vec3_cross(&bCross, &b->angularVelocity, &cp.bToContact);
+                fm_vec3_cross(&bCross, &b->angularVelocity_, &cp.bToContact);
                 contactVelB += bCross;
               }
             }
@@ -1215,10 +1215,10 @@ namespace P64::Coll {
         appliedCorrection = true;
 
         // Apply linear + angular corrections to A
-        if(a && !a->isKinematic && a->position) {
+        if(a && !a->isKinematic_ && a->position_) {
           if(invMassA > 0.0f) {
             fm_vec3_t corrA = constrainLinearWorld(a, cc.normal * (correctionMag * invMassA));
-            *a->position = *a->position + corrA;
+            *a->position_ = *a->position_ + corrA;
           }
           if(aCanRotate) {
             fm_vec3_t angImpulse;
@@ -1229,17 +1229,17 @@ namespace P64::Coll {
               fm_vec3_t axis = rotChange / angle;
               fm_quat_t dq;
               fm_quat_from_axis_angle(&dq, &axis, angle);
-              *a->rotation = dq * *a->rotation;
-              fm_quat_norm(a->rotation, a->rotation);
+              *a->rotation_ = dq * *a->rotation_;
+              fm_quat_norm(a->rotation_, a->rotation_);
             }
           }
         }
 
         // Apply linear + angular corrections to B
-        if(b && !b->isKinematic && b->position) {
+        if(b && !b->isKinematic_ && b->position_) {
           if(invMassB > 0.0f) {
             fm_vec3_t corrB = constrainLinearWorld(b, cc.normal * (correctionMag * invMassB));
-            *b->position = *b->position - corrB;
+            *b->position_ = *b->position_ - corrB;
           }
           if(bCanRotate) {
             fm_vec3_t angImpulse;
@@ -1251,8 +1251,8 @@ namespace P64::Coll {
               fm_vec3_t axis = rotChange / angle;
               fm_quat_t dq;
               fm_quat_from_axis_angle(&dq, &axis, angle);
-              *b->rotation = dq * *b->rotation;
-              fm_quat_norm(b->rotation, b->rotation);
+              *b->rotation_ = dq * *b->rotation_;
+              fm_quat_norm(b->rotation_, b->rotation_);
             }
           }
         }
@@ -1268,11 +1268,10 @@ namespace P64::Coll {
       MeshCollider *mesh = meshColliders_[i];
       if(!mesh) continue;
 
-      mesh->transformChanged = mesh->ownerTransformChanged();
-      if(!mesh->transformChanged && mesh->hasCachedOwnerTransform) continue;
+      mesh->transformChanged_ = mesh->hasOwnerTransformChanged();
+      if(!mesh->transformChanged_ && mesh->hasCachedOwnerTransform_) continue;
 
-      const AABB previousBounds = mesh->worldBoundingBox;
-      mesh->recalculateWorldAABB();
+      mesh->recalculateWorldAabb();
       mesh->syncOwnerTransform();
     }
   }
@@ -1290,7 +1289,7 @@ namespace P64::Coll {
     if(hasFlag(ray.collTypes, RaycastColliderTypeFlags::MESH_COLLIDERS)) {
       for(std::size_t m = 0; m < meshColliders_.size(); ++m) {
         const MeshCollider *mesh = meshColliders_[m];
-        if(!mesh || mesh->triangleCount == 0 || !mesh->owner) continue;
+        if(!mesh || mesh->triangleCount_ == 0 || !mesh->owner_) continue;
         Raycast localRay = ray;
         localRay.origin = mesh->hasTransform() ? mesh->toLocalSpace(ray.origin) : ray.origin;
         localRay.dir = mesh->hasTransform() ? mesh->rotateToLocal(ray.dir) : ray.dir;
@@ -1302,29 +1301,29 @@ namespace P64::Coll {
 
 
         NodeProxy triCandidates[RAYCAST_MAX_TRIANGLE_TESTS];
-        int triCount = mesh->aabbTree.queryRay(localRay, triCandidates, RAYCAST_MAX_TRIANGLE_TESTS);
+        int triCount = mesh->aabbTree_.queryRay(localRay, triCandidates, RAYCAST_MAX_TRIANGLE_TESTS);
         for(int i = 0; i < triCount; ++i) {
-          void *data = mesh->aabbTree.getNodeData(triCandidates[i]);
+          void *data = mesh->aabbTree_.getNodeData(triCandidates[i]);
           if(!data) continue;
           int triIdx = static_cast<int>(reinterpret_cast<intptr_t>(data)) - 1; // stored as index+1
-          if(triIdx < 0 || triIdx >= mesh->triangleCount) continue;
+          if(triIdx < 0 || triIdx >= mesh->triangleCount_) continue;
 
-          const MeshTriangleIndices &tri = mesh->triangles[triIdx];
+          const MeshTriangleIndices &tri = mesh->triangles_[triIdx];
 
           // Get vertices in world space
-          fm_vec3_t v0 = mesh->vertices[tri.indices[0]];
-          fm_vec3_t v1 = mesh->vertices[tri.indices[1]];
-          fm_vec3_t v2 = mesh->vertices[tri.indices[2]];
+          fm_vec3_t v0 = mesh->vertices_[tri.indices[0]];
+          fm_vec3_t v1 = mesh->vertices_[tri.indices[1]];
+          fm_vec3_t v2 = mesh->vertices_[tri.indices[2]];
 
           currentHit.distance = std::numeric_limits<float>::max();
           currentHit.didHit = false;
-          hit.didHit = hit.didHit | ray_triangle_intersection(localRay, v0, v1, v2, mesh->normals[triIdx], currentHit);
+          hit.didHit = hit.didHit | ray_triangle_intersection(localRay, v0, v1, v2, mesh->normals_[triIdx], currentHit);
           if(currentHit.didHit && currentHit.distance < hit.distance && currentHit.distance <= ray.maxDistance) {
             // Transform hit point and normal back to world space
             hit.point = mesh->hasTransform() ? mesh->toWorldSpace(currentHit.point) : currentHit.point;
             hit.normal = mesh->hasTransform() ? mesh->rotateToWorld(currentHit.normal) : currentHit.normal;
             hit.distance = currentHit.distance;
-            hit.hitObjectId = mesh->owner->id;
+            hit.hitObjectId = mesh->owner_->id;
           }
         }
       }
@@ -1340,9 +1339,9 @@ namespace P64::Coll {
         if(!data) continue;
         auto *coll = static_cast<Collider *>(data);
         
-        if(!coll->owner) continue;
-        if(!ray.interactTrigger && coll->isTrigger) continue;
-        if((coll->maskWrite & ray.readMask) == 0) continue;
+        if(!coll->owner_) continue;
+        if(!ray.interactTrigger && coll->isTrigger_) continue;
+        if((coll->writeMask_ & ray.readMask) == 0) continue;
         currentHit.didHit = false;
         currentHit.distance = std::numeric_limits<float>::max();
         hit.didHit = hit.didHit | ray_collider_intersection(ray, coll, currentHit);
@@ -1379,7 +1378,7 @@ namespace P64::Coll {
     // Update compound CoM/inertia on demand and refresh world inertia tensors.
     for (RigidBody *body : rigidBodies_){
       syncCompoundProperties(body);
-      if(body->isSleeping) continue;
+      if(body->isSleeping_) continue;
       body->updateWorldInertia();
     }
     ticksWorldUpdate = get_ticks() - stageStart;
@@ -1387,7 +1386,7 @@ namespace P64::Coll {
     stageStart = get_ticks();
     // Integrate velocities
     for(RigidBody *body : rigidBodies_) {
-      if(!body->isSleeping) {
+      if(!body->isSleeping_) {
         body->integrateVelocity(fixedDt_, gravity_);
         body->integrateAngularVelocity(fixedDt_);
       }
@@ -1425,7 +1424,7 @@ namespace P64::Coll {
     // Integrate positions and rotations
     stageStart = get_ticks();
     for(RigidBody *body : rigidBodies_) {
-      if(body->isSleeping) continue;
+      if(body->isSleeping_) continue;
 
       body->integratePosition(fixedDt_);
       body->integrateRotation(fixedDt_);
@@ -1445,22 +1444,22 @@ namespace P64::Coll {
     stageStart = get_ticks();
     for(RigidBody *body : rigidBodies_) {
 
-      if(!body || !body->owner) continue;
+      if(!body || !body->owner_) continue;
 
       body->applyPositionConstraints();
       body->updateWorldInertia();
 
-      const std::vector<Collider *> *ownerColliders = findCollidersForOwner(body->owner);
+      const std::vector<Collider *> *ownerColliders = findCollidersForOwner(body->owner_);
       if(!ownerColliders || ownerColliders->empty()) continue;
 
       fm_vec3_t worldCenterSum = VEC3_ZERO;
       for (Collider *collider : *ownerColliders)
       {
         if (!collider) continue;
-        fm_vec3_t displacement = *body->position - body->prevStepPos;
-        body->worldAABB.min = vec3Min(body->worldAABB.min, collider->worldAABB.min);
-        body->worldAABB.max = vec3Max(body->worldAABB.max, collider->worldAABB.max);
-        colliderAABBTree.moveNode(collider->aabbTreeNodeId, collider->worldAABB, displacement);
+        fm_vec3_t displacement = *body->position_ - body->previousStepPosition_;
+        body->worldAabb_.min = vec3Min(body->worldAabb_.min, collider->worldAabb_.min);
+        body->worldAabb_.max = vec3Max(body->worldAabb_.max, collider->worldAabb_.max);
+        colliderAABBTree.moveNode(collider->aabbTreeNodeId_, collider->worldAabb_, displacement);
       }
     }
 
@@ -1482,7 +1481,7 @@ namespace P64::Coll {
       for (std::size_t meshIdx = 0; meshIdx < meshColliders_.size(); ++meshIdx)
       {
         const auto *meshCollider = meshColliders_[meshIdx];
-        if (!meshCollider || !meshCollider->vertices || !meshCollider->triangles || meshCollider->triangleCount == 0)
+        if (!meshCollider || !meshCollider->vertices_ || !meshCollider->triangles_ || meshCollider->triangleCount_ == 0)
         {
           continue;
         }
@@ -1491,9 +1490,9 @@ namespace P64::Coll {
 
         const bool useRotation = meshCollider->hasRotation();
 
-        const fm_quat_t rot = meshCollider->owner->rot;
-        const fm_vec3_t pos = meshCollider->owner->pos;
-        const fm_vec3_t scale = meshCollider->owner->scale;
+  const fm_quat_t rot = meshCollider->owner_->rot;
+  const fm_vec3_t pos = meshCollider->owner_->pos;
+  const fm_vec3_t scale = meshCollider->owner_->scale;
 
         auto toWorldMesh = [&](const fm_vec3_t &local)
         {
@@ -1505,15 +1504,15 @@ namespace P64::Coll {
           return scaled + pos;
         };
 
-        for (uint16_t t = 0; t < meshCollider->triangleCount; ++t)
+        for (uint16_t t = 0; t < meshCollider->triangleCount_; ++t)
         {
-          int idxA = meshCollider->triangles[t].indices[0];
-          int idxB = meshCollider->triangles[t].indices[1];
-          int idxC = meshCollider->triangles[t].indices[2];
+          int idxA = meshCollider->triangles_[t].indices[0];
+          int idxB = meshCollider->triangles_[t].indices[1];
+          int idxC = meshCollider->triangles_[t].indices[2];
 
-          fm_vec3_t v0 = toWorldMesh(meshCollider->vertices[idxA]);
-          fm_vec3_t v1 = toWorldMesh(meshCollider->vertices[idxB]);
-          fm_vec3_t v2 = toWorldMesh(meshCollider->vertices[idxC]);
+          fm_vec3_t v0 = toWorldMesh(meshCollider->vertices_[idxA]);
+          fm_vec3_t v1 = toWorldMesh(meshCollider->vertices_[idxB]);
+          fm_vec3_t v2 = toWorldMesh(meshCollider->vertices_[idxC]);
 
           Debug::drawLine(v0, v1, color);
           Debug::drawLine(v1, v2, color);
@@ -1530,59 +1529,59 @@ namespace P64::Coll {
         color_t col{0xFF, 0xFF, 0x00, 0xFF};
         if (collider)
         {
-          const RigidBody *rigidBody = findRigidBodyByOwner(collider->owner);
-          const bool isSleepingBody = rigidBody && rigidBody->isSleeping;
+          const RigidBody *rigidBody = findRigidBodyByOwner(collider->owner_);
+          const bool isSleepingBody = rigidBody && rigidBody->isSleeping_;
 
           if (isSleepingBody)
           {
             col = color_t{0x80, 0x80, 0x80, 0xFF};
           }
 
-          switch (collider->type)
+          switch (collider->type_)
           {
           case ShapeType::Sphere:
             if (!isSleepingBody) col = color_t{0xFF, 0x00, 0x00, 0xFF};
-            Debug::drawSphere(collider->worldCenter, collider->sphere.radius, col);
+            Debug::drawSphere(collider->worldCenter_, collider->sphere_.radius, col);
             break;
           case ShapeType::Box:
             if (!isSleepingBody) col = color_t{0x00, 0xFF, 0xFF, 0xFF};
-            Debug::drawOBB(collider->worldCenter, collider->box.halfSize, collider->owner->rot, col);
+            Debug::drawOBB(collider->worldCenter_, collider->box_.halfSize, collider->owner_->rot, col);
             break;
           case ShapeType::Capsule:
             if (!isSleepingBody) col = color_t{0x00, 0x80, 0xFF, 0xFF};
             Debug::drawCapsule(
-                collider->worldCenter,
-                collider->capsule.radius,
-                collider->capsule.innerHalfHeight,
-                collider->owner->rot,
+                collider->worldCenter_,
+                collider->capsule_.radius,
+                collider->capsule_.innerHalfHeight,
+                collider->owner_->rot,
                 col);
             break;
           case ShapeType::Cylinder:
             if (!isSleepingBody) col = color_t{0xFF, 0x80, 0x00, 0xFF};
             Debug::drawCylinder(
-                collider->worldCenter,
-                collider->cylinder.radius,
-                collider->cylinder.halfHeight,
-                collider->owner->rot,
+                collider->worldCenter_,
+                collider->cylinder_.radius,
+                collider->cylinder_.halfHeight,
+                collider->owner_->rot,
                 col);
             break;
           case ShapeType::Cone:
             if (!isSleepingBody) col = color_t{0xFF, 0x40, 0xA0, 0xFF};
             Debug::drawCone(
-                collider->worldCenter,
-                collider->cone.radius,
-                collider->cone.halfHeight,
-                collider->owner->rot,
+                collider->worldCenter_,
+                collider->cone_.radius,
+                collider->cone_.halfHeight,
+                collider->owner_->rot,
                 col);
             break;
           case ShapeType::Pyramid:
             if (!isSleepingBody) col = color_t{0xB0, 0xFF, 0x40, 0xFF};
             Debug::drawPyramid(
-                collider->worldCenter,
-                collider->pyramid.baseHalfWidthX,
-                collider->pyramid.baseHalfWidthZ,
-                collider->pyramid.halfHeight,
-                collider->owner->rot,
+                collider->worldCenter_,
+                collider->pyramid_.baseHalfWidthX,
+                collider->pyramid_.baseHalfWidthZ,
+                collider->pyramid_.halfHeight,
+                collider->owner_->rot,
                 col);
             break;
           default:

@@ -120,44 +120,44 @@ namespace P64::Coll {
     assertf(m > 0.0f, "Mass must be greater than zero");
     assertf(object, "RigidBody must be initialized with a valid owner object");
 
-    owner = object;
-    position = &object->pos;
-    rotation = &object->rot;
-    collisionGroup = 0;
-    aabbTreeNodeId = NULL_NODE;
+    owner_ = object;
+    position_ = &object->pos;
+    rotation_ = &object->rot;
+    collisionGroup_ = 0;
+    aabbTreeNodeId_ = NULL_NODE;
     constraints_ = Constraint::None;
-    sleepCounter = 0;
-    isSleeping = false;
-    isKinematic = false;
-    hasGravity = true;
+    sleepCounter_ = 0;
+    isSleeping_ = false;
+    isKinematic_ = false;
+    hasGravity_ = true;
 
-    velocity = VEC3_ZERO;
-    angularVelocity = VEC3_ZERO;
-    acceleration = VEC3_ZERO;
-    torqueAccumulator = VEC3_ZERO;
+    linearVelocity_ = VEC3_ZERO;
+    angularVelocity_ = VEC3_ZERO;
+    acceleration_ = VEC3_ZERO;
+    torqueAccumulator_ = VEC3_ZERO;
     centerOffset_ = VEC3_ZERO;
     compoundScale_ = object->scale;
     compoundPropertiesDirty_ = true;
 
-    timeScalar = 1.0f;
-    gravityScalar = 1.0f;
-    angularDamping = 0.03f;
+    timeScale_ = 1.0f;
+    gravityScale_ = 1.0f;
+    angularDamping_ = 0.03f;
 
     setMass(m);
 
-    if(rotation) {
-      prevStepRot = *rotation;
+    if(rotation_) {
+      previousStepRotation_ = *rotation_;
     }
-    if(position) {
-      prevStepPos = *position;
+    if(position_) {
+      previousStepPosition_ = *position_;
     }
-    prevStepScale = object->scale;
+    previousStepScale_ = object->scale;
   }
 
   void RigidBody::setMass(float newMass) {
     assert(newMass > 0.0f);
     mass_ = newMass;
-    invMass = 1.0f / newMass;
+    inverseMass_ = 1.0f / newMass;
     compoundPropertiesDirty_ = true;
 
     // Initialize inertia tensor for a solid sphere as a simple default.
@@ -173,8 +173,8 @@ namespace P64::Coll {
   void RigidBody::setConstraints(Constraint newConstraints) {
     constraints_ = newConstraints;
     refreshConstraintCaches();
-    velocity = constrainLinearWorld(velocity);
-    angularVelocity = constrainAngularWorld(angularVelocity);
+    linearVelocity_ = constrainLinearWorld(linearVelocity_);
+    angularVelocity_ = constrainAngularWorld(angularVelocity_);
   }
 
   void RigidBody::applyCompoundProperties(const fm_vec3_t &centerOffset, const fm_vec3_t &localInertiaTensor, const fm_vec3_t &compoundScale) {
@@ -197,24 +197,24 @@ namespace P64::Coll {
   }
 
   void RigidBody::applyConstrainedLinearVelocityDelta(const fm_vec3_t &deltaLinearVelocity) {
-    velocity = velocity + constrainLinearWorld(deltaLinearVelocity);
+    linearVelocity_ = linearVelocity_ + constrainLinearWorld(deltaLinearVelocity);
   }
 
   void RigidBody::applyConstrainedImpulseAtContact(const fm_vec3_t &impulse, const fm_vec3_t &toContact) {
-    if(isKinematic) return;
+    if(isKinematic_) return;
 
-    applyConstrainedLinearVelocityDelta(impulse * invMass);
+    applyConstrainedLinearVelocityDelta(impulse * inverseMass_);
     if(!canApplyAngularResponse()) return;
 
     fm_vec3_t cross;
     fm_vec3_cross(&cross, &toContact, &impulse);
-    angularVelocity = angularVelocity + applyConstrainedWorldInertia(cross);
+    angularVelocity_ = angularVelocity_ + applyConstrainedWorldInertia(cross);
   }
 
   float RigidBody::constrainedLinearInvMassAlong(const fm_vec3_t &direction) const {
-    if(isKinematic) return 0.0f;
-    if(invMass <= FM_EPSILON) return 0.0f;
-    if(!hasLinearConstraints_) return invMass;
+    if(isKinematic_) return 0.0f;
+    if(inverseMass_ <= FM_EPSILON) return 0.0f;
+    if(!hasLinearConstraints_) return inverseMass_;
 
     return direction.x * direction.x * linearInvMassScale_.x +
            direction.y * direction.y * linearInvMassScale_.y +
@@ -225,7 +225,7 @@ namespace P64::Coll {
     hasLinearConstraints_ = (constraints_ & Constraint::FreezePosAll) != Constraint::None;
     hasAngularConstraints_ = (constraints_ & Constraint::FreezeRotAll) != Constraint::None;
     linearConstraintScale_ = linearConstraintScale(constraints_);
-    linearInvMassScale_ = linearConstraintScale_ * invMass;
+    linearInvMassScale_ = linearConstraintScale_ * inverseMass_;
     refreshAngularConstraintProjection();
     refreshConstrainedInertiaTensor();
   }
@@ -237,233 +237,233 @@ namespace P64::Coll {
     }
 
     const Matrix3x3 localProjection = diagonalMatrix(angularConstraintScale(constraints_));
-    angularConstraintProjection_ = matrix3Mul(matrix3Mul(rotationMatrix, localProjection), matrix3Transpose(rotationMatrix));
+    angularConstraintProjection_ = matrix3Mul(matrix3Mul(rotationMatrix_, localProjection), matrix3Transpose(rotationMatrix_));
   }
 
   void RigidBody::refreshConstrainedInertiaTensor() {
     if(!hasAngularConstraints_) {
-      constrainedInvWorldInertiaTensor_ = invWorldInertiaTensor;
+      constrainedInvWorldInertiaTensor_ = invWorldInertiaTensor_;
       return;
     }
 
-    constrainedInvWorldInertiaTensor_ = matrix3Mul(angularConstraintProjection_, invWorldInertiaTensor);
+    constrainedInvWorldInertiaTensor_ = matrix3Mul(angularConstraintProjection_, invWorldInertiaTensor_);
   }
 
   void RigidBody::integrateVelocity(float fixedDt, const fm_vec3_t &gravity) {
-    if(isKinematic || isSleeping) return;
+    if(isKinematic_ || isSleeping_) return;
 
     if(hasFlag(constraints_, Constraint::FreezePosAll)) {
-      velocity = VEC3_ZERO;
-      acceleration = VEC3_ZERO;
+      linearVelocity_ = VEC3_ZERO;
+      acceleration_ = VEC3_ZERO;
       return;
     }
 
     // Apply gravity
-    if(hasGravity) {
-      acceleration = acceleration + (gravity * gravityScalar);
+    if(hasGravity_) {
+      acceleration_ = acceleration_ + (gravity * gravityScale_);
     }
 
-    float dt = fixedDt * timeScalar;
+    float dt = fixedDt * timeScale_;
 
     // Add user acceleration
-    velocity = velocity + (acceleration * dt);
-    acceleration = VEC3_ZERO;
+    linearVelocity_ = linearVelocity_ + (acceleration_ * dt);
+    acceleration_ = VEC3_ZERO;
 
     // Apply position constraints
-    velocity = constrainLinearWorld(velocity);
+    linearVelocity_ = constrainLinearWorld(linearVelocity_);
 
     CollisionScene *scene = collisionSceneGetInstance();
     float physicsScale = scene->getPhysicsScale();
 
     // Clamp to terminal speed
-    float speedSq = fm_vec3_len2(&velocity);
+    float speedSq = fm_vec3_len2(&linearVelocity_);
     if(speedSq > TERMINAL_SPEED * TERMINAL_SPEED * (physicsScale * physicsScale)) {
-      velocity = velocity * ((TERMINAL_SPEED * physicsScale) / sqrtf(speedSq));
+      linearVelocity_ = linearVelocity_ * ((TERMINAL_SPEED * physicsScale) / sqrtf(speedSq));
     }
   }
 
   void RigidBody::integrateAngularVelocity(float fixedDt) {
-    if(isKinematic || isSleeping) return;
-    if(invMass < FM_EPSILON) return;
+    if(isKinematic_ || isSleeping_) return;
+    if(inverseMass_ < FM_EPSILON) return;
 
     if(hasFlag(constraints_, Constraint::FreezeRotAll)) {
-      angularVelocity = VEC3_ZERO;
-      torqueAccumulator = VEC3_ZERO;
+      angularVelocity_ = VEC3_ZERO;
+      torqueAccumulator_ = VEC3_ZERO;
       return;
     }
 
-    float dt = fixedDt * timeScalar;
-    const bool hadExternalTorque = !vec3IsZero(torqueAccumulator);
+    float dt = fixedDt * timeScale_;
+    const bool hadExternalTorque = !vec3IsZero(torqueAccumulator_);
 
     // Apply torque accumulator
     if(hadExternalTorque) {
-      fm_vec3_t angAccel = applyWorldInertia(torqueAccumulator);
-      angularVelocity = angularVelocity + (angAccel * dt * timeScalar);
-      torqueAccumulator = VEC3_ZERO;
+      fm_vec3_t angAccel = applyWorldInertia(torqueAccumulator_);
+      angularVelocity_ = angularVelocity_ + (angAccel * dt * timeScale_);
+      torqueAccumulator_ = VEC3_ZERO;
     }
 
     // Clamp angular speed
-    float angSpeedSq = fm_vec3_len2(&angularVelocity);
+    float angSpeedSq = fm_vec3_len2(&angularVelocity_);
     if(angSpeedSq > TERMINAL_ANGULAR_SPEED_SQ) {
-      angularVelocity = angularVelocity * (TERMINAL_ANGULAR_SPEED / sqrtf(angSpeedSq));
+      angularVelocity_ = angularVelocity_ * (TERMINAL_ANGULAR_SPEED / sqrtf(angSpeedSq));
       angSpeedSq = TERMINAL_ANGULAR_SPEED_SQ;
     }
 
     // Apply rotation constraints in local space
     if(hasAngularConstraints_) {
-      angularVelocity = constrainAngularWorld(angularVelocity);
+      angularVelocity_ = constrainAngularWorld(angularVelocity_);
     }
 
     // Angular damping — amplify near rest
-    float dampFactor = angularDamping;
+    float dampFactor = angularDamping_;
     if(!hadExternalTorque && angSpeedSq < AMPLIFY_ANG_DAMPING_THRESHOLD_SQ && angSpeedSq > FM_EPSILON) {
       float ratio = angSpeedSq * AMPLIFY_ANG_DAMPING_THRESHOLD_SQ_INV;
-      dampFactor = angularDamping + (1.0f - angularDamping) * (1.0f - ratio);
+      dampFactor = angularDamping_ + (1.0f - angularDamping_) * (1.0f - ratio);
     }
-    angularVelocity = angularVelocity * (1.0f - dampFactor);
+    angularVelocity_ = angularVelocity_ * (1.0f - dampFactor);
   }
 
   void RigidBody::integratePosition(float fixedDt) {
-    if(isKinematic || isSleeping) return;
-    if(!position) return;
+    if(isKinematic_ || isSleeping_) return;
+    if(!position_) return;
 
-    float dt = fixedDt * timeScalar;
-    prevStepPos = *position;
-    *position = *position + (velocity * dt);
+    float dt = fixedDt * timeScale_;
+    previousStepPosition_ = *position_;
+    *position_ = *position_ + (linearVelocity_ * dt);
   }
 
   void RigidBody::integrateRotation(float fixedDt) {
-    if(isKinematic || isSleeping) return;
-    if(!rotation) return;
-    if(vec3IsZero(angularVelocity)) return;
+    if(isKinematic_ || isSleeping_) return;
+    if(!rotation_) return;
+    if(vec3IsZero(angularVelocity_)) return;
 
-    float dt = fixedDt * timeScalar;
+    float dt = fixedDt * timeScale_;
 
-    prevStepRot = *rotation;
+    previousStepRotation_ = *rotation_;
 
     // Store old world center of mass for offset correction
-    fm_vec3_t oldWorldCOM = *position + (*rotation * centerOffset_);
+    fm_vec3_t oldWorldCOM = *position_ + (*rotation_ * centerOffset_);
 
-    *rotation = quatApplyAngularVelocity(*rotation, angularVelocity, dt);
+    *rotation_ = quatApplyAngularVelocity(*rotation_, angularVelocity_, dt);
 
     // Correct position so that the center of mass stays in place
     if(!vec3IsZero(centerOffset_)) {
-      fm_vec3_t newWorldCOM = *position + (*rotation * centerOffset_);
+      fm_vec3_t newWorldCOM = *position_ + (*rotation_ * centerOffset_);
       fm_vec3_t correction = oldWorldCOM - newWorldCOM;
-      *position = *position + correction;
+      *position_ = *position_ + correction;
     }
   }
 
   void RigidBody::accelerate(const fm_vec3_t &accel) {
-    acceleration = acceleration + accel;
-    if(isSleeping) wake();
+    acceleration_ = acceleration_ + accel;
+    if(isSleeping_) wake();
   }
 
   void RigidBody::setVelocity(const fm_vec3_t &vel) {
-    velocity = constrainLinearWorld(vel);
-    if(isSleeping) wake();
+    linearVelocity_ = constrainLinearWorld(vel);
+    if(isSleeping_) wake();
   }
 
   void RigidBody::applyLinearImpulse(const fm_vec3_t &impulse) {
-    if(isKinematic) return;
-    fm_vec3_t deltaV = constrainLinearWorld(impulse * invMass);
-    velocity = velocity + deltaV;
-    if(isSleeping) wake();
+    if(isKinematic_) return;
+    fm_vec3_t deltaV = constrainLinearWorld(impulse * inverseMass_);
+    linearVelocity_ = linearVelocity_ + deltaV;
+    if(isSleeping_) wake();
   }
 
   void RigidBody::applyTorque(const fm_vec3_t &torque) {
-    if(isKinematic) return;
-    torqueAccumulator = torqueAccumulator + torque;
-    if(isSleeping) wake();
+    if(isKinematic_) return;
+    torqueAccumulator_ = torqueAccumulator_ + torque;
+    if(isSleeping_) wake();
   }
 
   void RigidBody::applyAngularImpulse(const fm_vec3_t &angImpulse) {
-    if(isKinematic) return;
-    angularVelocity = angularVelocity + applyConstrainedWorldInertia(angImpulse);
-    if(isSleeping) wake();
+    if(isKinematic_) return;
+    angularVelocity_ = angularVelocity_ + applyConstrainedWorldInertia(angImpulse);
+    if(isSleeping_) wake();
   }
 
   void RigidBody::setAngularVelocity(const fm_vec3_t &angVel) {
-    angularVelocity = constrainAngularWorld(angVel);
-    if(isSleeping) wake();
+    angularVelocity_ = constrainAngularWorld(angVel);
+    if(isSleeping_) wake();
   }
 
   fm_vec3_t RigidBody::getVelocityAtPoint(const fm_vec3_t &worldPoint) const {
-    fm_vec3_t pointVelocity = velocity;
+    fm_vec3_t pointVelocity = linearVelocity_;
 
-    if(vec3IsZero(angularVelocity)) {
+    if(vec3IsZero(angularVelocity_)) {
       return pointVelocity;
     }
 
-    fm_vec3_t offset = worldPoint - worldCenterOfMass;
+    fm_vec3_t offset = worldPoint - worldCenterOfMass_;
     fm_vec3_t angularPointVelocity;
-    fm_vec3_cross(&angularPointVelocity, &angularVelocity, &offset);
+    fm_vec3_cross(&angularPointVelocity, &angularVelocity_, &offset);
     return pointVelocity + angularPointVelocity;
   }
 
   void RigidBody::applyForceAtPoint(const fm_vec3_t &force, const fm_vec3_t &worldPoint) {
-    if(isKinematic) return;
+    if(isKinematic_) return;
     applyLinearImpulse(force);
-    fm_vec3_t r = worldPoint - worldCenterOfMass;
+    fm_vec3_t r = worldPoint - worldCenterOfMass_;
     fm_vec3_t torque;
     fm_vec3_cross(&torque, &r, &force);
     applyAngularImpulse(torque);
   }
 
   void RigidBody::updateWorldInertia() {
-    Matrix3x3 newRotationMatrix = rotation ? quatToMatrix3(*rotation) : Matrix3x3::identity();
-    Matrix3x3 newInverseRotationMatrix = rotation ? quatToMatrix3(quatConjugate(*rotation)) : Matrix3x3::identity();
+    Matrix3x3 newRotationMatrix = rotation_ ? quatToMatrix3(*rotation_) : Matrix3x3::identity();
+    Matrix3x3 newInverseRotationMatrix = rotation_ ? quatToMatrix3(quatConjugate(*rotation_)) : Matrix3x3::identity();
 
     const Matrix3x3 localInv = diagonalMatrix(invLocalInertiaTensor_);
     Matrix3x3 newInvWorldInertiaTensor = matrix3Mul(matrix3Mul(newRotationMatrix, localInv), matrix3Transpose(newRotationMatrix));
 
     const fm_vec3_t worldOffset = matrix3Vec3Mul(newRotationMatrix, centerOffset_);
-    const fm_vec3_t newWorldCenterOfMass = position ? *position + worldOffset : worldOffset;
-    const bool transformChanged = !matrix3Equals(rotationMatrix, newRotationMatrix) ||
-                                  !matrix3Equals(inverseRotationMatrix, newInverseRotationMatrix) ||
-                                  !matrix3Equals(invWorldInertiaTensor, newInvWorldInertiaTensor) ||
-                                  fm_vec3_distance2(&worldCenterOfMass, &newWorldCenterOfMass) > FM_EPSILON * FM_EPSILON;
+    const fm_vec3_t newWorldCenterOfMass = position_ ? *position_ + worldOffset : worldOffset;
+    const bool transformChanged = !matrix3Equals(rotationMatrix_, newRotationMatrix) ||
+                    !matrix3Equals(inverseRotationMatrix_, newInverseRotationMatrix) ||
+                    !matrix3Equals(invWorldInertiaTensor_, newInvWorldInertiaTensor) ||
+                                  fm_vec3_distance2(&worldCenterOfMass_, &newWorldCenterOfMass) > FM_EPSILON * FM_EPSILON;
 
-    rotationMatrix = newRotationMatrix;
-    inverseRotationMatrix = newInverseRotationMatrix;
-    invWorldInertiaTensor = newInvWorldInertiaTensor;
+    rotationMatrix_ = newRotationMatrix;
+    inverseRotationMatrix_ = newInverseRotationMatrix;
+    invWorldInertiaTensor_ = newInvWorldInertiaTensor;
 
-    if(rotation) {
-      rotationMatrix = newRotationMatrix;
+    if(rotation_) {
+      rotationMatrix_ = newRotationMatrix;
     }
     refreshAngularConstraintProjection();
     refreshConstrainedInertiaTensor();
-    worldCenterOfMass = newWorldCenterOfMass;
+    worldCenterOfMass_ = newWorldCenterOfMass;
     if(transformChanged) {
-      ++transformVersion;
+      ++transformVersion_;
     }
   }
 
   fm_vec3_t RigidBody::toWorldSpace(const fm_vec3_t &localPoint) const {
-    if(!position) return localPoint;
-    return *position + rotateToWorld(localPoint);
+    if(!position_) return localPoint;
+    return *position_ + rotateToWorld(localPoint);
   }
 
   fm_vec3_t RigidBody::toLocalSpace(const fm_vec3_t &worldPoint) const {
-    if(!position) return worldPoint;
-    return rotateToLocal(worldPoint - *position);
+    if(!position_) return worldPoint;
+    return rotateToLocal(worldPoint - *position_);
   }
 
   fm_vec3_t RigidBody::rotateToWorld(const fm_vec3_t &localDir) const {
-    if(!rotation) return localDir;
-    return *rotation * localDir;
+    if(!rotation_) return localDir;
+    return *rotation_ * localDir;
   }
 
   fm_vec3_t RigidBody::rotateToLocal(const fm_vec3_t &worldDir) const {
-    if(!rotation) return worldDir;
-    return quatConjugate(*rotation) * worldDir;
+    if(!rotation_) return worldDir;
+    return quatConjugate(*rotation_) * worldDir;
   }
 
   void RigidBody::applyPositionConstraints() {
-    if(!position) return;
-    if(hasFlag(constraints_, Constraint::FreezePosX)) position->x = prevStepPos.x;
-    if(hasFlag(constraints_, Constraint::FreezePosY)) position->y = prevStepPos.y;
-    if(hasFlag(constraints_, Constraint::FreezePosZ)) position->z = prevStepPos.z;
+    if(!position_) return;
+    if(hasFlag(constraints_, Constraint::FreezePosX)) position_->x = previousStepPosition_.x;
+    if(hasFlag(constraints_, Constraint::FreezePosY)) position_->y = previousStepPosition_.y;
+    if(hasFlag(constraints_, Constraint::FreezePosZ)) position_->z = previousStepPosition_.z;
   }
 
 } // namespace P64::Coll

@@ -30,8 +30,14 @@ namespace P64::Coll {
 
   // ── MeshTriangle ──────────────────────────────────────────────────
 
+  fm_vec3_t MeshTriangle::localVertex(int localIndex) const {
+    const uint16_t vertexIndex = tri.indices[localIndex];
+    if(vertices) return vertices[vertexIndex];
+    return mesh ? mesh->vertex(vertexIndex) : VEC3_ZERO;
+  }
+
   fm_vec3_t MeshTriangle::worldVertex(int localIndex) const {
-    const fm_vec3_t &v = vertices[tri.indices[localIndex]];
+    const fm_vec3_t v = localVertex(localIndex);
     if(mesh) return mesh->toWorldSpace(v);
     return v;
   }
@@ -42,9 +48,9 @@ namespace P64::Coll {
   }
 
   void MeshTriangle::gjkSupport(const fm_vec3_t &direction, fm_vec3_t &output) const {
-    fm_vec3_t v0 = vertices[tri.indices[0]];
-    fm_vec3_t v1 = vertices[tri.indices[1]];
-    fm_vec3_t v2 = vertices[tri.indices[2]];
+    fm_vec3_t v0 = localVertex(0);
+    fm_vec3_t v1 = localVertex(1);
+    fm_vec3_t v2 = localVertex(2);
 
     float d0 = fm_vec3_dot(&v0, &direction);
     float d1 = fm_vec3_dot(&v1, &direction);
@@ -74,9 +80,9 @@ namespace P64::Coll {
   // ── MeshCollider transform ────────────────────────────────────────
 
   fm_vec3_t MeshCollider::toWorldSpace(const fm_vec3_t &localPoint) const {
-    fm_vec3_t position = owner ? owner->pos : VEC3_ZERO;
-    fm_quat_t rotation = owner ? owner->rot : QUAT_IDENTITY;
-    fm_vec3_t scale = owner ? owner->scale : fm_vec3_t{{1.0f, 1.0f, 1.0f}};
+    fm_vec3_t position = owner_ ? owner_->pos : VEC3_ZERO;
+    fm_quat_t rotation = owner_ ? owner_->rot : QUAT_IDENTITY;
+    fm_vec3_t scale = owner_ ? owner_->scale : fm_vec3_t{{1.0f, 1.0f, 1.0f}};
     fm_vec3_t scaled = fm_vec3_t{{localPoint.x * scale.x, localPoint.y * scale.y, localPoint.z * scale.z}};
     if(!quatIsIdentical(&rotation, &QUAT_IDENTITY)) {
       scaled = rotation * scaled;
@@ -89,13 +95,12 @@ namespace P64::Coll {
 
   fm_vec3_t MeshCollider::toLocalSpace(const fm_vec3_t &worldPoint) const {
     fm_vec3_t p = worldPoint;
-    fm_quat_t rotation = owner ? owner->rot : QUAT_IDENTITY;
-    fm_vec3_t scale = owner ? owner->scale : fm_vec3_t{{1.0f, 1.0f, 1.0f}};
+    fm_vec3_t scale = owner_ ? owner_->scale : fm_vec3_t{{1.0f, 1.0f, 1.0f}};
     if(hasPosition()) {
-      p = p - owner->pos;
+      p = p - owner_->pos;
     }
     if(hasRotation()) {
-      p = matrix3Vec3Mul(inverseRotation, p);
+      p = matrix3Vec3Mul(inverseRotationMatrix_, p);
     }
     if(hasScale()) {
       if(fabsf(scale.x) > FM_EPSILON) p.x /= scale.x;
@@ -107,12 +112,12 @@ namespace P64::Coll {
 
   fm_vec3_t MeshCollider::rotateToWorld(const fm_vec3_t &localDir) const {
     if(!hasRotation()) return localDir;
-    return owner->rot * localDir;
+    return owner_->rot * localDir;
   }
 
   fm_vec3_t MeshCollider::rotateToLocal(const fm_vec3_t &worldDir) const {
     if(!hasRotation()) return worldDir;
-    return matrix3Vec3Mul(inverseRotation, worldDir);
+    return matrix3Vec3Mul(inverseRotationMatrix_, worldDir);
   }
 
   bool MeshCollider::hasTransform() const {
@@ -120,84 +125,84 @@ namespace P64::Coll {
   }
 
   bool MeshCollider::hasRotation() const {
-    if(!owner) return false;
-    return !quatIsIdentical(&owner->rot, &QUAT_IDENTITY);
+    if(!owner_) return false;
+    return !quatIsIdentical(&owner_->rot, &QUAT_IDENTITY);
   }
 
   bool MeshCollider::hasPosition() const {
-    if(!owner) return false;
-    return fm_vec3_len2(&owner->pos) > FM_EPSILON * FM_EPSILON;
+    if(!owner_) return false;
+    return fm_vec3_len2(&owner_->pos) > FM_EPSILON * FM_EPSILON;
   }
 
   bool MeshCollider::hasScale() const {
-    if(!owner) return false;
-    return (fabsf(owner->scale.x - 1.0f) > FM_EPSILON) || (fabsf(owner->scale.y - 1.0f) > FM_EPSILON) || (fabsf(owner->scale.z - 1.0f) > FM_EPSILON);
+    if(!owner_) return false;
+    return (fabsf(owner_->scale.x - 1.0f) > FM_EPSILON) || (fabsf(owner_->scale.y - 1.0f) > FM_EPSILON) || (fabsf(owner_->scale.z - 1.0f) > FM_EPSILON);
   }
 
   bool MeshCollider::readsCollider(const Collider *other) const {
-    return other && ((maskRead & other->maskWrite) != 0);
+    return other && ((readMask_ & other->writeMask()) != 0);
   }
 
   bool MeshCollider::readsMeshCollider(const MeshCollider *other) const {
-    return other && ((maskRead & other->maskWrite) != 0);
+    return other && ((readMask_ & other->writeMask_) != 0);
   }
 
-  bool MeshCollider::ownerTransformChanged() const {
-    if(!owner) return false;
-    if(!hasCachedOwnerTransform) return true;
+  bool MeshCollider::hasOwnerTransformChanged() const {
+    if(!owner_) return false;
+    if(!hasCachedOwnerTransform_) return true;
 
-    if(fm_vec3_distance2(&owner->pos, &lastOwnerPos) > FM_EPSILON * FM_EPSILON) return true;
-    if(fm_vec3_distance2(&owner->scale, &lastOwnerScale) > FM_EPSILON * FM_EPSILON) return true;
+    if(fm_vec3_distance2(&owner_->pos, &lastOwnerPosition_) > FM_EPSILON * FM_EPSILON) return true;
+    if(fm_vec3_distance2(&owner_->scale, &lastOwnerScale_) > FM_EPSILON * FM_EPSILON) return true;
 
-    const float rotSim = fabsf(quatDot(owner->rot, lastOwnerRot));
+    const float rotSim = fabsf(quatDot(owner_->rot, lastOwnerRotation_));
     return rotSim < (1.0f - FM_EPSILON);
   }
 
   void MeshCollider::syncOwnerTransform() {
-    if(!owner) {
-      lastOwnerPos = VEC3_ZERO;
-      lastOwnerRot = QUAT_IDENTITY;
-      lastOwnerScale = fm_vec3_t{{1.0f, 1.0f, 1.0f}};
+    if(!owner_) {
+      lastOwnerPosition_ = VEC3_ZERO;
+      lastOwnerRotation_ = QUAT_IDENTITY;
+      lastOwnerScale_ = fm_vec3_t{{1.0f, 1.0f, 1.0f}};
     } else {
-      lastOwnerPos = owner->pos;
-      lastOwnerRot = owner->rot;
-      lastOwnerScale = owner->scale;
+      lastOwnerPosition_ = owner_->pos;
+      lastOwnerRotation_ = owner_->rot;
+      lastOwnerScale_ = owner_->scale;
     }
-    inverseRotation = quatToMatrix3(quatConjugate(lastOwnerRot));
-    hasCachedOwnerTransform = true;
-    ++worldTransformVersion;
+    inverseRotationMatrix_ = quatToMatrix3(quatConjugate(lastOwnerRotation_));
+    hasCachedOwnerTransform_ = true;
+    ++worldTransformVersion_;
   }
 
-  void MeshCollider::computeLocalRootAABB() {
-    if(aabbTree.root != NULL_NODE) {
-      const AABB *rootBounds = aabbTree.getNodeBounds(aabbTree.root);
+  void MeshCollider::computeLocalRootAabb() {
+    if(aabbTree_.root != NULL_NODE) {
+      const AABB *rootBounds = aabbTree_.getNodeBounds(aabbTree_.root);
       if(rootBounds) {
-        localRootAABB = *rootBounds;
+        localRootAabb_ = *rootBounds;
         return;
       }
     }
     // Fallback: compute from vertices
-    if(vertexCount == 0) return;
-    fm_vec3_t minV = vertices[0];
-    fm_vec3_t maxV = vertices[0];
-    for(int i = 1; i < vertexCount; ++i) {
-      minV = vec3Min(minV, vertices[i]);
-      maxV = vec3Max(maxV, vertices[i]);
+    if(vertexCount_ == 0) return;
+    fm_vec3_t minV = vertices_[0];
+    fm_vec3_t maxV = vertices_[0];
+    for(int i = 1; i < vertexCount_; ++i) {
+      minV = vec3Min(minV, vertices_[i]);
+      maxV = vec3Max(maxV, vertices_[i]);
     }
-    localRootAABB = {minV, maxV};
+    localRootAabb_ = {minV, maxV};
   }
 
-  void MeshCollider::recalculateWorldAABB() {
+  void MeshCollider::recalculateWorldAabb() {
     // Transform all 8 corners of the local AABB to world space and take the enclosing AABB
     fm_vec3_t corners[8] = {
-      fm_vec3_t{{localRootAABB.min.x, localRootAABB.min.y, localRootAABB.min.z}},
-      fm_vec3_t{{localRootAABB.max.x, localRootAABB.min.y, localRootAABB.min.z}},
-      fm_vec3_t{{localRootAABB.min.x, localRootAABB.max.y, localRootAABB.min.z}},
-      fm_vec3_t{{localRootAABB.max.x, localRootAABB.max.y, localRootAABB.min.z}},
-      fm_vec3_t{{localRootAABB.min.x, localRootAABB.min.y, localRootAABB.max.z}},
-      fm_vec3_t{{localRootAABB.max.x, localRootAABB.min.y, localRootAABB.max.z}},
-      fm_vec3_t{{localRootAABB.min.x, localRootAABB.max.y, localRootAABB.max.z}},
-      fm_vec3_t{{localRootAABB.max.x, localRootAABB.max.y, localRootAABB.max.z}},
+      fm_vec3_t{{localRootAabb_.min.x, localRootAabb_.min.y, localRootAabb_.min.z}},
+      fm_vec3_t{{localRootAabb_.max.x, localRootAabb_.min.y, localRootAabb_.min.z}},
+      fm_vec3_t{{localRootAabb_.min.x, localRootAabb_.max.y, localRootAabb_.min.z}},
+      fm_vec3_t{{localRootAabb_.max.x, localRootAabb_.max.y, localRootAabb_.min.z}},
+      fm_vec3_t{{localRootAabb_.min.x, localRootAabb_.min.y, localRootAabb_.max.z}},
+      fm_vec3_t{{localRootAabb_.max.x, localRootAabb_.min.y, localRootAabb_.max.z}},
+      fm_vec3_t{{localRootAabb_.min.x, localRootAabb_.max.y, localRootAabb_.max.z}},
+      fm_vec3_t{{localRootAabb_.max.x, localRootAabb_.max.y, localRootAabb_.max.z}},
     };
 
     fm_vec3_t worldMin = toWorldSpace(corners[0]);
@@ -207,20 +212,20 @@ namespace P64::Coll {
       worldMin = vec3Min(worldMin, w);
       worldMax = vec3Max(worldMax, w);
     }
-    worldBoundingBox = {worldMin, worldMax};
+    worldAabb_ = {worldMin, worldMax};
   }
 
-  AABB MeshCollider::worldAABBToLocal(const AABB &worldAABB) const {
+  AABB MeshCollider::worldAabbToLocal(const AABB &worldAabb) const {
     // Transform all 8 corners of the world AABB into local space
     fm_vec3_t corners[8] = {
-      fm_vec3_t{{worldAABB.min.x, worldAABB.min.y, worldAABB.min.z}},
-      fm_vec3_t{{worldAABB.max.x, worldAABB.min.y, worldAABB.min.z}},
-      fm_vec3_t{{worldAABB.min.x, worldAABB.max.y, worldAABB.min.z}},
-      fm_vec3_t{{worldAABB.max.x, worldAABB.max.y, worldAABB.min.z}},
-      fm_vec3_t{{worldAABB.min.x, worldAABB.min.y, worldAABB.max.z}},
-      fm_vec3_t{{worldAABB.max.x, worldAABB.min.y, worldAABB.max.z}},
-      fm_vec3_t{{worldAABB.min.x, worldAABB.max.y, worldAABB.max.z}},
-      fm_vec3_t{{worldAABB.max.x, worldAABB.max.y, worldAABB.max.z}},
+      fm_vec3_t{{worldAabb.min.x, worldAabb.min.y, worldAabb.min.z}},
+      fm_vec3_t{{worldAabb.max.x, worldAabb.min.y, worldAabb.min.z}},
+      fm_vec3_t{{worldAabb.min.x, worldAabb.max.y, worldAabb.min.z}},
+      fm_vec3_t{{worldAabb.max.x, worldAabb.max.y, worldAabb.min.z}},
+      fm_vec3_t{{worldAabb.min.x, worldAabb.min.y, worldAabb.max.z}},
+      fm_vec3_t{{worldAabb.max.x, worldAabb.min.y, worldAabb.max.z}},
+      fm_vec3_t{{worldAabb.min.x, worldAabb.max.y, worldAabb.max.z}},
+      fm_vec3_t{{worldAabb.max.x, worldAabb.max.y, worldAabb.max.z}},
     };
 
     fm_vec3_t localMin = toLocalSpace(corners[0]);
@@ -257,28 +262,28 @@ namespace P64::Coll {
 
     auto *collider = new MeshCollider();
 
-    collider->triangleCount = static_cast<uint16_t>(header->triCount);
-    collider->vertexCount = static_cast<uint16_t>(header->vertCount);
+    collider->triangleCount_ = static_cast<uint16_t>(header->triCount);
+    collider->vertexCount_ = static_cast<uint16_t>(header->vertCount);
 
     // Copy vertex data
-    collider->vertices = new fm_vec3_t[header->vertCount];
+    collider->vertices_ = new fm_vec3_t[header->vertCount];
     for(uint32_t i = 0; i < header->vertCount; ++i) {
-      collider->vertices[i] = vertexData[i];
+      collider->vertices_[i] = vertexData[i];
     }
 
     // Copy triangle indices
-    collider->triangles = new MeshTriangleIndices[header->triCount];
+    collider->triangles_ = new MeshTriangleIndices[header->triCount];
     for(uint32_t t = 0; t < header->triCount; ++t) {
-      collider->triangles[t].indices[0] = indexData[t * 3 + 0];
-      collider->triangles[t].indices[1] = indexData[t * 3 + 1];
-      collider->triangles[t].indices[2] = indexData[t * 3 + 2];
+      collider->triangles_[t].indices[0] = indexData[t * 3 + 0];
+      collider->triangles_[t].indices[1] = indexData[t * 3 + 1];
+      collider->triangles_[t].indices[2] = indexData[t * 3 + 2];
     }
 
     // Convert packed normals (int16_t scaled by 32767) to fm_vec3_t
     constexpr float NORM_SCALE = 1.0f / 32767.0f;
-    collider->normals = new fm_vec3_t[header->triCount];
+    collider->normals_ = new fm_vec3_t[header->triCount];
     for(uint32_t t = 0; t < header->triCount; ++t) {
-      collider->normals[t] = fm_vec3_t{{
+      collider->normals_[t] = fm_vec3_t{{
         static_cast<float>(normalData[t].v[0]) * NORM_SCALE,
         static_cast<float>(normalData[t].v[1]) * NORM_SCALE,
         static_cast<float>(normalData[t].v[2]) * NORM_SCALE
@@ -286,43 +291,43 @@ namespace P64::Coll {
     }
 
     // Bind to owner object
-    collider->owner = obj;
+  collider->owner_ = obj;
 
     // Build AABB tree from triangle bounding boxes
     // Need 2*N-1 internal nodes for N leaves, plus some margin
     int treeCapacity = static_cast<int>(header->triCount) * 2 + 1;
-    collider->aabbTree.init(treeCapacity);
+    collider->aabbTree_.init(treeCapacity);
 
     for(uint32_t t = 0; t < header->triCount; ++t) {
-      const fm_vec3_t &v0 = collider->vertices[collider->triangles[t].indices[0]];
-      const fm_vec3_t &v1 = collider->vertices[collider->triangles[t].indices[1]];
-      const fm_vec3_t &v2 = collider->vertices[collider->triangles[t].indices[2]];
+      const fm_vec3_t &v0 = collider->vertices_[collider->triangles_[t].indices[0]];
+      const fm_vec3_t &v1 = collider->vertices_[collider->triangles_[t].indices[1]];
+      const fm_vec3_t &v2 = collider->vertices_[collider->triangles_[t].indices[2]];
 
       AABB triAABB;
       triAABB.min = vec3Min(vec3Min(v0, v1), v2);
       triAABB.max = vec3Max(vec3Max(v0, v1), v2);
 
       // Store triangle index + 1 as data pointer (index 0 would be nullptr and get skipped)
-      collider->aabbTree.createNode(triAABB, reinterpret_cast<void *>(static_cast<intptr_t>(t + 1)));
+      collider->aabbTree_.createNode(triAABB, reinterpret_cast<void *>(static_cast<intptr_t>(t + 1)));
     }
 
-    collider->computeLocalRootAABB();
-    collider->recalculateWorldAABB();
+    collider->computeLocalRootAabb();
+    collider->recalculateWorldAabb();
     collider->syncOwnerTransform();
 
     return collider;
   }
 
   void MeshCollider::destroyData() {
-    aabbTree.destroy();
-    delete[] vertices;
-    delete[] triangles;
-    delete[] normals;
-    vertices = nullptr;
-    triangles = nullptr;
-    normals = nullptr;
-    triangleCount = 0;
-    vertexCount = 0;
+    aabbTree_.destroy();
+    delete[] vertices_;
+    delete[] triangles_;
+    delete[] normals_;
+    vertices_ = nullptr;
+    triangles_ = nullptr;
+    normals_ = nullptr;
+    triangleCount_ = 0;
+    vertexCount_ = 0;
   }
 
 } // namespace P64::Coll

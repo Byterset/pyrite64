@@ -11,15 +11,15 @@ namespace P64::Coll {
     const Collider *collider,
     const MeshCollider *meshCollider) {
     if(rigidBody) {
-      return rigidBody->transformVersion;
+      return rigidBody->transformVersion();
     }
 
     if(meshCollider) {
-      return meshCollider->worldTransformVersion;
+      return meshCollider->worldTransformVersion();
     }
 
     if(collider) {
-      return collider->worldStateVersion;
+      return collider->worldStateVersion();
     }
 
     return 0;
@@ -71,15 +71,15 @@ namespace P64::Coll {
     const Collider *collider,
     const MeshCollider *meshCollider) {
     if(rigidBody) {
-      return worldPoint - rigidBody->worldCenterOfMass;
+      return worldPoint - rigidBody->worldCenterOfMass();
     }
 
     if(meshCollider) {
-      return worldPoint - (meshCollider->owner ? meshCollider->owner->pos : VEC3_ZERO);
+      return worldPoint - (meshCollider->ownerObject() ? meshCollider->ownerObject()->pos : VEC3_ZERO);
     }
 
     if(collider) {
-      return worldPoint - collider->worldCenter;
+      return worldPoint - collider->worldCenter();
     }
 
     return VEC3_ZERO;

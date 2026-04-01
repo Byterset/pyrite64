@@ -53,8 +53,7 @@ namespace P64::Comp
     void *rawData = AssetManager::getByIndex(initData->assetIdx);
     data->meshCollider = Coll::MeshCollider::createFromRawData(rawData, &obj);
 
-    data->meshCollider->maskRead = initData->maskRead;
-    data->meshCollider->maskWrite = initData->maskWrite;
+    data->meshCollider->setCollisionMask(initData->maskRead, initData->maskWrite);
     if(data->meshCollider && obj.isEnabled()) {
       obj.getScene().getCollision().addMeshCollider(data->meshCollider);
     }

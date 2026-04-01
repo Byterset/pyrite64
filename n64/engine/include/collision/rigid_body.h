@@ -16,6 +16,8 @@
 
 namespace P64::Coll {
 
+  class CollisionScene;
+
   // Constants
   constexpr float TERMINAL_SPEED = 100.0f; // Units per second, scaled by physicsScale when applied
   constexpr float TERMINAL_ANGULAR_SPEED = 50.0f; // Radians per second
@@ -57,46 +59,32 @@ namespace P64::Coll {
   }
 
   struct RigidBody {
-    // Hot data
-    fm_vec3_t *position{nullptr};
-    fm_quat_t *rotation{nullptr};
-    fm_vec3_t velocity{};
-    fm_vec3_t angularVelocity{};
-
-    float invMass{1.0f};
-    float timeScalar{1.0f};
-    float gravityScalar{1.0f};
-    float angularDamping{0.03f};
-
-    // Collision
-    AABB worldAABB{};
-
-    // Cached transforms
-    Matrix3x3 invWorldInertiaTensor{};
-    Matrix3x3 rotationMatrix{};
-    Matrix3x3 inverseRotationMatrix{};
-    fm_vec3_t worldCenterOfMass{};
-
-    // State
-    fm_vec3_t acceleration{};
-    fm_vec3_t torqueAccumulator{};
-    fm_vec3_t prevStepPos{};
-    fm_quat_t prevStepRot{};
-    fm_vec3_t prevStepScale{};
-    uint32_t transformVersion{0};
-
-    P64::Object *owner{};
-    NodeProxy aabbTreeNodeId{NULL_NODE};
-    uint16_t sleepCounter{0};
-    uint16_t collisionLayers{0};
-    uint16_t collisionGroup{0};
-
-    bool hasGravity{true};
-    bool isKinematic{false};
-    bool isSleeping{false};
-
-    // Methods
     void init(P64::Object *object, float m);
+
+    P64::Object *ownerObject() const { return owner_; }
+    fm_vec3_t *positionPtr() { return position_; }
+    const fm_vec3_t *positionPtr() const { return position_; }
+    fm_quat_t *rotationPtr() { return rotation_; }
+    const fm_quat_t *rotationPtr() const { return rotation_; }
+
+    const fm_vec3_t &linearVelocity() const { return linearVelocity_; }
+    const fm_vec3_t &angularVelocity() const { return angularVelocity_; }
+    float inverseMass() const { return inverseMass_; }
+    float timeScale() const { return timeScale_; }
+    void setTimeScale(float newTimeScale) { timeScale_ = newTimeScale; }
+    float gravityScale() const { return gravityScale_; }
+    void setGravityScale(float newGravityScale) { gravityScale_ = newGravityScale; }
+    float angularDamping() const { return angularDamping_; }
+    void setAngularDamping(float newAngularDamping) { angularDamping_ = newAngularDamping; }
+    bool hasGravity() const { return hasGravity_; }
+    void setHasGravity(bool newHasGravity) { hasGravity_ = newHasGravity; }
+
+    const AABB &worldAabb() const { return worldAabb_; }
+    const Matrix3x3 &inverseWorldInertiaTensor() const { return invWorldInertiaTensor_; }
+    const Matrix3x3 &rotationMatrix() const { return rotationMatrix_; }
+    const Matrix3x3 &inverseRotationMatrix() const { return inverseRotationMatrix_; }
+    const fm_vec3_t &worldCenterOfMass() const { return worldCenterOfMass_; }
+    uint32_t transformVersion() const { return transformVersion_; }
 
     float getMass() const { return mass_; }
     void setMass(float newMass);
@@ -105,7 +93,9 @@ namespace P64::Coll {
 
     bool hasLinearConstraints() const { return hasLinearConstraints_; }
     bool hasAngularConstraints() const { return hasAngularConstraints_; }
-    bool canApplyAngularResponse() const { return !isKinematic && rotation && !hasFlag(constraints_, Constraint::FreezeRotAll); }
+    bool canApplyAngularResponse() const { return !isKinematic_ && rotation_ && !hasFlag(constraints_, Constraint::FreezeRotAll); }
+    bool isKinematic() const { return isKinematic_; }
+    bool isSleeping() const { return isSleeping_; }
 
     bool compoundPropertiesDirty() const { return compoundPropertiesDirty_; }
     const fm_vec3_t &getCenterOffset() const { return centerOffset_; }
@@ -114,7 +104,7 @@ namespace P64::Coll {
     const fm_vec3_t &getCompoundScale() const { return compoundScale_; }
     void markCompoundPropertiesDirty() { compoundPropertiesDirty_ = true; }
     void applyCompoundProperties(const fm_vec3_t &centerOffset, const fm_vec3_t &localInertiaTensor, const fm_vec3_t &compoundScale);
-    void setKinematic(bool newIsKinematic) { isKinematic = newIsKinematic; }
+    void setKinematic(bool newIsKinematic) { isKinematic_ = newIsKinematic; }
 
     fm_vec3_t constrainLinearWorld(const fm_vec3_t &worldLinear) const;
     fm_vec3_t constrainAngularWorld(const fm_vec3_t &worldAngular) const;
@@ -143,11 +133,11 @@ namespace P64::Coll {
     fm_vec3_t rotateToWorld(const fm_vec3_t &localDir) const;
     fm_vec3_t rotateToLocal(const fm_vec3_t &worldDir) const;
 
-    void wake() { isSleeping = false; sleepCounter = 0; }
-    void sleep() { isSleeping = true; velocity = VEC3_ZERO; angularVelocity = VEC3_ZERO; }
+    void wake() { isSleeping_ = false; sleepCounter_ = 0; }
+    void sleep() { isSleeping_ = true; linearVelocity_ = VEC3_ZERO; angularVelocity_ = VEC3_ZERO; }
 
     fm_vec3_t applyWorldInertia(const fm_vec3_t &in) const {
-      return matrix3Vec3Mul(invWorldInertiaTensor, in);
+      return matrix3Vec3Mul(invWorldInertiaTensor_, in);
     }
 
     fm_vec3_t applyConstrainedWorldInertia(const fm_vec3_t &in) const {
@@ -156,6 +146,36 @@ namespace P64::Coll {
     }
 
   private:
+    friend class CollisionScene;
+
+    P64::Object *owner_{nullptr};
+    fm_vec3_t *position_{nullptr};
+    fm_quat_t *rotation_{nullptr};
+    Matrix3x3 invWorldInertiaTensor_{};
+    Matrix3x3 rotationMatrix_{};
+    Matrix3x3 inverseRotationMatrix_{};
+    AABB worldAabb_{};
+    fm_vec3_t worldCenterOfMass_{};
+    fm_vec3_t linearVelocity_{};
+    fm_vec3_t angularVelocity_{};
+    fm_vec3_t acceleration_{};
+    fm_vec3_t torqueAccumulator_{};
+    fm_vec3_t previousStepPosition_{};
+    fm_quat_t previousStepRotation_{};
+    fm_vec3_t previousStepScale_{};
+    float inverseMass_{1.0f};
+    float timeScale_{1.0f};
+    float gravityScale_{1.0f};
+    float angularDamping_{0.03f};
+    uint32_t transformVersion_{0};
+    NodeProxy aabbTreeNodeId_{NULL_NODE};
+    uint16_t sleepCounter_{0};
+    uint16_t collisionLayers_{0};
+    uint16_t collisionGroup_{0};
+    bool hasGravity_{true};
+    bool isKinematic_{false};
+    bool isSleeping_{false};
+
     float mass_{1.0f};
     Constraint constraints_{Constraint::None};
     fm_vec3_t centerOffset_{};

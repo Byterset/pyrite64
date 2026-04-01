@@ -9,12 +9,12 @@
 
 namespace P64::Coll {
 
-  bool ray_sphere_intersection(const Raycast &ray, const Collider *coll, RaycastHit &hit) {
-    fm_vec3_t collToRay = ray.origin - coll->worldCenter;
+  static bool ray_sphere_intersection(const Raycast &ray, const fm_vec3_t &sphereCenter, float radius, uint16_t hitObjectId, RaycastHit &hit) {
+    fm_vec3_t collToRay = ray.origin - sphereCenter;
 
     float a = fm_vec3_dot(&ray.dir, &ray.dir);
     float b = 2.0f * fm_vec3_dot(&collToRay, &ray.dir);
-    float c = fm_vec3_dot(&collToRay, &collToRay) - coll->sphere.radius * coll->sphere.radius;
+    float c = fm_vec3_dot(&collToRay, &collToRay) - radius * radius;
 
     float discriminant = b * b - 4.0f * a * c;
     if(discriminant < 0.0f) return false;
@@ -25,19 +25,24 @@ namespace P64::Coll {
 
     float t = t1;
     if(t < 0.0f) {
-        t = t2;
-        if(t < 0.0f) return false;
+      t = t2;
+      if(t < 0.0f) return false;
     }
 
     if(t > ray.maxDistance) return false;
 
     hit.didHit = true;
     hit.point = ray.origin + ray.dir * t;
-    hit.normal = hit.point - coll->worldCenter;
+    hit.normal = hit.point - sphereCenter;
     fm_vec3_norm(&hit.normal, &hit.normal);
     hit.distance = t;
-    hit.hitObjectId = coll->owner ? coll->owner->id : 0;
+    hit.hitObjectId = hitObjectId;
     return true;
+  }
+
+  bool ray_sphere_intersection(const Raycast &ray, const Collider *coll, RaycastHit &hit) {
+    const Object *owner = coll->ownerObject();
+    return ray_sphere_intersection(ray, coll->worldCenter(), coll->sphereShape().radius, owner ? owner->id : 0, hit);
   }
 
   bool ray_box_intersection(const Raycast &ray, const Collider *coll, RaycastHit &hit) {
@@ -45,7 +50,7 @@ namespace P64::Coll {
     localRay.origin = coll->toLocalSpace(ray.origin);
     localRay.dir = coll->rotateToLocal(ray.dir);
 
-    AABB local_box = coll->box.boundingBox(nullptr); // Box AABB in local space
+    AABB local_box = coll->boxShape().boundingBox(nullptr); // Box AABB in local space
 
     float tMin = -INFINITY;
     float tMax = INFINITY;
@@ -104,7 +109,7 @@ namespace P64::Coll {
     hit.point = coll->toWorldSpace(localHitPoint);
     hit.normal = coll->rotateToWorld(localNormal);
     hit.distance = tMin;
-    hit.hitObjectId = coll->owner ? coll->owner->id : 0;
+    hit.hitObjectId = coll->ownerObject() ? coll->ownerObject()->id : 0;
     hit.didHit = true;
     return true;
   }
@@ -119,7 +124,7 @@ namespace P64::Coll {
     fm_vec3_t rayDirXZ = {localRay.dir.x, 0.0f, localRay.dir.z};
     float a = fm_vec3_dot(&rayDirXZ, &rayDirXZ);
     float b = 2.0f * fm_vec3_dot(&rayOriginXZ, &rayDirXZ);
-    float c = fm_vec3_dot(&rayOriginXZ, &rayOriginXZ) - coll->capsule.radius * coll->capsule.radius;
+    float c = fm_vec3_dot(&rayOriginXZ, &rayOriginXZ) - coll->capsuleShape().radius * coll->capsuleShape().radius;
 
     float discriminant = b * b - 4.0f * a * c;
     float tCylinder = std::numeric_limits<float>::max();
@@ -134,7 +139,7 @@ namespace P64::Coll {
 
       if( t > 0.0f && t < ray.maxDistance) {
         fm_vec3_t hitPoint = localRay.origin + localRay.dir * t;
-        if(fabsf(hitPoint.y) <= coll->capsule.innerHalfHeight) {
+        if(fabsf(hitPoint.y) <= coll->capsuleShape().innerHalfHeight) {
           tCylinder = t;
           cylinderNormal = {hitPoint.x, 0.0f, hitPoint.z};
           fm_vec3_norm(&cylinderNormal, &cylinderNormal);
@@ -143,20 +148,12 @@ namespace P64::Coll {
     }
 
     // Next check intersection with the hemispherical ends
-    fm_vec3_t capCenterTop = {0.0f, coll->capsule.innerHalfHeight, 0.0f};
-    fm_vec3_t capCenterBottom = {0.0f, -coll->capsule.innerHalfHeight, 0.0f};
+  fm_vec3_t capCenterTop = {0.0f, coll->capsuleShape().innerHalfHeight, 0.0f};
+  fm_vec3_t capCenterBottom = {0.0f, -coll->capsuleShape().innerHalfHeight, 0.0f};
 
     RaycastHit capHitTop, capHitBottom;
-    Collider sphereTop;
-    sphereTop.type = ShapeType::Sphere;
-    sphereTop.sphere.radius = coll->capsule.radius;
-    sphereTop.worldCenter = coll->toWorldSpace(capCenterTop);
-    Collider sphereBottom;
-    sphereBottom.type = ShapeType::Sphere;
-    sphereBottom.sphere.radius = coll->capsule.radius;
-    sphereBottom.worldCenter = coll->toWorldSpace(capCenterBottom);
-    bool hitTop = ray_sphere_intersection(localRay, &sphereTop, capHitTop);
-    bool hitBottom = ray_sphere_intersection(localRay, &sphereBottom, capHitBottom);
+  bool hitTop = ray_sphere_intersection(localRay, capCenterTop, coll->capsuleShape().radius, 0, capHitTop);
+  bool hitBottom = ray_sphere_intersection(localRay, capCenterBottom, coll->capsuleShape().radius, 0, capHitBottom);
 
     // Determine closest valid hit
     float tSphere = std::numeric_limits<float>::max();
@@ -202,7 +199,7 @@ namespace P64::Coll {
     hit.point = coll->toWorldSpace(localHit);
     hit.normal = coll->rotateToWorld(localNormal);
     hit.distance = t;
-    hit.hitObjectId = coll->owner ? coll->owner->id : 0;
+    hit.hitObjectId = coll->ownerObject() ? coll->ownerObject()->id : 0;
     hit.didHit = true;
     return true;
   }
@@ -217,7 +214,7 @@ namespace P64::Coll {
     fm_vec3_t rayDirXZ = {localRay.dir.x, 0.0f, localRay.dir.z};
     float a = fm_vec3_dot(&rayDirXZ, &rayDirXZ);
     float b = 2.0f * fm_vec3_dot(&rayOriginXZ, &rayDirXZ);
-    float c = fm_vec3_dot(&rayOriginXZ, &rayOriginXZ) - coll->cylinder.radius * coll->cylinder.radius;
+    float c = fm_vec3_dot(&rayOriginXZ, &rayOriginXZ) - coll->cylinderShape().radius * coll->cylinderShape().radius;
 
     float discriminant = b * b - 4.0f * a * c;
     float tCylinder = std::numeric_limits<float>::max();
@@ -233,7 +230,7 @@ namespace P64::Coll {
         if(t < 0.0f || t > ray.maxDistance) continue;
 
         fm_vec3_t hitPoint = localRay.origin + localRay.dir * t;
-        if(fabsf(hitPoint.y) <= coll->cylinder.halfHeight) {
+        if(fabsf(hitPoint.y) <= coll->cylinderShape().halfHeight) {
 
             tCylinder = t;
             cylinderNormal = {hitPoint.x, 0.0f, hitPoint.z};
@@ -248,7 +245,7 @@ namespace P64::Coll {
     fm_vec3_t capNormal = {};
 
     for(int i = 0; i < 2; ++i) {
-      float y = i == 0 ? coll->cylinder.halfHeight : -coll->cylinder.halfHeight;
+      float y = i == 0 ? coll->cylinderShape().halfHeight : -coll->cylinderShape().halfHeight;
       fm_vec3_t capNormalLocal = {0.0f, i == 0 ? 1.0f : -1.0f, 0.0f};
 
       // Check if ray is parallel to cap plane
@@ -260,7 +257,7 @@ namespace P64::Coll {
       if(t > 0.0f && t < ray.maxDistance && t < tCap){
         fm_vec3_t hitPoint = localRay.origin + localRay.dir * t;
         float distsq = hitPoint.x * hitPoint.x + hitPoint.z * hitPoint.z;
-        if(distsq <= coll->cylinder.radius * coll->cylinder.radius) {
+        if(distsq <= coll->cylinderShape().radius * coll->cylinderShape().radius) {
           tCap = t;
           capNormal = capNormalLocal;
         }
@@ -291,7 +288,7 @@ namespace P64::Coll {
     hit.point = coll->toWorldSpace(localHit);
     hit.normal = coll->rotateToWorld(localNormal);
     hit.distance = t;
-    hit.hitObjectId = coll->owner ? coll->owner->id : 0;
+    hit.hitObjectId = coll->ownerObject() ? coll->ownerObject()->id : 0;
     hit.didHit = true;
     return true;
   }
@@ -302,9 +299,9 @@ namespace P64::Coll {
     localRay.dir = coll->rotateToLocal(ray.dir);
 
     // Conse parameters
-    float h = coll->cone.halfHeight * 2.0f;
-    float tan_theta_sq = h > 0.0f ? (coll->cone.radius / h) * (coll->cone.radius / h) : 0.0f;
-    fm_vec3_t apex = {0.0f, coll->cone.halfHeight, 0.0f};
+    float h = coll->coneShape().halfHeight * 2.0f;
+    float tan_theta_sq = h > 0.0f ? (coll->coneShape().radius / h) * (coll->coneShape().radius / h) : 0.0f;
+    fm_vec3_t apex = {0.0f, coll->coneShape().halfHeight, 0.0f};
 
     fm_vec3_t co = localRay.origin - apex;
 
@@ -327,7 +324,7 @@ namespace P64::Coll {
         if(t < 0.0f || t > ray.maxDistance || t >= tSide) continue;
 
         fm_vec3_t hitPoint = localRay.origin + localRay.dir * t;
-        if(hitPoint.y >= -coll->cone.halfHeight && hitPoint.y <= coll->cone.halfHeight) {
+        if(hitPoint.y >= -coll->coneShape().halfHeight && hitPoint.y <= coll->coneShape().halfHeight) {
           tSide = t;
 
           // Calculate normal
@@ -335,7 +332,7 @@ namespace P64::Coll {
           float axisToHitLen = sqrtf(axisToHit.x * axisToHit.x + axisToHit.z * axisToHit.z);
           if(axisToHitLen > FM_EPSILON) {
              axisToHit = axisToHit / axisToHitLen;
-             float coneAngle = atanf(coll->cone.radius / h);
+             float coneAngle = atanf(coll->coneShape().radius / h);
              sideNormal = {
               axisToHit.x,
               sinf(coneAngle),
@@ -354,10 +351,10 @@ namespace P64::Coll {
     fm_vec3_t baseNormal = {0.0f, -1.0f, 0.0f};
 
     if(fabsf(localRay.dir.y) > FM_EPSILON) {
-      float t = ( -coll->cone.halfHeight - localRay.origin.y) / localRay.dir.y;
+      float t = ( -coll->coneShape().halfHeight - localRay.origin.y) / localRay.dir.y;
       if(t > 0.0f && t < ray.maxDistance && t < tBase) {
         fm_vec3_t hitPoint = localRay.origin + localRay.dir * t;
-        if(hitPoint.x * hitPoint.x + hitPoint.z * hitPoint.z <= coll->cone.radius * coll->cone.radius) {
+        if(hitPoint.x * hitPoint.x + hitPoint.z * hitPoint.z <= coll->coneShape().radius * coll->coneShape().radius) {
           tBase = t;
         }
       }
@@ -384,7 +381,7 @@ namespace P64::Coll {
     hit.point = coll->toWorldSpace(localHit);
     hit.normal = coll->rotateToWorld(localNormal);
     hit.distance = t;
-    hit.hitObjectId = coll->owner ? coll->owner->id : 0;
+    hit.hitObjectId = coll->ownerObject() ? coll->ownerObject()->id : 0;
     hit.didHit = true;
     return true;
   }
@@ -394,9 +391,9 @@ namespace P64::Coll {
     localRay.origin = coll->toLocalSpace(ray.origin);
     localRay.dir = coll->rotateToLocal(ray.dir);
 
-    const float halfHeight = coll->pyramid.halfHeight;
-    const float baseHalfWidthX = coll->pyramid.baseHalfWidthX;
-    const float baseHalfWidthZ = coll->pyramid.baseHalfWidthZ;
+    const float halfHeight = coll->pyramidShape().halfHeight;
+    const float baseHalfWidthX = coll->pyramidShape().baseHalfWidthX;
+    const float baseHalfWidthZ = coll->pyramidShape().baseHalfWidthZ;
 
     const fm_vec3_t apex = {0.0f, halfHeight, 0.0f};
     const fm_vec3_t v0 = {-baseHalfWidthX, -halfHeight, -baseHalfWidthZ};
@@ -459,14 +456,14 @@ namespace P64::Coll {
     hit.point = coll->toWorldSpace(bestLocalPoint);
     hit.normal = coll->rotateToWorld(bestLocalNormal);
     hit.distance = bestT;
-    hit.hitObjectId = coll->owner ? coll->owner->id : 0;
+    hit.hitObjectId = coll->ownerObject() ? coll->ownerObject()->id : 0;
     hit.didHit = true;
     return true;
   }
 
 
   bool ray_collider_intersection(const Raycast &ray, const Collider *coll, RaycastHit &hit) {
-    switch (coll->type)
+    switch (coll->shapeType())
     {
     case ShapeType::Sphere:
       return ray_sphere_intersection(ray, coll, hit);

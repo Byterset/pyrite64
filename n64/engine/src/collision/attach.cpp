@@ -31,6 +31,6 @@ fm_vec3_t P64::Coll::Attach::update(const fm_vec3_t &ownPos)
 void P64::Coll::Attach::setReference(const Coll::MeshCollider *meshCollider)
 {
   if(meshCollider) {
-    refId = meshCollider->owner->id;
+    refId = meshCollider->ownerObject()->id;
   }
 }

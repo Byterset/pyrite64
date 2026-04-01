@@ -55,10 +55,10 @@ namespace P64::Comp
     data->rigid_body = Coll::RigidBody{};
     data->rigid_body.init(&obj, initData->mass);
     data->rigid_body.setKinematic(initData->isKinematic);
-    data->rigid_body.hasGravity = initData->hasGravity;
-    data->rigid_body.gravityScalar = initData->gravityScalar;
-    data->rigid_body.timeScalar = initData->timeScalar;
-    data->rigid_body.angularDamping = initData->angularDamping;
+    data->rigid_body.setHasGravity(initData->hasGravity);
+    data->rigid_body.setGravityScale(initData->gravityScalar);
+    data->rigid_body.setTimeScale(initData->timeScalar);
+    data->rigid_body.setAngularDamping(initData->angularDamping);
     Coll::Constraint constraints = Coll::Constraint::None;
     if(initData->constrainPosX) constraints = constraints | Coll::Constraint::FreezePosX;
     if(initData->constrainPosY) constraints = constraints | Coll::Constraint::FreezePosY;
