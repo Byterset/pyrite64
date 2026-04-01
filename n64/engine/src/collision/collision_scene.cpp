@@ -1042,6 +1042,12 @@ namespace P64::Coll {
         ContactPoint &cp = cc.points[j];
         if(!cp.active) continue;
 
+        // Scale accumulated impulses by warm starting factor (Bullet's m_warmstartingFactor = 0.85)
+        // This prevents overcorrection when constraint configuration changes between frames
+        cp.accumulatedNormalImpulse *= WARM_STARTING_FACTOR;
+        cp.accumulatedTangentImpulseU *= WARM_STARTING_FACTOR;
+        cp.accumulatedTangentImpulseV *= WARM_STARTING_FACTOR;
+
         fm_vec3_t impulse = cc.normal * cp.accumulatedNormalImpulse;
         impulse += cc.tangentU * cp.accumulatedTangentImpulseU;
         impulse += cc.tangentV * cp.accumulatedTangentImpulseV;

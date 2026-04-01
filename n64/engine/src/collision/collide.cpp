@@ -411,6 +411,72 @@ namespace P64::Coll {
   }
 
 
+  // ── Area-based contact point reduction (Bullet-style sortCachedPoints) ──
+
+  /// Computes the cross-product area of a triangle formed by 3 contact points (on A side).
+  /// Used by the area-maximizing contact point reduction to select the 4-point configuration 
+  /// that maximizes contact polygon coverage for better torque resistance.
+  static float contactTriangleArea2(const fm_vec3_t &p0, const fm_vec3_t &p1, const fm_vec3_t &p2) {
+    fm_vec3_t e0 = p1 - p0;
+    fm_vec3_t e1 = p2 - p0;
+    fm_vec3_t cross;
+    fm_vec3_cross(&cross, &e0, &e1);
+    return fm_vec3_len2(&cross);
+  }
+
+  /// Selects which existing contact point to replace when the manifold is full (4 points),
+  /// using Bullet's area-maximizing heuristic from btPersistentManifold::sortCachedPoints():
+  /// 1. Always keep the deepest penetrating point.
+  /// 2. Among the remaining candidates, pick the configuration that maximizes contact area.
+  static int selectContactPointToReplace(const ContactPoint points[MAX_CONTACT_POINTS_PER_PAIR], int pointCount, const fm_vec3_t &newContactA, float newPenetration) {
+    // Find deepest existing point — this one is always kept
+    int deepestIdx = 0;
+    float deepestPen = points[0].penetration;
+    for(int i = 1; i < pointCount; ++i) {
+      if(points[i].penetration > deepestPen) {
+        deepestPen = points[i].penetration;
+        deepestIdx = i;
+      }
+    }
+
+    // If the new point is the deepest overall, we keep it and choose among existing points to replace
+    // For each candidate removal, compute the area of the triangle formed by the remaining 3 + new point
+    // Select the removal that maximizes this area
+
+    // Gather all 5 candidate contact positions on A side (4 existing + 1 new)
+    fm_vec3_t pts[5];
+    for(int i = 0; i < pointCount; ++i) pts[i] = points[i].contactA;
+    pts[4] = newContactA;
+
+    float bestArea = -1.0f;
+    int replaceIdx = 0;
+
+    for(int exclude = 0; exclude < pointCount; ++exclude) {
+      // Never exclude the deepest existing point (unless new point is deeper)
+      if(exclude == deepestIdx && newPenetration <= deepestPen) continue;
+
+      // Build triangle from the 3 remaining existing points + the new point
+      fm_vec3_t triPts[4];
+      int triCount = 0;
+      for(int j = 0; j < pointCount; ++j) {
+        if(j != exclude) triPts[triCount++] = pts[j];
+      }
+      triPts[triCount] = pts[4]; // new point
+
+      // Compute area of the quad as sum of two triangles
+      float area = contactTriangleArea2(triPts[0], triPts[1], triPts[2])
+                  + contactTriangleArea2(triPts[0], triPts[2], triPts[3]);
+
+      if(area > bestArea) {
+        bestArea = area;
+        replaceIdx = exclude;
+      }
+    }
+
+    return replaceIdx;
+  }
+
+
   // ── Contact constraint caching ────────────────────────────────────
 
   ContactConstraint *collideCacheContactConstraint(
@@ -508,17 +574,13 @@ namespace P64::Coll {
         target->accumulatedTangentImpulseU = 0.0f;
         target->accumulatedTangentImpulseV = 0.0f;
       } else {
-        // Full: replace the shallowest point if new one is deeper
-        int minPenIdx = 0;
-        float minPen = existing->points[0].penetration;
-        for(int i = 1; i < existing->pointCount; ++i) {
-          if(existing->points[i].penetration < minPen) {
-            minPen = existing->points[i].penetration;
-            minPenIdx = i;
-          }
-        }
-        if(orderedResult.penetration > minPen) {
-          target = &existing->points[minPenIdx];
+        // Full manifold: use Bullet-style area-maximizing heuristic to select which point to replace.
+        // This keeps the deepest point and maximizes contact polygon coverage for better torque resistance.
+        int replaceIdx = selectContactPointToReplace(existing->points, existing->pointCount, orderedResult.contactA, orderedResult.penetration);
+        // Only replace if new point is deeper than the candidate, or new point brings area improvement
+        if(orderedResult.penetration > existing->points[replaceIdx].penetration ||
+           existing->points[replaceIdx].penetration < 0.0f) {
+          target = &existing->points[replaceIdx];
           target->accumulatedNormalImpulse = 0.0f;
           target->accumulatedTangentImpulseU = 0.0f;
           target->accumulatedTangentImpulseV = 0.0f;
