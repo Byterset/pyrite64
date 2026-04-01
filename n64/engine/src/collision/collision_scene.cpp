@@ -1187,6 +1187,90 @@ namespace P64::Coll {
     }
   }
 
+  // ── Split impulse solver (Bullet-style) ─────────────────────────
+
+  /// Bullet's split impulse technique: decouples penetration correction from velocity.
+  /// Instead of adding bias to the velocity constraint (which adds energy), this applies
+  /// separate "push" velocities that only affect position integration.
+  /// This prevents the "bouncy stacking" artifact of pure Baumgarte stabilization.
+  void CollisionScene::solveSplitImpulse() {
+    const float splitThreshold = SPLIT_IMPULSE_PENETRATION_THRESHOLD * physicsScale_;
+
+    for(ContactConstraint *constraint : solverConstraints_) {
+      ContactConstraint &cc = *constraint;
+
+      RigidBody *a = cc.rigidBodyA;
+      RigidBody *b = cc.rigidBodyB;
+      const bool aCanRotate = cc.respondsA && canApplyAngularResponse(a);
+      const bool bCanRotate = cc.respondsB && canApplyAngularResponse(b);
+
+      for(int j = 0; j < cc.pointCount; ++j) {
+        ContactPoint &cp = cc.points[j];
+        if(!cp.active) continue;
+
+        // Only apply split impulse for penetrations beyond threshold
+        if(cp.penetration < -splitThreshold) continue;
+
+        // Compute penetration error for split impulse
+        float penetrationError = cp.penetration - (-splitThreshold);
+        if(penetrationError <= 0.0f) continue;
+
+        // Compute relative push velocity at contact along normal
+        float relPushVelN = 0.0f;
+        if(a) {
+          fm_vec3_t pushVelA = a->pushLinearVelocity_;
+          if(aCanRotate) {
+            fm_vec3_t aCross;
+            fm_vec3_cross(&aCross, &a->pushAngularVelocity_, &cp.aToContact);
+            pushVelA += aCross;
+          }
+          relPushVelN += fm_vec3_dot(&pushVelA, &cc.normal);
+        }
+        if(b) {
+          fm_vec3_t pushVelB = b->pushLinearVelocity_;
+          if(bCanRotate) {
+            fm_vec3_t bCross;
+            fm_vec3_cross(&bCross, &b->pushAngularVelocity_, &cp.bToContact);
+            pushVelB += bCross;
+          }
+          relPushVelN -= fm_vec3_dot(&pushVelB, &cc.normal);
+        }
+
+        // Split impulse: push velocity to resolve penetration
+        float pushImpulse = cp.normalMass * (SPLIT_IMPULSE_ERP * penetrationError / fixedDt_ - relPushVelN);
+        if(pushImpulse <= 0.0f) continue;
+
+        fm_vec3_t pushN = cc.normal * pushImpulse;
+
+        // Apply push impulse to A
+        if(a && cc.respondsA && !a->isKinematic_) {
+          float invMassA = a->constrainedLinearInvMassAlong(cc.normal);
+          if(invMassA > 0.0f) {
+            a->pushLinearVelocity_ = a->pushLinearVelocity_ + a->constrainLinearWorld(pushN * a->inverseMass_);
+          }
+          if(aCanRotate) {
+            fm_vec3_t angPush;
+            fm_vec3_cross(&angPush, &cp.aToContact, &pushN);
+            a->pushAngularVelocity_ = a->pushAngularVelocity_ + a->applyConstrainedWorldInertia(angPush);
+          }
+        }
+
+        // Apply push impulse to B
+        if(b && cc.respondsB && !b->isKinematic_) {
+          float invMassB = b->constrainedLinearInvMassAlong(cc.normal);
+          if(invMassB > 0.0f) {
+            b->pushLinearVelocity_ = b->pushLinearVelocity_ - b->constrainLinearWorld(pushN * b->inverseMass_);
+          }
+          if(bCanRotate) {
+            fm_vec3_t angPush;
+            fm_vec3_cross(&angPush, &cp.bToContact, &pushN);
+            b->pushAngularVelocity_ = b->pushAngularVelocity_ - b->applyConstrainedWorldInertia(angPush);
+          }
+        }
+      }
+    }
+  }
+
   // ── Position constraint solver ────────────────────────────────────
 
   bool CollisionScene::solvePositionConstraints() {
@@ -1437,21 +1521,46 @@ namespace P64::Coll {
 
     // Warm start
     stageStart = get_ticks();
+    // Reset push velocities for split impulse (Bullet-style)
+    for(RigidBody *body : rigidBodies_) {
+      if(!body->isSleeping_) body->resetPushVelocities();
+    }
     warmStart();
     ticksWarmStart = get_ticks() - stageStart;
 
     // Velocity constraint solver
     stageStart = get_ticks();
     solveVelocityConstraints();
+    // Split impulse: resolve deep penetrations via push velocities (Bullet-style)
+    solveSplitImpulse();
     ticksVelocitySolve = get_ticks() - stageStart;
 
-    // Integrate positions and rotations
+    // Integrate positions and rotations (including split impulse push velocities)
     stageStart = get_ticks();
     for(RigidBody *body : rigidBodies_) {
       if(body->isSleeping_) continue;
 
       body->integratePosition(fixedDt_);
       body->integrateRotation(fixedDt_);
+
+      // Apply split impulse push velocities to position only (not real velocity)
+      if(body->position_ && !body->isKinematic_) {
+        fm_vec3_t pushPos = body->pushLinearVelocity_ * fixedDt_;
+        if(fm_vec3_len2(&pushPos) > FM_EPSILON * FM_EPSILON) {
+          *body->position_ = *body->position_ + pushPos;
+        }
+        if(body->rotation_ && body->canApplyAngularResponse()) {
+          float pushAngLen = fm_vec3_len(&body->pushAngularVelocity_);
+          if(pushAngLen > FM_EPSILON) {
+            fm_vec3_t pushAxis = body->pushAngularVelocity_ / pushAngLen;
+            float pushAngle = pushAngLen * fixedDt_;
+            fm_quat_t pushDq;
+            fm_quat_from_axis_angle(&pushDq, &pushAxis, pushAngle);
+            *body->rotation_ = pushDq * *body->rotation_;
+            fm_quat_norm(body->rotation_, body->rotation_);
+          }
+        }
+      }
     }
     ticksIntegration = get_ticks() - stageStart;
 
