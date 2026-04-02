@@ -1541,12 +1541,10 @@ namespace P64::Coll {
     ticksWorldUpdate = get_ticks() - stageStart;
 
     stageStart = get_ticks();
-    // Integrate velocities
+    // Integrate velocities (also resets sleeping bodies — see RigidBody::integrateVelocity)
     for(RigidBody *body : rigidBodies_) {
-      if(!body->isSleeping_) {
-        body->integrateVelocity(fixedDt_, gravity_);
-        body->integrateAngularVelocity(fixedDt_);
-      }
+      body->integrateVelocity(fixedDt_, gravity_);
+      body->integrateAngularVelocity(fixedDt_);
     }
     ticksIntegrateVel = get_ticks() - stageStart;
 
