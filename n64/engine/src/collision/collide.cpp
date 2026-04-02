@@ -860,6 +860,102 @@ namespace P64::Coll {
   }
 
 
+  /// @brief Directly fills a contact constraint with multiple SAT-derived contact points in one pass.
+  /// Avoids repeated key lookups and proximity matching that collideCacheContactConstraint would
+  /// perform when called per-point. Preserves warm-started impulses by proximity-matching against
+  /// previously cached points.
+  static ContactConstraint *collideCacheSatContactConstraint(
+    RigidBody *rigidBodyA, Collider *colliderA, Object *objectA,
+    MeshCollider *meshColliderB, Object *objectB,
+    const EpaResult *results, int resultCount,
+    float combinedFriction, float combinedBounce,
+    bool respondsA, int triangleIndex) {
+
+    if(resultCount <= 0 || !colliderA || !meshColliderB || triangleIndex < 0) return nullptr;
+
+    CollisionScene *scene = collisionSceneGetInstance();
+    fm_vec3_t normal = makeSafeContactNormal(results[0].normal, results[0].contactA, results[0].contactB);
+
+    ContactConstraintKey key = makeColliderMeshConstraintKey(colliderA, meshColliderB, static_cast<uint16_t>(triangleIndex));
+
+    ContactConstraint *cc = scene->findCachedConstraint(key);
+
+    // Save old points for warm-start matching before we overwrite them
+    ContactPoint oldPoints[MAX_CONTACT_POINTS_PER_PAIR]{};
+    int oldCount = 0;
+    if(cc) {
+      oldCount = cc->pointCount;
+      for(int i = 0; i < oldCount; ++i) oldPoints[i] = cc->points[i];
+    } else {
+      cc = scene->createCachedConstraint(key,
+        rigidBodyA, colliderA, nullptr, objectA,
+        nullptr, nullptr, meshColliderB, objectB);
+      if(!cc) return nullptr;
+    }
+
+    cc->rigidBodyA = rigidBodyA;
+    cc->colliderA = colliderA;
+    cc->meshColliderA = nullptr;
+    cc->objectA = objectA;
+    cc->rigidBodyB = nullptr;
+    cc->colliderB = nullptr;
+    cc->meshColliderB = meshColliderB;
+    cc->objectB = objectB;
+    cc->isActive = true;
+    cc->isTrigger = false;
+    cc->normal = normal;
+    vec3CalculateTangents(normal, cc->tangentU, cc->tangentV);
+    cc->combinedFriction = combinedFriction;
+    cc->combinedBounce = combinedBounce;
+    cc->respondsA = respondsA;
+    cc->respondsB = false;
+
+    int newCount = resultCount < MAX_CONTACT_POINTS_PER_PAIR ? resultCount : MAX_CONTACT_POINTS_PER_PAIR;
+    float MATCH_DIST_SQ = 0.02f * scene->getPhysicsScale() * scene->getPhysicsScale();
+    bool oldClaimed[MAX_CONTACT_POINTS_PER_PAIR] = {};
+
+    for(int i = 0; i < newCount; ++i) {
+      const EpaResult &r = results[i];
+      ContactPoint &cp = cc->points[i];
+
+      // Find closest unclaimed old point for warm-start impulse transfer
+      int bestOld = -1;
+      float bestDistSq = MATCH_DIST_SQ;
+      for(int j = 0; j < oldCount; ++j) {
+        if(oldClaimed[j]) continue;
+        fm_vec3_t diff = oldPoints[j].contactA - r.contactA;
+        float distSq = fm_vec3_len2(&diff);
+        if(distSq < bestDistSq) {
+          bestDistSq = distSq;
+          bestOld = j;
+        }
+      }
+
+      if(bestOld >= 0) {
+        oldClaimed[bestOld] = true;
+        cp.accumulatedNormalImpulse = oldPoints[bestOld].accumulatedNormalImpulse;
+        cp.accumulatedTangentImpulseU = oldPoints[bestOld].accumulatedTangentImpulseU;
+        cp.accumulatedTangentImpulseV = oldPoints[bestOld].accumulatedTangentImpulseV;
+      } else {
+        cp.accumulatedNormalImpulse = 0.0f;
+        cp.accumulatedTangentImpulseU = 0.0f;
+        cp.accumulatedTangentImpulseV = 0.0f;
+      }
+
+      cp.contactA = r.contactA;
+      cp.contactB = r.contactB;
+      cp.point = (r.contactA + r.contactB) * 0.5f;
+      cp.penetration = r.penetration;
+      cp.active = true;
+      cp.localPointA = contactLocalPointFromWorldPoint(cp.contactA, rigidBodyA, colliderA, nullptr);
+      cp.localPointB = contactLocalPointFromWorldPoint(cp.contactB, nullptr, nullptr, meshColliderB);
+    }
+
+    cc->pointCount = newCount;
+    return cc;
+  }
+
+
   /// @brief Performs a collision test between a collider and a single Mesh triangle. Used as a subroutine for object-to-mesh collision detection.
   ///
   /// Hint: This function is designed to be called with the collider already transformed into the mesh's local space.
@@ -898,13 +994,12 @@ namespace P64::Coll {
       EpaResult satResults[MAX_CONTACT_POINTS_PER_PAIR];
       int satCount = analyticalBoxTriangle(*colliderProxyMeshSpace, box, v0, v1, v2, tri.normal, satResults, MAX_CONTACT_POINTS_PER_PAIR);
       if(satCount > 0) {
-        for(int i = 0; i < satCount; ++i) {
-          meshLocalResultToWorld(satResults[i], mesh);
-          collideCacheContactConstraint(
-              rigidBody, colliderProxyMeshSpace->collider, nullptr, objectA,
-              nullptr, nullptr, const_cast<MeshCollider *>(&mesh), objectB,
-              satResults[i], combinedFriction, combinedBounce, false, colliderRespondsToMesh, false, triangleIndex);
-        }
+        for(int i = 0; i < satCount; ++i) meshLocalResultToWorld(satResults[i], mesh);
+        collideCacheSatContactConstraint(
+            rigidBody, colliderProxyMeshSpace->collider, objectA,
+            const_cast<MeshCollider *>(&mesh), objectB,
+            satResults, satCount,
+            combinedFriction, combinedBounce, colliderRespondsToMesh, triangleIndex);
         return true;
       }
       return false;
