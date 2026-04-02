@@ -381,6 +381,9 @@ namespace P64::Coll {
 
   // ── Analytical Box-Triangle (SAT) ────────────────────────────────
 
+  // Forward declaration — used by analyticalBoxTriangle for contact point selection
+  static float contactTriangleArea2(const fm_vec3_t &p0, const fm_vec3_t &p1, const fm_vec3_t &p2);
+
   /// @brief Clip a polygon against one side of a box slab (keep vertices with coord >= -limit).
   /// @param inVerts  Input polygon vertices.
   /// @param inCount  Number of input vertices.
@@ -452,14 +455,15 @@ namespace P64::Coll {
   /// @param v1w        Triangle vertex 1 in mesh local space.
   /// @param v2w        Triangle vertex 2 in mesh local space.
   /// @param triNormal  Triangle normal in mesh local space.
-  /// @param result     Receives contact data on success (mesh local space).
-  /// @return true if the box overlaps the triangle.
-  static bool analyticalBoxTriangle(
+  /// @param results    Array to receive contact data on success (mesh local space).
+  /// @param maxResults Maximum number of contact points to generate.
+  /// @return Number of contact points generated (0 = no collision).
+  static int analyticalBoxTriangle(
       const ColliderProxy &proxy,
       const BoxShape      &boxShape,
       const fm_vec3_t &v0w, const fm_vec3_t &v1w, const fm_vec3_t &v2w,
       const fm_vec3_t &triNormal,
-      EpaResult &result)
+      EpaResult *results, int maxResults)
   {
     const fm_vec3_t &h = boxShape.halfSize;
 
@@ -480,15 +484,15 @@ namespace P64::Coll {
     {
       float triMinX = fminf(v0.x, fminf(v1.x, v2.x));
       float triMaxX = fmaxf(v0.x, fmaxf(v1.x, v2.x));
-      if(!satAxisTest(h.x, triMinX, triMaxX, 1.0f, bestDepth, bestAxis, VEC3_RIGHT)) return false;
+      if(!satAxisTest(h.x, triMinX, triMaxX, 1.0f, bestDepth, bestAxis, VEC3_RIGHT)) return 0;
 
       float triMinY = fminf(v0.y, fminf(v1.y, v2.y));
       float triMaxY = fmaxf(v0.y, fmaxf(v1.y, v2.y));
-      if(!satAxisTest(h.y, triMinY, triMaxY, 1.0f, bestDepth, bestAxis, VEC3_UP)) return false;
+      if(!satAxisTest(h.y, triMinY, triMaxY, 1.0f, bestDepth, bestAxis, VEC3_UP)) return 0;
 
       float triMinZ = fminf(v0.z, fminf(v1.z, v2.z));
       float triMaxZ = fmaxf(v0.z, fmaxf(v1.z, v2.z));
-      if(!satAxisTest(h.z, triMinZ, triMaxZ, 1.0f, bestDepth, bestAxis, VEC3_FORWARD)) return false;
+      if(!satAxisTest(h.z, triMinZ, triMaxZ, 1.0f, bestDepth, bestAxis, VEC3_FORWARD)) return 0;
     }
 
     // --- Triangle face normal ---
@@ -503,7 +507,7 @@ namespace P64::Coll {
       triMin = fminf(triMin, fminf(p1, p2));
       triMax = fmaxf(triMax, fmaxf(p1, p2));
       float l2 = fm_vec3_len2(&localN);
-      if(!satAxisTest(boxHalf, triMin, triMax, l2, bestDepth, bestAxis, localN)) return false;
+      if(!satAxisTest(boxHalf, triMin, triMax, l2, bestDepth, bestAxis, localN)) return 0;
     }
 
     // --- 9 edge-pair cross products: box_axis × tri_edge ---
@@ -519,7 +523,7 @@ namespace P64::Coll {
         float boxHalf = fabsf(cross.x) * h.x + fabsf(cross.y) * h.y + fabsf(cross.z) * h.z;
         float tMin, tMax;
         projectTriangleOntoAxis(v0, v1, v2, cross, tMin, tMax);
-        if(!satAxisTest(boxHalf, tMin, tMax, l2, bestDepth, bestAxis, cross)) return false;
+        if(!satAxisTest(boxHalf, tMin, tMax, l2, bestDepth, bestAxis, cross)) return 0;
       }
     }
 
@@ -539,42 +543,76 @@ namespace P64::Coll {
       float limit = (&h.x)[axis];
       // Clip against -limit (keep coord >= -limit)
       n = clipPolygonToBoxSlab(clipA, n, clipB, axis, limit);
-      if(n < 1) return false;
+      if(n < 1) return 0;
       // Clip against +limit by flipping sign: keep -coord >= -limit → coord <= limit
       // Flip the clipped axis, clip, then flip back
       for(int k = 0; k < n; ++k) (&clipB[k].x)[axis] = -(&clipB[k].x)[axis];
       n = clipPolygonToBoxSlab(clipB, n, clipA, axis, limit);
-      if(n < 1) return false;
+      if(n < 1) return 0;
       for(int k = 0; k < n; ++k) (&clipA[k].x)[axis] = -(&clipA[k].x)[axis];
     }
 
-    // From clipped polygon, find the deepest point along the contact normal
+    // --- Select up to maxResults well-distributed contact points from clipped polygon ---
+    float boxHalfAlongNormal = fabsf(bestAxis.x) * h.x + fabsf(bestAxis.y) * h.y + fabsf(bestAxis.z) * h.z;
+
+    int selected[10];
+    int selectedCount = 0;
+
+    // Step 1: Always include the deepest penetrating point
     float deepestPen = -1e30f;
     int deepestIdx = 0;
     for(int i = 0; i < n; ++i) {
-      float d = -fm_vec3_dot(&clipA[i], &bestAxis);
-      if(d > deepestPen) { deepestPen = d; deepestIdx = i; }
+      float pen = fm_vec3_dot(&clipA[i], &bestAxis) + boxHalfAlongNormal;
+      if(pen > deepestPen) { deepestPen = pen; deepestIdx = i; }
+    }
+    selected[selectedCount++] = deepestIdx;
+
+    // Step 2: Point farthest from the deepest (maximize spread)
+    if(n > 1 && maxResults > 1) {
+      float bestDist2 = -1.0f;
+      int farthestIdx = -1;
+      for(int i = 0; i < n; ++i) {
+        if(i == deepestIdx) continue;
+        fm_vec3_t d = clipA[i] - clipA[deepestIdx];
+        float dist2 = fm_vec3_len2(&d);
+        if(dist2 > bestDist2) { bestDist2 = dist2; farthestIdx = i; }
+      }
+      if(farthestIdx >= 0) selected[selectedCount++] = farthestIdx;
     }
 
-    // Contact point on box surface: project clipped point onto the reference face
-    fm_vec3_t contactLocal = clipA[deepestIdx];
-    // Clamp to box surface along the normal axis
-    contactLocal = fm_vec3_t{{
-      fmaxf(-h.x, fminf(contactLocal.x, h.x)),
-      fmaxf(-h.y, fminf(contactLocal.y, h.y)),
-      fmaxf(-h.z, fminf(contactLocal.z, h.z))
-    }};
+    // Step 3: Point that maximizes triangle area with the first two (best coverage)
+    if(n > 2 && maxResults > 2 && selectedCount >= 2) {
+      float bestArea = -1.0f;
+      int bestAreaIdx = -1;
+      for(int i = 0; i < n; ++i) {
+        if(i == selected[0] || i == selected[1]) continue;
+        float area = contactTriangleArea2(clipA[selected[0]], clipA[selected[1]], clipA[i]);
+        if(area > bestArea) { bestArea = area; bestAreaIdx = i; }
+      }
+      if(bestAreaIdx >= 0) selected[selectedCount++] = bestAreaIdx;
+    }
 
-    // Transform results back to mesh local space
+    // --- Generate results for selected points ---
     fm_vec3_t worldNormal = matrix3Vec3Mul(proxy.rotation, bestAxis);
-    fm_vec3_t worldContactOnBox = matrix3Vec3Mul(proxy.rotation, contactLocal) + proxy.worldCenter;
-    fm_vec3_t worldContactOnTri = worldContactOnBox - worldNormal * bestDepth;
+    int resultCount = 0;
 
-    result.normal = worldNormal;
-    result.penetration = bestDepth;
-    result.contactA = worldContactOnBox; // point on box (collider A)
-    result.contactB = worldContactOnTri; // point on triangle (mesh B)
-    return true;
+    for(int k = 0; k < selectedCount && resultCount < maxResults; ++k) {
+      fm_vec3_t p = clipA[selected[k]];
+      float pen = fm_vec3_dot(&p, &bestAxis) + boxHalfAlongNormal;
+      if(pen < FM_EPSILON) continue;
+
+      // Contact on box surface: project triangle point onto box face along normal
+      fm_vec3_t contactOnBox = p - bestAxis * pen;
+
+      // Transform back to mesh local space
+      results[resultCount].normal = worldNormal;
+      results[resultCount].penetration = pen;
+      results[resultCount].contactA = matrix3Vec3Mul(proxy.rotation, contactOnBox) + proxy.worldCenter;
+      results[resultCount].contactB = matrix3Vec3Mul(proxy.rotation, p) + proxy.worldCenter;
+      resultCount++;
+    }
+
+    return resultCount;
   }
 
 
@@ -857,13 +895,16 @@ namespace P64::Coll {
       const fm_vec3_t v1 = tri.localVertex(1);
       const fm_vec3_t v2 = tri.localVertex(2);
 
-      EpaResult satResult;
-      if(analyticalBoxTriangle(*colliderProxyMeshSpace, box, v0, v1, v2, tri.normal, satResult)) {
-        meshLocalResultToWorld(satResult, mesh);
-        collideCacheContactConstraint(
-            rigidBody, colliderProxyMeshSpace->collider, nullptr, objectA,
-            nullptr, nullptr, const_cast<MeshCollider *>(&mesh), objectB,
-            satResult, combinedFriction, combinedBounce, false, colliderRespondsToMesh, false, triangleIndex);
+      EpaResult satResults[MAX_CONTACT_POINTS_PER_PAIR];
+      int satCount = analyticalBoxTriangle(*colliderProxyMeshSpace, box, v0, v1, v2, tri.normal, satResults, MAX_CONTACT_POINTS_PER_PAIR);
+      if(satCount > 0) {
+        for(int i = 0; i < satCount; ++i) {
+          meshLocalResultToWorld(satResults[i], mesh);
+          collideCacheContactConstraint(
+              rigidBody, colliderProxyMeshSpace->collider, nullptr, objectA,
+              nullptr, nullptr, const_cast<MeshCollider *>(&mesh), objectB,
+              satResults[i], combinedFriction, combinedBounce, false, colliderRespondsToMesh, false, triangleIndex);
+        }
         return true;
       }
       return false;
