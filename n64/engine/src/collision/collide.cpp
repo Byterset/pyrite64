@@ -143,142 +143,6 @@ namespace P64::Coll {
     result.contactB = mesh.toWorldSpace(result.contactB);
   }
 
-  static int minimumTriangleReuseContacts(const Collider &collider) {
-    switch(collider.shapeType()) {
-      case ShapeType::Sphere:
-      case ShapeType::Capsule:
-        return 1;
-      case ShapeType::Cylinder:
-      case ShapeType::Cone:
-        return 2;
-      case ShapeType::Box:
-      case ShapeType::Pyramid:
-        return 3;
-    }
-
-    return MAX_CONTACT_POINTS_PER_PAIR;
-  }
-
-  static float triangleReuseShapeScale(const Collider &collider) {
-    switch(collider.shapeType()) {
-      case ShapeType::Sphere:
-        return collider.sphereShape().radius;
-      case ShapeType::Capsule:
-        return fmaxf(collider.capsuleShape().radius, collider.capsuleShape().innerHalfHeight);
-      case ShapeType::Box:
-        return fmaxf(collider.boxShape().halfSize.x, fmaxf(collider.boxShape().halfSize.y, collider.boxShape().halfSize.z));
-      case ShapeType::Cylinder:
-        return fmaxf(collider.cylinderShape().radius, collider.cylinderShape().halfHeight);
-      case ShapeType::Cone:
-        return fmaxf(collider.coneShape().radius, collider.coneShape().halfHeight);
-      case ShapeType::Pyramid:
-        return fmaxf(collider.pyramidShape().baseHalfWidthX, fmaxf(collider.pyramidShape().baseHalfWidthZ, collider.pyramidShape().halfHeight));
-    }
-
-    return 0.0f;
-  }
-
-  static float cachedTriangleContactSpanSq(const ContactConstraint &constraint) {
-    float maxSpanSq = 0.0f;
-    for(int i = 0; i < constraint.pointCount; ++i) {
-      const ContactPoint &pointA = constraint.points[i];
-      if(!pointA.active) continue;
-
-      for(int j = i + 1; j < constraint.pointCount; ++j) {
-        const ContactPoint &pointB = constraint.points[j];
-        if(!pointB.active) continue;
-
-        const fm_vec3_t diff = pointA.contactA - pointB.contactA;
-        maxSpanSq = fmaxf(maxSpanSq, fm_vec3_len2(&diff));
-      }
-    }
-
-    return maxSpanSq;
-  }
-
-  static bool canSkipTriangleEpaWithCachedConstraint(const ContactConstraint &constraint, const Collider &collider) {
-    const int minContacts = minimumTriangleReuseContacts(collider);
-    if(constraint.pointCount < minContacts) {
-      return false;
-    }
-
-    if(minContacts <= 1) {
-      return true;
-    }
-
-    const float minSpan = fmaxf(triangleReuseShapeScale(collider) * 0.2f, 0.02f);
-    return cachedTriangleContactSpanSq(constraint) >= (minSpan * minSpan);
-  }
-
-  static bool refreshCachedTriangleConstraint(
-    ContactConstraint &constraint,
-    RigidBody *rigidBody,
-    const MeshTriangle &triangle,
-    const MeshCollider &mesh,
-    float combinedFriction,
-    float combinedBounce,
-    bool respondsA,
-    bool respondsB) {
-    if(constraint.isTrigger || constraint.pointCount <= 0 || !rigidBody || !rigidBody->positionPtr()) {
-      return false;
-    }
-
-    const fm_vec3_t localV0 = triangle.localVertex(0);
-    const fm_vec3_t localV1 = triangle.localVertex(1);
-    const fm_vec3_t localV2 = triangle.localVertex(2);
-    const Plane trianglePlaneLocal = planeFromNormalAndPoint(triangle.normal, localV0);
-    fm_vec3_t triangleNormalWorld = triangle.worldNormal();
-    triangleNormalWorld = makeSafeContactNormal(triangleNormalWorld, constraint.points[0].contactA, constraint.points[0].contactB);
-    if(fm_vec3_dot(&triangleNormalWorld, &constraint.normal) < 0.0f) {
-      triangleNormalWorld = -triangleNormalWorld;
-    }
-
-    constraint.isActive = true;
-    constraint.isTrigger = false;
-    constraint.normal = triangleNormalWorld;
-    vec3CalculateTangents(constraint.normal, constraint.tangentU, constraint.tangentV);
-    constraint.combinedFriction = combinedFriction;
-    constraint.combinedBounce = combinedBounce;
-    constraint.respondsA = respondsA;
-    constraint.respondsB = respondsB;
-
-    constexpr float BARY_TOLERANCE = 0.02f;
-    constexpr float REUSE_MAX_SEPARATION = 0.05f;
-    int writeIndex = 0;
-
-    for(int pointIndex = 0; pointIndex < constraint.pointCount; ++pointIndex) {
-      ContactPoint &point = constraint.points[pointIndex];
-      if(!point.active) continue;
-
-      fm_vec3_t localMeshPoint = planeProjectPoint(trianglePlaneLocal, point.localPointB);
-      const fm_vec3_t barycentric = calculateBarycentricCoords(localV0, localV1, localV2, localMeshPoint);
-      if(!barycentricIsInsideTriangle(barycentric, BARY_TOLERANCE)) {
-        point.active = false;
-        continue;
-      }
-
-      point.localPointB = evaluateBarycentricCoords(localV0, localV1, localV2, barycentric);
-
-      point.contactA = contactWorldPointFromLocalPoint(point.localPointA, rigidBody, nullptr, nullptr);
-      point.contactB = contactWorldPointFromLocalPoint(point.localPointB, nullptr, nullptr, &mesh);
-      point.point = (point.contactA + point.contactB) * 0.5f;
-
-      fm_vec3_t diff = point.contactA - point.contactB;
-      point.penetration = -fm_vec3_dot(&diff, &constraint.normal);
-      if(point.penetration < -REUSE_MAX_SEPARATION) {
-        point.active = false;
-        continue;
-      }
-
-      if(writeIndex != pointIndex) {
-        constraint.points[writeIndex] = point;
-      }
-      ++writeIndex;
-    }
-
-    constraint.pointCount = writeIndex;
-    return writeIndex > 0;
-  }
 
   // ── Analytical collision helpers ──────────────────────────────────
 
@@ -567,9 +431,15 @@ namespace P64::Coll {
       }
       triPts[triCount] = pts[MAX_CONTACT_POINTS_PER_PAIR]; // new point
 
+      float area = 0.0f;
       // Compute area of the quad as sum of two triangles
-      float area = contactTriangleArea2(triPts[0], triPts[1], triPts[2]);
-                  // + contactTriangleArea2(triPts[0], triPts[2], triPts[3]); // Optional if more than 3 pts
+      if (MAX_CONTACT_POINTS_PER_PAIR >= 4) {
+            area = contactTriangleArea2(triPts[0], triPts[1], triPts[2])
+                  + contactTriangleArea2(triPts[0], triPts[2], triPts[3]); // Optional if more than 3 pts
+      } else if (MAX_CONTACT_POINTS_PER_PAIR == 3) {
+            area = contactTriangleArea2(triPts[0], triPts[1], triPts[2]);
+      }
+
 
       if(area > bestArea) {
         bestArea = area;
@@ -651,7 +521,7 @@ namespace P64::Coll {
       }
 
       // Try to match new contact to an existing point by proximity
-      constexpr float MATCH_DIST_SQ = 0.02f;
+      float MATCH_DIST_SQ = 0.02f * scene->getPhysicsScale() * scene->getPhysicsScale(); // 2cm threshold (scaled)
       int matchedIdx = -1;
       float bestDistSq = MATCH_DIST_SQ;
       for(int i = 0; i < existing->pointCount; ++i) {
@@ -780,24 +650,6 @@ namespace P64::Coll {
     tri.tri = mesh.triangleIndices(triangleIndex);
     tri.normal = mesh.triangleNormal(triangleIndex);
     tri.mesh = &mesh;
-
-    if(!isTriggerContact) {
-      CollisionScene *scene = collisionSceneGetInstance();
-      ContactConstraint *existing = scene->findCachedConstraint(
-        makeColliderMeshConstraintKey(colliderProxyMeshSpace->collider, const_cast<MeshCollider *>(&mesh), static_cast<uint16_t>(triangleIndex)));
-      if(existing && refreshCachedTriangleConstraint(*existing, rigidBody, tri, mesh, combinedFriction, combinedBounce, colliderRespondsToMesh, false) &&
-         canSkipTriangleEpaWithCachedConstraint(*existing, *colliderProxyMeshSpace->collider)) {
-        existing->rigidBodyA = rigidBody;
-        existing->colliderA = colliderProxyMeshSpace->collider;
-        existing->meshColliderA = nullptr;
-        existing->objectA = objectA;
-        existing->rigidBodyB = nullptr;
-        existing->colliderB = nullptr;
-        existing->meshColliderB = const_cast<MeshCollider *>(&mesh);
-        existing->objectB = objectB;
-        return true;
-      }
-    }
 
     Simplex simplex;
     fm_vec3_t firstDir = ((tri.localVertex(0) + tri.localVertex(1) + tri.localVertex(2)) / 3.0f) - colliderProxyMeshSpace->worldCenter;

@@ -24,10 +24,10 @@ namespace P64::Coll {
   constexpr float TERMINAL_ANGULAR_SPEED_SQ = TERMINAL_ANGULAR_SPEED * TERMINAL_ANGULAR_SPEED;
   constexpr float POS_SLEEP_THRESHOLD = 0.01f; // Units moved, scaled by physicsScale when used
   constexpr float POS_SLEEP_THRESHOLD_SQ = POS_SLEEP_THRESHOLD * POS_SLEEP_THRESHOLD;
-  constexpr float SPEED_SLEEP_THRESHOLD = 0.8f; // Units per second, scaled by physicsScale when used (Bullet default: 0.8 m/s)
+  constexpr float SPEED_SLEEP_THRESHOLD = 0.8f; // Units per second, scaled by physicsScale when used
   constexpr float SPEED_SLEEP_THRESHOLD_SQ = SPEED_SLEEP_THRESHOLD * SPEED_SLEEP_THRESHOLD;
   constexpr float ROT_SIMILARITY_SLEEP_THRESHOLD = 0.9999988f;
-  constexpr float ANGULAR_SLEEP_THRESHOLD = 0.5f; // Radians per second, not scaled by physicsScale (Bullet default: 1.0 rad/s)
+  constexpr float ANGULAR_SLEEP_THRESHOLD = 1.0f; // Radians per second, not scaled by physicsScale
   constexpr float ANGULAR_SLEEP_THRESHOLD_SQ = ANGULAR_SLEEP_THRESHOLD * ANGULAR_SLEEP_THRESHOLD;
   constexpr float AMPLIFY_ANG_DAMPING_THRESHOLD = 0.015f; // Radians per second, below this angular velocity, amplification is applied to damping
   constexpr float AMPLIFY_ANG_DAMPING_THRESHOLD_SQ = AMPLIFY_ANG_DAMPING_THRESHOLD * AMPLIFY_ANG_DAMPING_THRESHOLD;

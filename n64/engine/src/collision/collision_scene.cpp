@@ -1115,12 +1115,15 @@ namespace P64::Coll {
     const auto constraintCount = solverConstraints_.size();
     if(constraintCount == 0) return;
 
-    float VELOCITY_SOLVER_EARLY_OUT_THRESHOLD = FM_EPSILON * physicsScale_;
-    constexpr uint8_t MIN_NORMAL_SOLVER_ITERATIONS = 4;
+    constexpr float VELOCITY_SOLVER_EARLY_OUT_THRESHOLD = 1e-4f;
+    constexpr float VELOCITY_SOLVER_NORMAL_ERROR_THRESHOLD_PER_SCALE = 1e-3f;
+    constexpr uint8_t MIN_NORMAL_SOLVER_ITERATIONS = 6;
+    const float velocitySolverNormalErrorThreshold = VELOCITY_SOLVER_NORMAL_ERROR_THRESHOLD_PER_SCALE * physicsScale_;
 
-    auto solveFrictionPass = [&]() {
+    const auto solveFrictionPass = [&]() {
       for(ContactConstraint *constraint : solverConstraints_) {
         ContactConstraint &cc = *constraint;
+
         if(cc.combinedFriction <= FM_EPSILON) continue;
 
         RigidBody *a = cc.rigidBodyA;
@@ -1151,9 +1154,9 @@ namespace P64::Coll {
             }
           }
 
-          fm_vec3_t relVelF = contactVelA - contactVelB;
-          float vTangentU = fm_vec3_dot(&relVelF, &cc.tangentU);
-          float vTangentV = fm_vec3_dot(&relVelF, &cc.tangentV);
+          fm_vec3_t relVel = contactVelA - contactVelB;
+          float vTangentU = fm_vec3_dot(&relVel, &cc.tangentU);
+          float vTangentV = fm_vec3_dot(&relVel, &cc.tangentV);
 
           float lambdaU = -vTangentU * cp.tangentMassU;
           float lambdaV = -vTangentV * cp.tangentMassV;
@@ -1176,17 +1179,17 @@ namespace P64::Coll {
           cp.accumulatedTangentImpulseV = newAccumV;
 
           fm_vec3_t tangentImpulse = cc.tangentU * lambdaU + cc.tangentV * lambdaV;
+          if(fm_vec3_len2(&tangentImpulse) <= FM_EPSILON * FM_EPSILON) continue;
 
-          if(fm_vec3_len2(&tangentImpulse) > FM_EPSILON * FM_EPSILON) {
-            if(cc.respondsA) applyConstrainedImpulseAtContact(a, tangentImpulse, cp.aToContact);
-            if(cc.respondsB) applyConstrainedImpulseAtContact(b, -tangentImpulse, cp.bToContact);
-          }
+          if(cc.respondsA) applyConstrainedImpulseAtContact(a, tangentImpulse, cp.aToContact);
+          if(cc.respondsB) applyConstrainedImpulseAtContact(b, -tangentImpulse, cp.bToContact);
         }
       }
     };
 
     for(uint8_t iter = 0; iter < velocitySolverIterations_; ++iter) {
-      float maxImpulseDelta = 0.0f;
+      float maxNormalImpulseDelta = 0.0f;
+      float maxNormalError = 0.0f;
 
       // Shuffle constraint processing order each iteration (Bullet's SOLVER_RANDMIZE_ORDER)
       // Prevents systematic bias where one constraint always "wins" in Gauss-Seidel iteration
@@ -1194,6 +1197,7 @@ namespace P64::Coll {
         std::size_t j = solverRand() % i;
         std::swap(solverConstraints_[i - 1], solverConstraints_[j]);
       }
+
       for(ContactConstraint *constraint : solverConstraints_) {
         ContactConstraint &cc = *constraint;
 
@@ -1206,7 +1210,7 @@ namespace P64::Coll {
           ContactPoint &cp = cc.points[j];
           if(!cp.active) continue;
 
-          // Compute relative velocity at contact
+          // Compute relative velocity at contact.
           fm_vec3_t relVel = VEC3_ZERO;
           if(a) {
             relVel = a->linearVelocity_;
@@ -1226,30 +1230,32 @@ namespace P64::Coll {
             relVel -= velB;
           }
 
-          // Normal impulse
-          float relVelN = fm_vec3_dot(&relVel, &cc.normal);
+          const float relVelN = fm_vec3_dot(&relVel, &cc.normal);
+          maxNormalError = fmaxf(maxNormalError, fmaxf(-(relVelN + cp.velocityBias), 0.0f));
+
           float dImpulseN = cp.normalMass * (-(relVelN + cp.velocityBias));
 
-          // Clamp accumulated impulse (normal must be non-negative)
-          float oldAccum = cp.accumulatedNormalImpulse;
+          // Clamp accumulated impulse (normal must be non-negative).
+          const float oldAccum = cp.accumulatedNormalImpulse;
           cp.accumulatedNormalImpulse = fmaxf(oldAccum + dImpulseN, 0.0f);
           dImpulseN = cp.accumulatedNormalImpulse - oldAccum;
-          maxImpulseDelta = fmaxf(maxImpulseDelta, fabsf(dImpulseN));
+          maxNormalImpulseDelta = fmaxf(maxNormalImpulseDelta, fabsf(dImpulseN));
 
-          fm_vec3_t impulseN = cc.normal * dImpulseN;
-
-          if(cc.respondsA) applyConstrainedImpulseAtContact(a, impulseN, cp.aToContact);
-          if(cc.respondsB) applyConstrainedImpulseAtContact(b, -impulseN, cp.bToContact);
+          const fm_vec3_t impulseN = cc.normal * dImpulseN;
+          if(fabsf(dImpulseN) > FM_EPSILON) {
+            if(cc.respondsA) applyConstrainedImpulseAtContact(a, impulseN, cp.aToContact);
+            if(cc.respondsB) applyConstrainedImpulseAtContact(b, -impulseN, cp.bToContact);
+          }
         }
       }
 
-      if(iter + 1 >= MIN_NORMAL_SOLVER_ITERATIONS && maxImpulseDelta < VELOCITY_SOLVER_EARLY_OUT_THRESHOLD) {
-        debugf("Velocity solver early-out at iteration %d\n", iter + 1);
+      if(iter + 1 >= MIN_NORMAL_SOLVER_ITERATIONS &&
+         maxNormalImpulseDelta < VELOCITY_SOLVER_EARLY_OUT_THRESHOLD &&
+        maxNormalError < velocitySolverNormalErrorThreshold) {
         break;
       }
     }
 
-    // Friction is solved once after the normal solver converges to reduce per-iteration cost.
     solveFrictionPass();
   }
 
