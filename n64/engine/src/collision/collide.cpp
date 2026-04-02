@@ -146,6 +146,14 @@ namespace P64::Coll {
 
   // ── Analytical collision helpers ──────────────────────────────────
 
+  // Fast closed-form solutions for simple shape pairs. Used to avoid expensive GJK+EPA
+
+
+  /// @brief Analytical sphere-sphere collision using distance check.
+  /// @param a The first sphere collider.
+  /// @param b The second sphere collider.
+  /// @param result The result of the collision detection.
+  /// @return True if a collision is detected, false otherwise.
   static bool analyticalSphereSphere(const Collider *a, const Collider *b, EpaResult &result) {
     if(!a || !b) return false;
     if(a->shapeType() != ShapeType::Sphere || b->shapeType() != ShapeType::Sphere) return false;
@@ -175,6 +183,12 @@ namespace P64::Coll {
     return true;
   }
 
+
+  /// @brief Analytical sphere-box collision using closest-point-on-box + radius check.
+  /// @param sphere The sphere collider.
+  /// @param box The box collider.
+  /// @param result The result of the collision detection.
+  /// @return True if a collision is detected, false otherwise.
   static bool analyticalSphereBox(const Collider *sphere, const Collider *box, EpaResult &result) {
     if(!sphere || !box) return false;
     if(sphere->shapeType() != ShapeType::Sphere || box->shapeType() != ShapeType::Box) return false;
@@ -229,6 +243,12 @@ namespace P64::Coll {
     return true;
   }
 
+
+  /// @brief Analytical sphere-capsule collision using closest-point-on-segment + radius check.
+  /// @param sphere The sphere collider.
+  /// @param capsule The capsule collider.
+  /// @param result The result of the collision detection.
+  /// @return True if a collision is detected, false otherwise.
   static bool analyticalSphereCapsule(const Collider *sphere, const Collider *capsule, EpaResult &result) {
     if(!sphere || !capsule) return false;
     if(sphere->shapeType() != ShapeType::Sphere || capsule->shapeType() != ShapeType::Capsule) return false;
@@ -274,9 +294,13 @@ namespace P64::Coll {
     return true;
   }
 
-  /// Analytical capsule-capsule collision using closest-points-between-segments + radius check.
-  /// Avoids full GJK+EPA for this common collision pair. Based on the same segment-distance
-  /// approach used in Bullet's btCapsuleShape collision algorithm.
+
+  /// @brief Analytical capsule-capsule collision using closest-points-between-segments + radius check.
+  /// Avoids full GJK+EPA for this common collision pair.
+  /// @param capsuleA 
+  /// @param capsuleB 
+  /// @param result 
+  /// @return 
   static bool analyticalCapsuleCapsule(const Collider *capsuleA, const Collider *capsuleB, EpaResult &result) {
     if(!capsuleA || !capsuleB) return false;
     if(capsuleA->shapeType() != ShapeType::Capsule || capsuleB->shapeType() != ShapeType::Capsule) return false;
@@ -616,11 +640,14 @@ namespace P64::Coll {
   }
 
 
-  // Area-based contact point reduction (Bullet-style sortCachedPoints)
+  // Area-based contact point reduction
 
-  /// Computes the cross-product area of a triangle formed by 3 contact points (on A side).
-  /// Used by the area-maximizing contact point reduction to select the 4-point configuration 
-  /// that maximizes contact polygon coverage for better torque resistance.
+
+  /// @brief Computes the squared area of a triangle formed by three points.
+  /// @param p0 First point of the triangle.
+  /// @param p1 Second point of the triangle.
+  /// @param p2 Third point of the triangle.
+  /// @return 
   static float contactTriangleArea2(const fm_vec3_t &p0, const fm_vec3_t &p1, const fm_vec3_t &p2) {
     fm_vec3_t e0 = p1 - p0;
     fm_vec3_t e1 = p2 - p0;
@@ -629,10 +656,15 @@ namespace P64::Coll {
     return fm_vec3_len2(&cross);
   }
 
-  /// Selects which existing contact point to replace when the manifold is full (4 points),
-  /// using Bullet's area-maximizing heuristic from btPersistentManifold::sortCachedPoints():
+
+  /// @brief Selects which existing contact point to replace when the manifold is full, using an area-maximizing heuristic.
   /// 1. Always keep the deepest penetrating point.
   /// 2. Among the remaining candidates, pick the configuration that maximizes contact area.
+  /// @param points Array of existing contact points.
+  /// @param pointCount Number of existing contact points.
+  /// @param newContactA The new contact point on object A.
+  /// @param newPenetration The penetration depth of the new contact point.
+  /// @return Index of the contact point to replace.
   static int selectContactPointToReplace(const ContactPoint points[MAX_CONTACT_POINTS_PER_PAIR], int pointCount, const fm_vec3_t &newContactA, float newPenetration) {
     // Find deepest existing point — this one is always kept
     int deepestIdx = 0;
@@ -690,6 +722,23 @@ namespace P64::Coll {
 
   // ── Contact constraint caching ────────────────────────────────────
 
+  /// @brief Cache or update a ContactConstraint for a newly detected contact pair, using the provided EPA result and contact parameters.
+  /// @param rigidBodyA 
+  /// @param colliderA 
+  /// @param meshColliderA 
+  /// @param objectA 
+  /// @param rigidBodyB 
+  /// @param colliderB 
+  /// @param meshColliderB 
+  /// @param objectB 
+  /// @param result 
+  /// @param combinedFriction 
+  /// @param combinedBounce 
+  /// @param isTrigger 
+  /// @param respondsA 
+  /// @param respondsB 
+  /// @param triangleIndex 
+  /// @return 
   ContactConstraint *collideCacheContactConstraint(
     RigidBody *rigidBodyA, Collider *colliderA, MeshCollider *meshColliderA, Object *objectA,
     RigidBody *rigidBodyB, Collider *colliderB, MeshCollider *meshColliderB, Object *objectB, const EpaResult &result,
@@ -855,7 +904,6 @@ namespace P64::Coll {
     cp.localPointA = contactLocalPointFromWorldPoint(cp.contactA, rigidBodyA, colliderA, meshColliderA);
     cp.localPointB = contactLocalPointFromWorldPoint(cp.contactB, rigidBodyB, colliderB, meshColliderB);
 
-
     return cc;
   }
 
@@ -864,6 +912,18 @@ namespace P64::Coll {
   /// Avoids repeated key lookups and proximity matching that collideCacheContactConstraint would
   /// perform when called per-point. Preserves warm-started impulses by proximity-matching against
   /// previously cached points.
+  /// @param rigidBodyA 
+  /// @param colliderA 
+  /// @param objectA 
+  /// @param meshColliderB 
+  /// @param objectB 
+  /// @param results 
+  /// @param resultCount 
+  /// @param combinedFriction 
+  /// @param combinedBounce 
+  /// @param respondsA 
+  /// @param triangleIndex 
+  /// @return 
   static ContactConstraint *collideCacheSatContactConstraint(
     RigidBody *rigidBodyA, Collider *colliderA, Object *objectA,
     MeshCollider *meshColliderB, Object *objectB,
@@ -1063,6 +1123,10 @@ namespace P64::Coll {
 
   // ── Object-to-mesh ──────────────────────────────────────────────
 
+  /// @brief Detects collision between a collider and a mesh and caches contact constraints if needed.
+  /// @param collider The collider to test against the mesh.
+  /// @param rigidBody The rigid body associated with the collider.
+  /// @param mesh The mesh collider to test against.
   void collideDetectObjectToMesh(Collider *collider, RigidBody *rigidBody, const MeshCollider &mesh) {
 
     // Transform the collider's world AABB into the mesh's local space for tree query
@@ -1071,13 +1135,13 @@ namespace P64::Coll {
       : collider->worldAabb();
 
     // Query local-space mesh AABB tree for candidate triangles
-    constexpr int MAX_CANDIDATES = 20;
+    constexpr int MAX_CANDIDATES = 20; // arbitrary limit to avoid extreme cases
     NodeProxy candidates[MAX_CANDIDATES];
     int count = mesh.queryTriangleNodes(queryAABB, candidates, MAX_CANDIDATES);
 
     if(count <= 0) return;
 
-    // Precompute collider proxy in mesh local space for reuse across candidates
+    // Precompute collider proxy in mesh local space for reuse across triangle candidates
     ColliderProxy colliderInMeshSpace;
     colliderInMeshSpace.collider = collider;
     bool meshHasTransform = mesh.hasTransform();
@@ -1094,14 +1158,13 @@ namespace P64::Coll {
       int triIndex = mesh.triangleIndexForNode(candidates[i]);
       if(triIndex < 0) continue;
 
-      // If the triangle is overlapping and the collider is a Trigger
+      // If there is a collision between the collider and the current triangle and the collider is a Trigger
       // we can skip the rest of the candidates since triggers just need to report that a collision happened
+      // and don't need detailed contact information for each triangle.
       if(collideDetectObjectToTriangle(&colliderInMeshSpace, rigidBody, mesh, triIndex) && collider->isTrigger()) {
         return;
       }
     }
-
-
   }
 
   
@@ -1119,13 +1182,12 @@ namespace P64::Coll {
 
     if(rbA && rbB && rbA->isSleeping() && rbB->isSleeping() && !colliderA->isTrigger() && !colliderB->isTrigger()) return;
 
-    // If both have rigidbodies, evaluate rigidbody-level filters.
     if(colliderA && colliderB) {
       if(!aReadsB && !bReadsA) return;
       if(colliderA->isTrigger() && colliderB->isTrigger()) return;
     }
 
-    // Try analytical tests first before falling back to GJK+EPA for general convex shapes.
+    // Try analytical closed-form tests first before falling back to GJK+EPA for general convex shapes.
     
     EpaResult result;
     bool analyticalHit = false;
@@ -1169,7 +1231,10 @@ namespace P64::Coll {
       hasAnalyticalPath = true;
       analyticalHit = analyticalCapsuleCapsule(colliderA, colliderB, result);
     }
+
     // TODO: Implement Box-Box with SAT?
+
+    // If an analytical test exists for the pair but reports no collision, we can skip GJK+EPA entirely.
     if(hasAnalyticalPath && !analyticalHit) return;
 
     bool doEpa = false;
@@ -1177,8 +1242,8 @@ namespace P64::Coll {
     ColliderProxy proxyA;
     ColliderProxy proxyB;
 
+    // Fall back to GJK + EPA if no analytical algorithm for the pair exists
     if(!hasAnalyticalPath) {
-      // Fall back to GJK + EPA if no analytical algorithm for the pair exists
       // Try to reuse cached separating axis from previous frame
       fm_vec3_t firstDir = VEC3_ZERO;
       ContactConstraintKey lookupKey = makeColliderPairConstraintKey(colliderA, colliderB);
@@ -1222,6 +1287,7 @@ namespace P64::Coll {
     }
 
     // Trigger pairs only need overlap confirmation, not a full contact manifold.
+    // we can skip EPA and directly generate a fake contact that will be used for trigger events without any physics response.
     if ((colliderA && colliderA->isTrigger()) || (colliderB && colliderB->isTrigger())) {
       EpaResult dummyResult;
       dummyResult.normal = makeSafeContactNormal(VEC3_ZERO, colliderA->worldCenter(), colliderB->worldCenter());
@@ -1240,6 +1306,7 @@ namespace P64::Coll {
       return;
     }
 
+    // only do EPA if there is not already an analytical result and the GJK confirms overlap
     if (doEpa)
     {
       bool epaOk = epaSolve(
@@ -1252,7 +1319,7 @@ namespace P64::Coll {
         return;
     }
 
-    // Wake sleeping rigidBodies
+    // Wake sleeping rigidBodies that are involved in the collision
     if(aReadsB && rbA && rbA->isSleeping()) scene->wakeRigidBodyIsland(rbA);
     if(bReadsA && rbB && rbB->isSleeping()) scene->wakeRigidBodyIsland(rbB);
 
