@@ -202,8 +202,7 @@ namespace {
   //   return es.triangles[es.triangleHeap[0]];
   // }
 
-  // Use the min-heap to efficiently find the closest face (O(1) lookup).
-  // The heap is maintained by siftDown/siftUp/fixHeap during polytope expansion.
+  // Use the min-heap to efficiently find the closest face
   inline SimplexTriangle& closestFace(ExpandingSimplex& es) {
     return es.triangles[es.triangleHeap[0]];
   }

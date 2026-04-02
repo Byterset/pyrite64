@@ -515,7 +515,7 @@ namespace P64::Coll {
   }
 
 
-  // ── Area-based contact point reduction (Bullet-style sortCachedPoints) ──
+  // Area-based contact point reduction (Bullet-style sortCachedPoints)
 
   /// Computes the cross-product area of a triangle formed by 3 contact points (on A side).
   /// Used by the area-maximizing contact point reduction to select the 4-point configuration 
@@ -925,17 +925,17 @@ namespace P64::Coll {
     EpaResult result;
     bool analyticalHit = false;
     bool hasAnalyticalPath = false;
-
+    // Sphere-Sphere
     if(colliderA->shapeType() == ShapeType::Sphere && colliderB->shapeType() == ShapeType::Sphere) {
       hasAnalyticalPath = true;
       analyticalHit = analyticalSphereSphere(colliderA, colliderB, result);
-    } else if(colliderA->shapeType() == ShapeType::Sphere && colliderB->shapeType() == ShapeType::Box) {
+    } 
+    
+    // Sphere-Box (both directions)
+    else if(colliderA->shapeType() == ShapeType::Sphere && colliderB->shapeType() == ShapeType::Box) {
       hasAnalyticalPath = true;
       analyticalHit = analyticalSphereBox(colliderA, colliderB, result);
-    } else if(colliderA->shapeType() == ShapeType::Sphere && colliderB->shapeType() == ShapeType::Capsule) {
-      hasAnalyticalPath = true;
-      analyticalHit = analyticalSphereCapsule(colliderA, colliderB, result);
-    } else if(colliderB->shapeType() == ShapeType::Sphere && colliderA->shapeType() == ShapeType::Box) {
+    }  else if(colliderB->shapeType() == ShapeType::Sphere && colliderA->shapeType() == ShapeType::Box) {
       hasAnalyticalPath = true;
       analyticalHit = analyticalSphereBox(colliderB, colliderA, result);
       if(analyticalHit) {
@@ -944,6 +944,11 @@ namespace P64::Coll {
         result.contactA = result.contactB;
         result.contactB = tmp;
       }
+    } 
+    // Sphere-Capsule (both directions)
+    else if(colliderA->shapeType() == ShapeType::Sphere && colliderB->shapeType() == ShapeType::Capsule) {
+      hasAnalyticalPath = true;
+      analyticalHit = analyticalSphereCapsule(colliderA, colliderB, result);
     } else if(colliderB->shapeType() == ShapeType::Sphere && colliderA->shapeType() == ShapeType::Capsule) {
       hasAnalyticalPath = true;
       analyticalHit = analyticalSphereCapsule(colliderB, colliderA, result);
@@ -953,10 +958,13 @@ namespace P64::Coll {
         result.contactA = result.contactB;
         result.contactB = tmp;
       }
-    } else if(colliderA->shapeType() == ShapeType::Capsule && colliderB->shapeType() == ShapeType::Capsule) {
+    } 
+    // Capsule-Capsule
+    else if(colliderA->shapeType() == ShapeType::Capsule && colliderB->shapeType() == ShapeType::Capsule) {
       hasAnalyticalPath = true;
       analyticalHit = analyticalCapsuleCapsule(colliderA, colliderB, result);
     }
+    // TODO: Implement Box-Box with SAT?
     if(hasAnalyticalPath && !analyticalHit) return;
 
     bool doEpa = false;
@@ -965,8 +973,8 @@ namespace P64::Coll {
     ColliderProxy proxyB;
 
     if(!hasAnalyticalPath) {
-      // Fall back to GJK + EPA
-      // Try to reuse cached separating axis from previous frame (Bullet-style optimization)
+      // Fall back to GJK + EPA if no analytical algorithm for the pair exists
+      // Try to reuse cached separating axis from previous frame
       fm_vec3_t firstDir = VEC3_ZERO;
       ContactConstraintKey lookupKey = makeColliderPairConstraintKey(colliderA, colliderB);
       ContactConstraint *cachedCC = scene->findCachedConstraint(lookupKey);

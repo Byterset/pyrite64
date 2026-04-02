@@ -135,7 +135,7 @@ namespace P64::Coll {
     fm_vec3_t normal{};
     fm_vec3_t tangentU{};
     fm_vec3_t tangentV{};
-    fm_vec3_t cachedSeparatingAxis{}; ///< Cached GJK separating axis for faster convergence (Bullet-style)
+    fm_vec3_t cachedSeparatingAxis{}; // Cached GJK separating axis for faster convergence
 
     float combinedFriction{0.0f};
     float combinedBounce{0.0f};

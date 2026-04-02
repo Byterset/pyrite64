@@ -697,12 +697,7 @@ namespace P64::Coll {
       if(visited.find(body) != visited.end()) continue;
 
       // Build the island of AWAKE, connected bodies only.
-      // Bullet's btSimulationIslandManager excludes sleeping bodies from island
-      // formation — they are only woken explicitly when a new dynamic contact
-      // forces it.  The old code included sleeping neighbours and then woke them
-      // (line 706), which caused a chain reaction: a resting stack would keep
-      // bouncing between "almost sleeping" and "just woken" states, preventing
-      // the island from ever reaching the SLEEP_STEPS threshold.
+      // They are only woken explicitly when a new dynamic contact forces it.
       std::vector<RigidBody *> island;
       {
         std::vector<RigidBody *> stack;
@@ -712,7 +707,7 @@ namespace P64::Coll {
           stack.pop_back();
 
           if(!shouldTrackSleepState(current)) continue;
-          if(current->isSleeping_) continue; // ← key difference: skip sleeping bodies
+          if(current->isSleeping_) continue; // skip sleeping bodies
           if(visited.find(current) != visited.end()) continue;
           visited.insert(current);
           island.push_back(current);
@@ -1066,12 +1061,11 @@ namespace P64::Coll {
 
   void CollisionScene::warmStart() {
     // Minimum impulse threshold: below this, accumulated impulses are zeroed to
-    // prevent infinitesimal residual forces from keeping bodies awake.
+    // prevent small residual forces from keeping bodies awake.
     // Bullet's btSequentialImpulseConstraintSolver similarly discards negligible
-    // cached impulses.  The warm starting factor (0.85) exponentially decays
-    // impulses each frame; without this floor they asymptotically approach but
-    // never reach zero, producing micro-velocity perturbations every step.
-    constexpr float IMPULSE_ZERO_THRESHOLD = 1e-6f;
+    // cached impulses. The warm starting factor (0.85) decays
+    // impulses each frame
+    constexpr float IMPULSE_ZERO_THRESHOLD = FM_EPSILON;
 
     for(ContactConstraint *constraint : solverConstraints_) {
       ContactConstraint &cc = *constraint;
@@ -1089,7 +1083,7 @@ namespace P64::Coll {
         cp.accumulatedTangentImpulseU *= WARM_STARTING_FACTOR;
         cp.accumulatedTangentImpulseV *= WARM_STARTING_FACTOR;
 
-        // Zero out decayed impulses to prevent persistent micro-perturbations
+        // Zero out decayed impulses to prevent persistent micro-impulses that can cause jitter and prevent sleeping
         if(fabsf(cp.accumulatedNormalImpulse) < IMPULSE_ZERO_THRESHOLD) cp.accumulatedNormalImpulse = 0.0f;
         if(fabsf(cp.accumulatedTangentImpulseU) < IMPULSE_ZERO_THRESHOLD) cp.accumulatedTangentImpulseU = 0.0f;
         if(fabsf(cp.accumulatedTangentImpulseV) < IMPULSE_ZERO_THRESHOLD) cp.accumulatedTangentImpulseV = 0.0f;
@@ -1107,8 +1101,6 @@ namespace P64::Coll {
   // ── Velocity constraint solver ────────────────────────────────────
 
   /// Fast xorshift32 PRNG for constraint randomization (Bullet's SOLVER_RANDMIZE_ORDER).
-  /// N64 is single-threaded so no thread-safety concern. Uses simple modulo for performance
-  /// (modulo bias is negligible for typical constraint counts on N64).
   static uint32_t s_solverRngState = 0x12345678u;
   static uint32_t solverRand() {
     uint32_t x = s_solverRngState;
@@ -1644,9 +1636,7 @@ namespace P64::Coll {
       // Snapshot the fully-corrected transform for sleep evaluation.
       // This must happen AFTER the position solver and split impulse push so that
       // solver corrections (penetration resolution) do not register as "movement"
-      // in the sleep threshold check.  Bullet's btSimulationIslandManager evaluates
-      // sleep on the final integrated + corrected state; without this, continuous
-      // micro-corrections from the position solver keep bodies awake indefinitely.
+      // in the sleep threshold check.
       if(body->position_) body->previousStepPosition_ = *body->position_;
       if(body->rotation_) body->previousStepRotation_ = *body->rotation_;
       if(body->owner_)    body->previousStepScale_ = body->owner_->scale;
