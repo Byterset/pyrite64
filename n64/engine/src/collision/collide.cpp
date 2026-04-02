@@ -632,10 +632,10 @@ namespace P64::Coll {
 
       float area = 0.0f;
       // Compute area of the quad as sum of two triangles
-      if (MAX_CONTACT_POINTS_PER_PAIR >= 4) {
+      if constexpr (MAX_CONTACT_POINTS_PER_PAIR >= 4) {
             area = contactTriangleArea2(triPts[0], triPts[1], triPts[2])
-                  + contactTriangleArea2(triPts[0], triPts[2], triPts[3]); // Optional if more than 3 pts
-      } else if (MAX_CONTACT_POINTS_PER_PAIR == 3) {
+                  + contactTriangleArea2(triPts[0], triPts[2], triPts[3]);
+      } else if constexpr (MAX_CONTACT_POINTS_PER_PAIR == 3) {
             area = contactTriangleArea2(triPts[0], triPts[1], triPts[2]);
       }
 
