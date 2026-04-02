@@ -15,7 +15,7 @@ namespace P64 { class Object; }
 
 namespace P64::Coll {
 
-  constexpr int MAX_CONTACT_POINTS_PER_PAIR = 4;
+  constexpr int MAX_CONTACT_POINTS_PER_PAIR = 3;
 
   struct RigidBody; // forward declare
   struct Collider;  // forward declare

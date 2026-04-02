@@ -25,11 +25,9 @@ namespace P64::Coll {
   constexpr float DEFAULT_FIXED_DT = 1.0f / 50.0f;
   constexpr float DEFAULT_PHYSICS_SCALE = 16.0f;
   constexpr fm_vec3_t DEFAULT_GRAVITY = {0.0f, -9.8f, 0.0f}; //scaled with Pyrites default scale for assets
-  constexpr uint8_t DEFAULT_VELOCITY_SOLVER_ITERATIONS = 7;
-  constexpr uint8_t DEFAULT_POSITION_SOLVER_ITERATIONS = 6;
+  constexpr uint8_t DEFAULT_VELOCITY_SOLVER_ITERATIONS = 8;
+  constexpr uint8_t DEFAULT_POSITION_SOLVER_ITERATIONS = 7;
   constexpr float WARM_STARTING_FACTOR = 0.85f; ///< Bullet-style warm starting scale to prevent overcorrection from stale impulses
-  constexpr float SPLIT_IMPULSE_PENETRATION_THRESHOLD = -0.04f; ///< Bullet-style threshold: only apply split impulse for penetrations beyond this (scaled by physicsScale)
-  constexpr float SPLIT_IMPULSE_ERP = 0.2f; ///< Error reduction parameter for split impulse position correction
 
   struct CollEvent
   {
@@ -146,7 +144,6 @@ namespace P64::Coll {
     void preSolveContacts();
     void warmStart();
     void solveVelocityConstraints();
-    void solveSplitImpulse();
     bool solvePositionConstraints();
     void fixSweptCollisions();
     void updateMeshColliderWorldStates();

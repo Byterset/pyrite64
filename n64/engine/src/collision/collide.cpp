@@ -547,10 +547,10 @@ namespace P64::Coll {
     // For each candidate removal, compute the area of the triangle formed by the remaining 3 + new point
     // Select the removal that maximizes this area
 
-    // Gather all 5 candidate contact positions on A side (4 existing + 1 new)
-    fm_vec3_t pts[5];
+    // Gather all 4 candidate contact positions on A side (3 existing + 1 new)
+    fm_vec3_t pts[MAX_CONTACT_POINTS_PER_PAIR + 1];
     for(int i = 0; i < pointCount; ++i) pts[i] = points[i].contactA;
-    pts[4] = newContactA;
+    pts[MAX_CONTACT_POINTS_PER_PAIR] = newContactA;
 
     float bestArea = -1.0f;
     int replaceIdx = 0;
@@ -565,11 +565,11 @@ namespace P64::Coll {
       for(int j = 0; j < pointCount; ++j) {
         if(j != exclude) triPts[triCount++] = pts[j];
       }
-      triPts[triCount] = pts[4]; // new point
+      triPts[triCount] = pts[MAX_CONTACT_POINTS_PER_PAIR]; // new point
 
       // Compute area of the quad as sum of two triangles
-      float area = contactTriangleArea2(triPts[0], triPts[1], triPts[2])
-                  + contactTriangleArea2(triPts[0], triPts[2], triPts[3]);
+      float area = contactTriangleArea2(triPts[0], triPts[1], triPts[2]);
+                  // + contactTriangleArea2(triPts[0], triPts[2], triPts[3]); // Optional if more than 3 pts
 
       if(area > bestArea) {
         bestArea = area;

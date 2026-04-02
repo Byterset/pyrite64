@@ -1113,7 +1113,81 @@ namespace P64::Coll {
 
   void CollisionScene::solveVelocityConstraints() {
     const auto constraintCount = solverConstraints_.size();
+    if(constraintCount == 0) return;
+
+    float VELOCITY_SOLVER_EARLY_OUT_THRESHOLD = FM_EPSILON * physicsScale_;
+    constexpr uint8_t MIN_NORMAL_SOLVER_ITERATIONS = 4;
+
+    auto solveFrictionPass = [&]() {
+      for(ContactConstraint *constraint : solverConstraints_) {
+        ContactConstraint &cc = *constraint;
+        if(cc.combinedFriction <= FM_EPSILON) continue;
+
+        RigidBody *a = cc.rigidBodyA;
+        RigidBody *b = cc.rigidBodyB;
+        const bool aHasMotionAngular = canApplyAngularResponse(a);
+        const bool bHasMotionAngular = canApplyAngularResponse(b);
+
+        for(int j = 0; j < cc.pointCount; ++j) {
+          ContactPoint &cp = cc.points[j];
+          if(!cp.active) continue;
+
+          fm_vec3_t contactVelA = VEC3_ZERO;
+          fm_vec3_t contactVelB = VEC3_ZERO;
+          if(a && !a->isKinematic_) {
+            contactVelA = a->linearVelocity_;
+            if(aHasMotionAngular) {
+              fm_vec3_t aCross;
+              fm_vec3_cross(&aCross, &a->angularVelocity_, &cp.aToContact);
+              contactVelA += aCross;
+            }
+          }
+          if(b && !b->isKinematic_) {
+            contactVelB = b->linearVelocity_;
+            if(bHasMotionAngular) {
+              fm_vec3_t bCross;
+              fm_vec3_cross(&bCross, &b->angularVelocity_, &cp.bToContact);
+              contactVelB += bCross;
+            }
+          }
+
+          fm_vec3_t relVelF = contactVelA - contactVelB;
+          float vTangentU = fm_vec3_dot(&relVelF, &cc.tangentU);
+          float vTangentV = fm_vec3_dot(&relVelF, &cc.tangentV);
+
+          float lambdaU = -vTangentU * cp.tangentMassU;
+          float lambdaV = -vTangentV * cp.tangentMassV;
+
+          float newAccumU = cp.accumulatedTangentImpulseU + lambdaU;
+          float newAccumV = cp.accumulatedTangentImpulseV + lambdaV;
+
+          float maxFriction = cc.combinedFriction * cp.accumulatedNormalImpulse;
+          float tangentMagnitude = sqrtf(newAccumU * newAccumU + newAccumV * newAccumV);
+          if(tangentMagnitude > maxFriction && tangentMagnitude > FM_EPSILON) {
+            float scale = maxFriction / tangentMagnitude;
+            newAccumU *= scale;
+            newAccumV *= scale;
+          }
+
+          lambdaU = newAccumU - cp.accumulatedTangentImpulseU;
+          lambdaV = newAccumV - cp.accumulatedTangentImpulseV;
+
+          cp.accumulatedTangentImpulseU = newAccumU;
+          cp.accumulatedTangentImpulseV = newAccumV;
+
+          fm_vec3_t tangentImpulse = cc.tangentU * lambdaU + cc.tangentV * lambdaV;
+
+          if(fm_vec3_len2(&tangentImpulse) > FM_EPSILON * FM_EPSILON) {
+            if(cc.respondsA) applyConstrainedImpulseAtContact(a, tangentImpulse, cp.aToContact);
+            if(cc.respondsB) applyConstrainedImpulseAtContact(b, -tangentImpulse, cp.bToContact);
+          }
+        }
+      }
+    };
+
     for(uint8_t iter = 0; iter < velocitySolverIterations_; ++iter) {
+      float maxImpulseDelta = 0.0f;
+
       // Shuffle constraint processing order each iteration (Bullet's SOLVER_RANDMIZE_ORDER)
       // Prevents systematic bias where one constraint always "wins" in Gauss-Seidel iteration
       for(std::size_t i = constraintCount; i > 1; --i) {
@@ -1127,9 +1201,6 @@ namespace P64::Coll {
         RigidBody *b = cc.rigidBodyB;
         const bool aHasMotionAngular = canApplyAngularResponse(a);
         const bool bHasMotionAngular = canApplyAngularResponse(b);
-        const bool aCanRotate = cc.respondsA && aHasMotionAngular;
-        const bool bCanRotate = cc.respondsB && bHasMotionAngular;
-        const bool hasFriction = cc.combinedFriction > FM_EPSILON;
 
         for(int j = 0; j < cc.pointCount; ++j) {
           ContactPoint &cp = cc.points[j];
@@ -1163,154 +1234,25 @@ namespace P64::Coll {
           float oldAccum = cp.accumulatedNormalImpulse;
           cp.accumulatedNormalImpulse = fmaxf(oldAccum + dImpulseN, 0.0f);
           dImpulseN = cp.accumulatedNormalImpulse - oldAccum;
+          maxImpulseDelta = fmaxf(maxImpulseDelta, fabsf(dImpulseN));
 
           fm_vec3_t impulseN = cc.normal * dImpulseN;
 
           if(cc.respondsA) applyConstrainedImpulseAtContact(a, impulseN, cp.aToContact);
           if(cc.respondsB) applyConstrainedImpulseAtContact(b, -impulseN, cp.bToContact);
-
-          // Friction with proper accumulation and Coulomb cone clamping.
-          if(hasFriction) {
-            // Recompute relative velocity after normal impulse.
-            fm_vec3_t contactVelA = VEC3_ZERO;
-            fm_vec3_t contactVelB = VEC3_ZERO;
-            if(a && !a->isKinematic_) {
-              contactVelA = a->linearVelocity_;
-              if(aHasMotionAngular) {
-                fm_vec3_t aCross;
-                fm_vec3_cross(&aCross, &a->angularVelocity_, &cp.aToContact);
-                contactVelA += aCross;
-              }
-            }
-            if(b && !b->isKinematic_) {
-              contactVelB = b->linearVelocity_;
-              if(bHasMotionAngular) {
-                fm_vec3_t bCross;
-                fm_vec3_cross(&bCross, &b->angularVelocity_, &cp.bToContact);
-                contactVelB += bCross;
-              }
-            }
-
-            fm_vec3_t relVelF = contactVelA - contactVelB;
-            float vTangentU = fm_vec3_dot(&relVelF, &cc.tangentU);
-            float vTangentV = fm_vec3_dot(&relVelF, &cc.tangentV);
-
-            float lambdaU = -vTangentU * cp.tangentMassU;
-            float lambdaV = -vTangentV * cp.tangentMassV;
-
-            float newAccumU = cp.accumulatedTangentImpulseU + lambdaU;
-            float newAccumV = cp.accumulatedTangentImpulseV + lambdaV;
-
-            float maxFriction = cc.combinedFriction * cp.accumulatedNormalImpulse;
-            float tangentMagnitude = sqrtf(newAccumU * newAccumU + newAccumV * newAccumV);
-            if(tangentMagnitude > maxFriction && tangentMagnitude > FM_EPSILON) {
-              float scale = maxFriction / tangentMagnitude;
-              newAccumU *= scale;
-              newAccumV *= scale;
-            }
-
-            lambdaU = newAccumU - cp.accumulatedTangentImpulseU;
-            lambdaV = newAccumV - cp.accumulatedTangentImpulseV;
-
-            cp.accumulatedTangentImpulseU = newAccumU;
-            cp.accumulatedTangentImpulseV = newAccumV;
-
-            fm_vec3_t tangentImpulse = cc.tangentU * lambdaU + cc.tangentV * lambdaV;
-
-            if(fm_vec3_len2(&tangentImpulse) > FM_EPSILON * FM_EPSILON) {
-              if(cc.respondsA) applyConstrainedImpulseAtContact(a, tangentImpulse, cp.aToContact);
-              if(cc.respondsB) applyConstrainedImpulseAtContact(b, -tangentImpulse, cp.bToContact);
-            }
-          }
         }
       }
-    }
-  }
 
-  // ── Split impulse solver (Bullet-style) ─────────────────────────
-
-  /// Bullet's split impulse technique: decouples penetration correction from velocity.
-  /// Instead of adding bias to the velocity constraint (which adds energy), this applies
-  /// separate "push" velocities that only affect position integration.
-  /// This prevents the "bouncy stacking" artifact of pure Baumgarte stabilization.
-  void CollisionScene::solveSplitImpulse() {
-    const float splitThreshold = SPLIT_IMPULSE_PENETRATION_THRESHOLD * physicsScale_;
-    const float erpOverDt = SPLIT_IMPULSE_ERP / fixedDt_; // Precomputed to avoid per-contact division
-
-    for(ContactConstraint *constraint : solverConstraints_) {
-      ContactConstraint &cc = *constraint;
-
-      RigidBody *a = cc.rigidBodyA;
-      RigidBody *b = cc.rigidBodyB;
-      const bool aCanRotate = cc.respondsA && canApplyAngularResponse(a);
-      const bool bCanRotate = cc.respondsB && canApplyAngularResponse(b);
-
-      for(int j = 0; j < cc.pointCount; ++j) {
-        ContactPoint &cp = cc.points[j];
-        if(!cp.active) continue;
-
-        // Only apply split impulse for penetrations beyond threshold
-        if(cp.penetration < -splitThreshold) continue;
-
-        // Compute penetration error for split impulse
-        float penetrationError = cp.penetration - (-splitThreshold);
-        if(penetrationError <= 0.0f) continue;
-
-        // Compute relative push velocity at contact along normal
-        float relPushVelN = 0.0f;
-        if(a) {
-          fm_vec3_t pushVelA = a->pushLinearVelocity_;
-          if(aCanRotate) {
-            fm_vec3_t aCross;
-            fm_vec3_cross(&aCross, &a->pushAngularVelocity_, &cp.aToContact);
-            pushVelA += aCross;
-          }
-          relPushVelN += fm_vec3_dot(&pushVelA, &cc.normal);
-        }
-        if(b) {
-          fm_vec3_t pushVelB = b->pushLinearVelocity_;
-          if(bCanRotate) {
-            fm_vec3_t bCross;
-            fm_vec3_cross(&bCross, &b->pushAngularVelocity_, &cp.bToContact);
-            pushVelB += bCross;
-          }
-          relPushVelN -= fm_vec3_dot(&pushVelB, &cc.normal);
-        }
-
-        // Split impulse: push velocity to resolve penetration
-        float pushImpulse = cp.normalMass * (erpOverDt * penetrationError - relPushVelN);
-        if(pushImpulse <= 0.0f) continue;
-
-        fm_vec3_t pushN = cc.normal * pushImpulse;
-
-        // Apply push impulse to A
-        if(a && cc.respondsA && !a->isKinematic_) {
-          float invMassA = a->constrainedLinearInvMassAlong(cc.normal);
-          if(invMassA > 0.0f) {
-            a->pushLinearVelocity_ = a->pushLinearVelocity_ + a->constrainLinearWorld(pushN * a->inverseMass_);
-          }
-          if(aCanRotate) {
-            fm_vec3_t angPush;
-            fm_vec3_cross(&angPush, &cp.aToContact, &pushN);
-            a->pushAngularVelocity_ = a->pushAngularVelocity_ + a->applyConstrainedWorldInertia(angPush);
-          }
-        }
-
-        // Apply push impulse to B
-        if(b && cc.respondsB && !b->isKinematic_) {
-          float invMassB = b->constrainedLinearInvMassAlong(cc.normal);
-          if(invMassB > 0.0f) {
-            b->pushLinearVelocity_ = b->pushLinearVelocity_ - b->constrainLinearWorld(pushN * b->inverseMass_);
-          }
-          if(bCanRotate) {
-            fm_vec3_t angPush;
-            fm_vec3_cross(&angPush, &cp.bToContact, &pushN);
-            b->pushAngularVelocity_ = b->pushAngularVelocity_ - b->applyConstrainedWorldInertia(angPush);
-          }
-        }
+      if(iter + 1 >= MIN_NORMAL_SOLVER_ITERATIONS && maxImpulseDelta < VELOCITY_SOLVER_EARLY_OUT_THRESHOLD) {
+        debugf("Velocity solver early-out at iteration %d\n", iter + 1);
+        break;
       }
     }
+
+    // Friction is solved once after the normal solver converges to reduce per-iteration cost.
+    solveFrictionPass();
   }
+
 
   // ── Position constraint solver ────────────────────────────────────
 
@@ -1570,8 +1512,7 @@ namespace P64::Coll {
     // Velocity constraint solver
     stageStart = get_ticks();
     solveVelocityConstraints();
-    // Split impulse: resolve deep penetrations via push velocities (Bullet-style)
-    solveSplitImpulse();
+
     ticksVelocitySolve = get_ticks() - stageStart;
 
     // Integrate positions and rotations (including split impulse push velocities)
@@ -1582,24 +1523,6 @@ namespace P64::Coll {
       body->integratePosition(fixedDt_);
       body->integrateRotation(fixedDt_);
 
-      // Apply split impulse push velocities to position only (not real velocity)
-      if(body->position_ && !body->isKinematic_) {
-        fm_vec3_t pushPos = body->pushLinearVelocity_ * fixedDt_;
-        if(fm_vec3_len2(&pushPos) > FM_EPSILON * FM_EPSILON) {
-          *body->position_ = *body->position_ + pushPos;
-        }
-        if(body->rotation_ && body->canApplyAngularResponse()) {
-          float pushAngLen = fm_vec3_len(&body->pushAngularVelocity_);
-          if(pushAngLen > FM_EPSILON) {
-            fm_vec3_t pushAxis = body->pushAngularVelocity_ / pushAngLen;
-            float pushAngle = pushAngLen * fixedDt_;
-            fm_quat_t pushDq;
-            fm_quat_from_axis_angle(&pushDq, &pushAxis, pushAngle);
-            *body->rotation_ = pushDq * *body->rotation_;
-            fm_quat_norm(body->rotation_, body->rotation_);
-          }
-        }
-      }
     }
     ticksIntegration = get_ticks() - stageStart;
 
