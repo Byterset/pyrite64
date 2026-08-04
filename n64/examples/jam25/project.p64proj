@@ -58,5 +58,13 @@
   "romName": "gj25_cathode_quest",
   "sceneIdLastOpened": 1,
   "sceneIdOnBoot": 10,
-  "sceneIdOnReset": 10
+  "sceneIdOnReset": 10,
+  "visLayer0": "Default",
+  "visLayer1": "",
+  "visLayer2": "",
+  "visLayer3": "",
+  "visLayer4": "",
+  "visLayer5": "",
+  "visLayer6": "",
+  "visLayer7": ""
 }

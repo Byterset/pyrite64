@@ -3,6 +3,7 @@
 * @license MIT
 */
 #include "../components.h"
+#include "../../scene/migration.h"
 #include "../../../context.h"
 #include "../../../editor/imgui/helper.h"
 #include "../../../utils/json.h"
@@ -102,4 +103,10 @@ namespace Project::Component::Culling
       Utils::Mesh::addLineSphere(*vp.getLines(), center, halfExt, aabbCol, rot);
     }
   }
+  void migrateV1(Entry &entry, const Migration::V1Context &ctx) {
+    auto &data = *static_cast<Data*>(entry.data.get());
+    ctx.scaleRelative(data.halfExtend);
+    ctx.scaleRelative(data.offset);
+  }
+
 }

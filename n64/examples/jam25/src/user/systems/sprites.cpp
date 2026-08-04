@@ -10,6 +10,7 @@
 #include "../../p64/sceneTable.h"
 #include "vi/swapChain.h"
 #include "renderer/particles/ptxSprites.h"
+#include "renderer/renderScale.h"
 
 constinit P64::PTX::Sprites* coin = nullptr;
 constinit P64::PTX::Sprites* dust = nullptr;
@@ -93,7 +94,8 @@ void P64::User::Sprites::draw()
   float deltaTime = VI::SwapChain::getDeltaTime();
 
   // @TODO: fix this bs in t3d:
-  float far = P64::SceneManager::getCurrent().getActiveCamera().far;
+  // camera planes are in meters, this heuristic works on render units
+  float far = P64::SceneManager::getCurrent().getActiveCamera().far * P64::Renderer::getRenderScale();
   far = 1.0f / (far / 500.0f);
   far *= 64;
   tpx_state_set_base_size((uint16_t)far);

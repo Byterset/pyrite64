@@ -3,6 +3,7 @@
 * @license MIT
 */
 #include "../components.h"
+#include "../../scene/migration.h"
 #include "../../../context.h"
 #include "../../../editor/imgui/helper.h"
 #include "../../../utils/json.h"
@@ -94,7 +95,7 @@ namespace Project::Component::CollBody
 
   std::shared_ptr<void> init(Object &obj) {
     auto data = std::make_shared<Data>();
-    data->halfExtend.value = {10.0f, 10.0f, 10.0f};
+    data->halfExtend.value = {0.5f, 0.5f, 0.5f};
     data->friction.value = 0.8f;
 
     // Make the collider fit the size of the model, if any
@@ -272,4 +273,10 @@ namespace Project::Component::CollBody
       Utils::Mesh::addLinePyramid(*vp.getLines(), center, halfExt, colliderColor, objRot);
     }
   }
+  void migrateV1(Entry &entry, const Migration::V1Context &ctx) {
+    auto &data = *static_cast<Data*>(entry.data.get());
+    ctx.scaleRelative(data.halfExtend);
+    ctx.scaleRelative(data.offset);
+  }
+
 }

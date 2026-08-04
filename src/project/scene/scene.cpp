@@ -4,6 +4,7 @@
 */
 #include "scene.h"
 #include "object.h"
+#include "migration.h"
 #include <filesystem>
 #include <functional>
 #include "../../utils/json.h"
@@ -77,7 +78,7 @@ nlohmann::json Project::SceneConf::serialize() const {
     .set(audioFreq)
     .set(physicsTickRate)
     .set(gravity)
-    .set(visualUnitsPerMeter)
+    .set(renderScale)
     .set(velocitySolverIterations)
     .set(positionSolverIterations)
     .set(interpolatePhysicsTransforms)
@@ -413,6 +414,7 @@ void Project::Scene::unpackPrefabInstance(uint32_t uuid)
 
 std::string Project::Scene::serialize(bool minify) {
   nlohmann::json doc{};
+  doc["version"] = Migration::FILE_VERSION;
   doc["conf"] = conf.serialize();
   doc["graph"] = root.serialize();
   return doc.dump(minify ? -1 : 2);
@@ -472,7 +474,8 @@ void Project::Scene::deserialize(const std::string &data)
     Utils::JSON::readProp(docConf, conf.audioFreq, 32000);
     Utils::JSON::readProp(docConf, conf.physicsTickRate, 50);
     Utils::JSON::readProp(docConf, conf.gravity, glm::vec3{0.0f, -9.81f, 0.0f});
-    Utils::JSON::readProp(docConf, conf.visualUnitsPerMeter, 100.0f);
+    Utils::JSON::readProp(docConf, conf.renderScale,
+      docConf.value("visualUnitsPerMeter", Migration::DEFAULT_VISUAL_UNITS_PER_METER));
     Utils::JSON::readProp(docConf, conf.velocitySolverIterations, 7);
     Utils::JSON::readProp(docConf, conf.positionSolverIterations, 6);
     Utils::JSON::readProp(docConf, conf.interpolatePhysicsTransforms, true);
@@ -514,6 +517,18 @@ void Project::Scene::deserialize(const std::string &data)
   if(!doc.contains("graph"))return;
   auto docGraph = doc["graph"];
   root.deserialize(this, docGraph);
+
+  int version = doc.value("version", 1);
+  if(version < Migration::FILE_VERSION && ctx.project)
+  {
+    // Pre-meter scene: lengths were stored in visual units, models rendered at their
+    // vertex scale. Convert so the scene keeps the exact size it had before.
+    float visualUnits = conf.renderScale.value;
+    Migration::migrateV1SceneConf(conf, visualUnits);
+    Migration::migrateV1(root, ctx.project->getAssets(), visualUnits, true);
+    Utils::Logger::log("Migrated scene '" + conf.name.value + "' to meters (v"
+      + std::to_string(version) + " -> v" + std::to_string(Migration::FILE_VERSION) + ")");
+  }
 }
 
 uint32_t Project::Scene::assignRuntimeIds()

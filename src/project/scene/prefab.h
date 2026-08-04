@@ -22,6 +22,8 @@ namespace Project
     public:
       PROP_U32(uuid);
       Object obj{};
+      // version of the file this was loaded from, see Project::Migration
+      int fileVersion{};
 
       std::string serialize(const Object &obj) const;
       std::string serialize() const { return serialize(obj); }

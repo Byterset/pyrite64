@@ -3,6 +3,7 @@
 * @license MIT
 */
 #include "../components.h"
+#include "../../scene/migration.h"
 #include "../../../context.h"
 #include "../../../editor/imgui/helper.h"
 #include "../../../utils/json.h"
@@ -72,10 +73,10 @@ namespace Project::Component::Camera
     Utils::JSON::readProp(doc, data->vpOffset);
     Utils::JSON::readProp(doc, data->vpSize);
     Utils::JSON::readProp(doc, data->fov, 65.0f);
-    Utils::JSON::readProp(doc, data->near, 100.0f);
-    Utils::JSON::readProp(doc, data->far, 4000.0f);
+    Utils::JSON::readProp(doc, data->near, 1.0f);
+    Utils::JSON::readProp(doc, data->far, 40.0f);
     Utils::JSON::readProp(doc, data->aspect, 0.0f);
-    Utils::JSON::readProp(doc, data->orthoSize, 300.0f);
+    Utils::JSON::readProp(doc, data->orthoSize, 3.0f);
     Utils::JSON::readProp(doc, data->mode, 0);
     Utils::JSON::readProp(doc, data->projection, PROJ_PERSPECTIVE);
     Utils::JSON::readProp(doc, data->visMask, 0xFFu);
@@ -163,7 +164,7 @@ namespace Project::Component::Camera
     float fovY = glm::radians(data.fov.resolve(obj));
     float aspect = data.aspect.resolve(obj);
     float nearDist = data.near.resolve(obj);
-    float farDist = nearDist + 85;//data.far.resolve(obj);
+    float farDist = nearDist + 0.85f;//data.far.resolve(obj);
     if (aspect <= 0.0f) {
       aspect = (float)data.vpSize.resolve(obj).x / (float)data.vpSize.resolve(obj).y;
     }
@@ -254,4 +255,11 @@ namespace Project::Component::Camera
     auto spriteCol = isSelected ? Utils::Colors::kSelectionTint : glm::u8vec4{0xFF};
     Utils::Mesh::addSprite(*vp.getSprites(), pos, obj.uuid, 3, spriteCol);
   }
+  void migrateV1(Entry &entry, const Migration::V1Context &ctx) {
+    auto &data = *static_cast<Data*>(entry.data.get());
+    ctx.scaleAbsolute(data.near);
+    ctx.scaleAbsolute(data.far);
+    ctx.scaleAbsolute(data.orthoSize);
+  }
+
 }

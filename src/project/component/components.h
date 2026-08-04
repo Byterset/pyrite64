@@ -23,6 +23,7 @@ struct SDL_GPUGraphicsPipeline;
 struct SDL_GPURenderPass;
 
 namespace Project { class Object; }
+namespace Project::Migration { struct V1Context; }
 
 namespace Project::Component
 {
@@ -43,6 +44,10 @@ namespace Project::Component
   typedef std::shared_ptr<void>(*FuncCompDeserial)(nlohmann::json &doc);
   typedef void(*FuncCompBuild)(Object&, Entry &entry, Build::SceneCtx &ctx);
   typedef Utils::AABB(*FuncCompGetAABB)(Object&, Entry &entry);
+  // UUID of the 3D model asset a component references, 0 if it references none
+  typedef uint64_t(*FuncCompGetModelUUID)(const Entry &entry);
+  // converts pre-meter (v1) scene data of a component, see Project::Migration
+  typedef void(*FuncCompMigrateV1)(Entry &entry, const Migration::V1Context &ctx);
 
   struct CompInfo
   {
@@ -61,6 +66,8 @@ namespace Project::Component
     FuncCompDeserial funcDeserialize{};
     FuncCompBuild funcBuild{};
     FuncCompGetAABB funcGetAABB{};
+    FuncCompGetModelUUID funcGetModelUUID{};
+    FuncCompMigrateV1 funcMigrateV1{};
   };
 
   #define MAKE_COMP(name) \
@@ -75,6 +82,8 @@ namespace Project::Component
       std::shared_ptr<void> deserialize(nlohmann::json &doc); \
       void build(Object&, Entry &entry, Build::SceneCtx &ctx); \
       Utils::AABB getAABB(Object &obj, Entry &entry); \
+      uint64_t getModelUUID(const Entry &entry); \
+      void migrateV1(Entry &entry, const Migration::V1Context &ctx); \
     }
 
   MAKE_COMP(Code)
@@ -91,6 +100,12 @@ namespace Project::Component
   MAKE_COMP(AnimModel)
   MAKE_COMP(CharBody)
   MAKE_COMP(Surface)
+
+  /**
+   * Model matrix mapping a model's quantized vertex units to world meters.
+   * @param vertexScale meters per vertex unit of the model, see Assets::Model3D
+   */
+  glm::mat4 makeModelMatrix(Object &obj, float vertexScale);
 
   namespace Camera
   {
@@ -157,7 +172,8 @@ namespace Project::Component
       .funcSerialize = Model::serialize,
       .funcDeserialize = Model::deserialize,
       .funcBuild = Model::build,
-      .funcGetAABB = Model::getAABB
+      .funcGetAABB = Model::getAABB,
+      .funcGetModelUUID = Model::getModelUUID
     },
     CompInfo{
       .id = 2,
@@ -171,7 +187,8 @@ namespace Project::Component
       .funcSerialize = Light::serialize,
       .funcDeserialize = Light::deserialize,
       .funcBuild = Light::build,
-      .funcGetAABB = nullptr
+      .funcGetAABB = nullptr,
+      .funcMigrateV1 = Light::migrateV1
     },
     CompInfo{
       .id = 3,
@@ -185,7 +202,8 @@ namespace Project::Component
       .funcSerialize = Camera::serialize,
       .funcDeserialize = Camera::deserialize,
       .funcBuild = Camera::build,
-      .funcGetAABB = nullptr
+      .funcGetAABB = nullptr,
+      .funcMigrateV1 = Camera::migrateV1
     },
     CompInfo{
       .id = 4,
@@ -198,7 +216,8 @@ namespace Project::Component
       .funcSerialize = CollMesh::serialize,
       .funcDeserialize = CollMesh::deserialize,
       .funcBuild = CollMesh::build,
-      .funcGetAABB = CollMesh::getAABB
+      .funcGetAABB = CollMesh::getAABB,
+      .funcGetModelUUID = CollMesh::getModelUUID
     },
     CompInfo{
       .id = 5,
@@ -211,7 +230,8 @@ namespace Project::Component
       .funcSerialize = CollBody::serialize,
       .funcDeserialize = CollBody::deserialize,
       .funcBuild = CollBody::build,
-      .funcGetAABB = nullptr
+      .funcGetAABB = nullptr,
+      .funcMigrateV1 = CollBody::migrateV1
     },
     CompInfo{
       .id = 6,
@@ -252,7 +272,8 @@ namespace Project::Component
       .funcSerialize = Culling::serialize,
       .funcDeserialize = Culling::deserialize,
       .funcBuild = Culling::build,
-      .funcGetAABB = nullptr
+      .funcGetAABB = nullptr,
+      .funcMigrateV1 = Culling::migrateV1
     },
     CompInfo{
       .id = 9,
@@ -279,7 +300,8 @@ namespace Project::Component
       .funcSerialize = AnimModel::serialize,
       .funcDeserialize = AnimModel::deserialize,
       .funcBuild = AnimModel::build,
-      .funcGetAABB = AnimModel::getAABB
+      .funcGetAABB = AnimModel::getAABB,
+      .funcGetModelUUID = AnimModel::getModelUUID
     },
     CompInfo{
       .id = 11,

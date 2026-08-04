@@ -50,7 +50,10 @@ namespace Project
   {
     uint64_t uuid{0};
     int format{0};
+    // legacy import scale for models (kept for scene migration), point size for fonts
     int baseScale{0};
+    // optional manual override of the auto-computed model import scale (0 = auto)
+    int baseScaleOverride{0};
     bool gltfBVH{0};
 
     ComprTypes compression{ComprTypes::DEFAULT};
@@ -113,6 +116,8 @@ namespace Project
       std::shared_ptr<Renderer::Texture> fallbackTex{};
 
       void reloadEntry(AssetManagerEntry &entry, const std::string &path);
+      // Converts and re-saves prefabs stored before the switch to meters.
+      void migratePrefabs();
       void resetDirtyTracking();
       void clearDirtyTracking(uint64_t uuid);
     public:

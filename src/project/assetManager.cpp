@@ -11,6 +11,8 @@
 #include <unordered_set>
 
 #include "SHA256.h"
+#include "scene/migration.h"
+#include "../build/autoScale.h"
 #include "../utils/codeParser.h"
 #include "../utils/fs.h"
 #include "../utils/hash.h"
@@ -85,6 +87,7 @@ namespace
       conf.uuid = doc.value<uint64_t>("uuid", 0);
       conf.format = doc["format"];
       conf.baseScale = doc["baseScale"];
+      conf.baseScaleOverride = doc.value<int>("baseScaleOverride", 0);
       conf.compression = (Project::ComprTypes)doc.value<int>("compression", 0);
       conf.gltfBVH = doc["gltfBVH"];
       Utils::JSON::readProp(doc, conf.wavForceMono);
@@ -231,6 +234,7 @@ std::string Project::AssetConf::serialize() const {
     .set("uuid", uuid)
     .set("format", format)
     .set("baseScale", baseScale)
+    .set("baseScaleOverride", baseScaleOverride)
     .set("compression", static_cast<int>(compression))
     .set("gltfBVH", gltfBVH)
     .set(wavForceMono)
@@ -300,9 +304,13 @@ void Project::AssetManager::reloadEntry(AssetManagerEntry &entry, const std::str
         }
         auto &savedMats = entry.conf.data["materials"];
 
+        float baseScale = entry.conf.baseScaleOverride > 0
+          ? (float)entry.conf.baseScaleOverride
+          : Build::computeAutoBaseScale(path);
+
         entry.model = {
           .t3dm = T3DM::parseGLTF(path.c_str(), {
-            .globalScale = (float)entry.conf.baseScale,
+            .globalScale = baseScale,
             .animSampleRate = 60,
             .createBVH = entry.conf.gltfBVH,
             .verbose = false,
@@ -320,6 +328,7 @@ void Project::AssetManager::reloadEntry(AssetManagerEntry &entry, const std::str
             },
           }), .materials = {},
         };
+        entry.model.autoBaseScale = baseScale;
 
         for(const auto &t3dMat : entry.model.t3dm.materials) {
           auto &mat = entry.model.materials[t3dMat.first];
@@ -425,6 +434,25 @@ void Project::AssetManager::reload() {
         reloadEntry(entry, entry.path);
       }
     }
+  }
+
+  migratePrefabs();
+}
+
+void Project::AssetManager::migratePrefabs()
+{
+  // Runs once every prefab and model is loaded: converting a prefab that instances
+  // another one needs that prefab's structure and the vertex scales of its models.
+  for (auto &entry : entries[(int)FileType::PREFAB]) {
+    if (!entry.prefab || entry.prefab->fileVersion >= Migration::FILE_VERSION)continue;
+
+    Migration::migrateV1(entry.prefab->obj, *this,
+      Migration::DEFAULT_VISUAL_UNITS_PER_METER, false);
+    entry.prefab->fileVersion = Migration::FILE_VERSION;
+
+    // persist right away, an unsaved prefab would be re-migrated on the next load
+    entry.prefab->save(entry.path);
+    Utils::Logger::log("Migrated prefab '" + entry.name + "' to meters");
   }
 }
 

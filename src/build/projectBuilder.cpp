@@ -49,7 +49,13 @@ void Build::SceneCtx::addAsset(const Project::AssetManagerEntry &entry)
     flags |= 0x01; // KEEP_LOADED
   }
 
-  assetList.push_back({entry.romPath, stringOffset, (uint32_t)entry.type, flags});
+  // the t3dm format stores no scale, so the runtime gets it from the asset table
+  float vertexScale = 0.0f;
+  if(entry.type == AT::MODEL_3D && entry.model.autoBaseScale > 0.0f) {
+    vertexScale = 1.0f / entry.model.autoBaseScale;
+  }
+
+  assetList.push_back({entry.romPath, stringOffset, (uint32_t)entry.type, flags, vertexScale});
   stringOffset += entry.romPath.size() + 1;
 }
 
@@ -205,12 +211,13 @@ bool Build::buildProject(const std::string &configPath)
   // Asset table
   Utils::BinaryFile fileList{};
   fileList.write<uint32_t>(sceneCtx.assetList.size());
-  uint32_t baseOffset = (sceneCtx.assetList.size() * sizeof(uint32_t)*2) + sizeof(uint32_t);
+  uint32_t baseOffset = (sceneCtx.assetList.size() * sizeof(uint32_t)*3) + sizeof(uint32_t);
   for (auto &entry : sceneCtx.assetList) {
     fileList.write(baseOffset + entry.stringOffset);
     uint32_t ptr = entry.type << (32-4);
     ptr |= entry.flags << (32-8);
     fileList.write(ptr);
+    fileList.write(entry.vertexScale);
   }
   for (auto &entry : sceneCtx.assetList) {
     fileList.writeChars(entry.path.c_str(), entry.path.size()+1);
