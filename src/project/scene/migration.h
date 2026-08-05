@@ -29,6 +29,8 @@ namespace Project
  *   2. add `{n, "what changes, in user terms", stepToVn}` to STEPS
  *   3. bump FILE_VERSION
  * Scanning, chaining, the confirmation dialog and saving are generic and need no changes.
+ * A step that also has to touch something outside the documents adds a `runProject` to the
+ * same entry.
  */
 namespace Project::Migration
 {
@@ -56,7 +58,11 @@ namespace Project::Migration
     int toVersion{};
     /// One line shown to the user before the migration runs.
     const char *summary{};
+    /// Converts one document. Called for every scene and prefab that is behind this version.
     void (*run)(Context &ctx){};
+    /// Optional, for changes that live outside the documents (asset configs, build outputs).
+    /// Runs once per migration, after every document has been converted.
+    void (*runProject)(Project &project){};
   };
 
   /// All known steps, ordered by target version.
@@ -122,6 +128,10 @@ namespace Project::Migration
     bool patchValues{true};
     // number of leading PropScope layers that belong to migratable (non-definition) maps
     size_t patchableLayers{0};
+    // override map the runtime reads bare (un-scoped) keys from for this object's components,
+    // i.e. Property::resolve's fallback map. Null while the fallback would land on a map that
+    // belongs to a prefab definition rather than the file being migrated.
+    std::unordered_map<uint64_t, GenericValue> *ownOverrides{nullptr};
 
     /// Lengths the runtime uses as-is (camera planes, light size).
     void scaleAbsolute(Property<float> &prop) const;

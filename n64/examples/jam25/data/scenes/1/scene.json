@@ -612,7 +612,7 @@
               "autoRun": true,
               "objRefs": {},
               "varDefaults": {
-                "height": 50.0,
+                "height": 0.5,
                 "speed": 0.699999988079071,
                 "timer": 4.0
               }
@@ -2673,7 +2673,7 @@
               "autoRun": true,
               "objRefs": {},
               "varDefaults": {
-                "height": 44.0,
+                "height": 0.4399999976158142,
                 "speed": 0.5,
                 "timer": 4.0
               }

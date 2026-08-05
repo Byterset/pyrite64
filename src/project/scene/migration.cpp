@@ -36,15 +36,25 @@ namespace
   {
     if(ctx.patchValues)prop.value = prop.value * factor;
 
+    auto patchKey = [factor](std::unordered_map<uint64_t, GenericValue> *map, uint64_t key) {
+      auto it = map->find(key);
+      if(it != map->end())it->second.template get<T>() = it->second.template get<T>() * factor;
+    };
+
     size_t layerCount = std::min(ctx.patchableLayers, PropScope::stack.size());
+    bool bareIsScoped = false;
     for(size_t i = 0; i < layerCount; ++i) {
       auto &layer = PropScope::stack[i];
       auto *map = const_cast<std::unordered_map<uint64_t, GenericValue>*>(layer.overrides);
-      auto it = map->find(PropScope::combine(layer.pathHash, prop.id));
-      if(it != map->end()) {
-        it->second.template get<T>() = it->second.template get<T>() * factor;
-      }
+      patchKey(map, PropScope::combine(layer.pathHash, prop.id));
+      if(map == ctx.ownOverrides && layer.pathHash == 0)bareIsScoped = true;
     }
+
+    // Property::resolve falls back to the bare key on the owning object's own map, which is how
+    // overrides authored before keys were path-scoped still apply. They have to be converted too.
+    // Object-level props are already reached that way above (their path hash is 0), so those are
+    // skipped here rather than scaled twice.
+    if(ctx.ownOverrides && !bareIsScoped)patchKey(ctx.ownOverrides, prop.id);
   }
 
   /**
@@ -113,7 +123,13 @@ namespace
 
     // Mirrors Build::writeObject: this node's overrides stay active for its whole subtree.
     PropScope::PrefabLayer objLayer{obj.propOverrides};
-    if(ctx.patchValues)ctx.patchableLayers = PropScope::stack.size();
+    ctx.ownOverrides = nullptr;
+    if(ctx.patchValues) {
+      ctx.patchableLayers = PropScope::stack.size();
+      // Build::writeObject hands this node to every component build, so its map is the one
+      // un-scoped overrides resolve against, for the definition's components too.
+      ctx.ownOverrides = &obj.propOverrides;
+    }
 
     // Showing a model folds the model's vertex scale into the object scale, since the runtime
     // no longer renders vertex units. Inside a prefab the factor belongs to the whole chain down
@@ -214,6 +230,27 @@ namespace
     }
   }
 
+  /**
+   * Vertex precision is computed from a model's bounds now instead of being read from the
+   * asset's `baseScale`, so nearly every model quantizes to a different scale than the .t3dm
+   * that is already sitting in `filesystem/`. The build only compares that file's timestamp
+   * against the glTF, which a migration never touches, so it would happily ship the stale one
+   * against the new scale in the asset table. Dropping the outputs makes it re-export them.
+   */
+  void projectStepToV2(::Project::Project &project)
+  {
+    auto projectPath = fs::path{project.getPath()};
+    int cleared = 0;
+    for(const auto &entry : project.getAssets().getTypeEntries(FileType::MODEL_3D)) {
+      std::error_code ec{};
+      if(fs::remove(projectPath / entry.outPath, ec))++cleared;
+    }
+    if(cleared > 0) {
+      Utils::Logger::log("Cleared " + std::to_string(cleared) +
+        " built 3D model(s), they are re-exported at the new vertex precision on the next build");
+    }
+  }
+
   // ---------------------------------------------------------------------------------------
 
   int readDocVersion(const fs::path &path)
@@ -237,7 +274,8 @@ namespace
 
 // Add a new step here and bump FILE_VERSION to make it run on all files with older versions.
 const std::vector<Project::Migration::Step> Project::Migration::STEPS = {
-  {2, "Positions, sizes and distances are converted from visual units to meters", stepToV2},
+  {2, "Positions, sizes and distances are converted from visual units to meters,"
+      " 3D models are rebuilt at automatic vertex precision", stepToV2, projectStepToV2},
 };
 
 int Project::Migration::run(int fromVersion, Context &ctx)
@@ -351,5 +389,13 @@ void Project::Migration::apply(Project &project, const ScanResult &scan)
       }
       Utils::Logger::log("Migrated " + doc.name);
     }
+  }
+
+  // Whatever a step has to change outside the documents. Same selection the summaries use, so
+  // the user is told about exactly the steps that end up running.
+  int oldest = FILE_VERSION;
+  for(const auto &doc : scan.docs)oldest = std::min(oldest, doc.version);
+  for(const auto &step : STEPS) {
+    if(step.toVersion > oldest && step.runProject)step.runProject(project);
   }
 }
