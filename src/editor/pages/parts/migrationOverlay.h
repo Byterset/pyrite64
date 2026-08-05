@@ -12,7 +12,7 @@
  *
  * Migration rewrites project files in place, so it never runs unattended: the caller hands over
  * what it found and what it wants to do afterwards, and only gets its callback when the user
- * agreed. Declining is a normal outcome, it gives them a chance to commit or back up first.
+ * agrees. On Decline, nothing is changed and the project is left as-is.
  */
 namespace Editor::MigrationOverlay
 {
@@ -26,12 +26,11 @@ namespace Editor::MigrationOverlay
   void open(const Project::Migration::ScanResult &scan, const char *title,
             std::function<void()> onConfirm, std::function<void()> onCancel = {});
 
-  /// Call once per frame, draws the dialog if one is open.
+  /// Call once per frame, draws the dialog if open.
   void draw();
 
   /**
    * Runs `onConfirm` right away when nothing needs migrating, otherwise asks first.
-   * The common entry point, see the callers in globalActions.
    */
   void guard(const Project::Migration::ScanResult &scan, const char *title,
              std::function<void()> onConfirm, std::function<void()> onCancel = {});

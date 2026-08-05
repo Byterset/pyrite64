@@ -87,12 +87,18 @@ namespace
   /**
    * @param obj object to convert
    * @param ancestorScale product of the scale factors already applied at or above this object's
-   *        parent. The runtime has no transform hierarchy: a child's local position is scaled by
-   *        its ancestors' world scale, so rescaling a parent shrinks every descendant's offset
-   *        by the same amount and the offsets have to compensate for it.
+   *        parent, or 1 if this object's transform is not composed with its parent's. Where
+   *        composition does happen, a child's local offset is scaled by its ancestors' world
+   *        scale, so rescaling a parent shrinks every descendant's offset by the same amount
+   *        and the offsets have to compensate for it.
+   * @param expanding mirrors the flag of the same name in Build::writeObject: only inside a
+   *        prefab definition are transforms composed down the tree. Scene objects (including
+   *        children a scene adds to an instance) are written with their raw local values and an
+   *        identity parent transform, so their transforms are absolute and must stay untouched
+   *        by what happened to the object they hang under.
    */
   void migrateObjectToV2(Object &obj, AssetManager &assets, Migration::V1Context ctx,
-                         float ancestorScale)
+                         float ancestorScale, bool expanding)
   {
     if(PropScope::stack.size() > PropScope::MAX_DEPTH)return;
 
@@ -110,10 +116,11 @@ namespace
     if(ctx.patchValues)ctx.patchableLayers = PropScope::stack.size();
 
     // Showing a model folds the model's vertex scale into the object scale, since the runtime
-    // no longer renders vertex units. The factor belongs to the whole chain down to the mesh,
-    // not to each model-bearing object: `Build::writeObject` multiplies an object's scale by
-    // all of its ancestors', so only the part they have not already contributed is applied
-    // here. A model under an already-converted parent therefore keeps its scale.
+    // no longer renders vertex units. Inside a prefab the factor belongs to the whole chain down
+    // to the mesh, not to each model-bearing object: `Build::writeObject` multiplies a composed
+    // object's scale by all of its ancestors', so only the part they have not already
+    // contributed is applied here. A model under an already-converted parent keeps its scale,
+    // while an absolute object (ancestorScale 1) always takes the full factor.
     float baseScale = findLegacyBaseScale(obj, *srcObj, assets);
     float ownScale = 1.0f;
     if(baseScale > 0.0f && ancestorScale > 0.0f) {
@@ -144,25 +151,31 @@ namespace
     migrateComps(*srcObj, hasDefinition ? false : ctx.patchValues);
     if(hasDefinition)migrateComps(obj, ctx.patchValues);
 
-    float childAncestorScale = ancestorScale * ownScale;
+    const float composedScale = ancestorScale * ownScale;
+
+    // Resolving an instance composes its definition's subtree onto it, so from here down the
+    // tree is composed even if this object itself was absolute.
+    const bool childExpanding = expanding || hasDefinition;
 
     Migration::V1Context childCtx = ctx;
     if(hasDefinition)childCtx.patchValues = false;
 
     for(const auto &child : srcObj->children) {
       PropScope::Path childPath(child->uuid);
-      migrateObjectToV2(*child, assets, childCtx, childAncestorScale);
+      migrateObjectToV2(*child, assets, childCtx, childExpanding ? composedScale : 1.0f,
+                        childExpanding);
     }
 
     // Children added directly to an instance are ordinary objects of the file being migrated and
-    // resolve against their own overrides only.
+    // resolve against their own overrides only. They keep this object's `expanding`: a scene
+    // hangs them off the instance without composing, a prefab composes them like any other child.
     if(hasDefinition && !obj.children.empty()) {
       PropScope::ResetScope freshScope;
       Migration::V1Context ownCtx = ctx;
       ownCtx.patchValues = true;
       ownCtx.patchableLayers = 0;
       for(const auto &child : obj.children) {
-        migrateObjectToV2(*child, assets, ownCtx, childAncestorScale);
+        migrateObjectToV2(*child, assets, ownCtx, expanding ? composedScale : 1.0f, expanding);
       }
     }
   }
@@ -191,12 +204,13 @@ namespace
 
     PropScope::ResetScope freshScope;
     if(ctx.docType == Migration::DocType::SCENE) {
-      // the scene root only groups the real objects
+      // the scene root only groups the real objects, whose transforms are absolute
       for(const auto &child : ctx.root.children) {
-        migrateObjectToV2(*child, ctx.assets, v1, 1.0f);
+        migrateObjectToV2(*child, ctx.assets, v1, 1.0f, false);
       }
     } else {
-      migrateObjectToV2(ctx.root, ctx.assets, v1, 1.0f);
+      // a prefab is baked flat and root-relative, so its whole tree is composed
+      migrateObjectToV2(ctx.root, ctx.assets, v1, 1.0f, true);
     }
   }
 
@@ -221,6 +235,7 @@ namespace
   }
 }
 
+// Add a new step here and bump FILE_VERSION to make it run on all files with older versions.
 const std::vector<Project::Migration::Step> Project::Migration::STEPS = {
   {2, "Positions, sizes and distances are converted from visual units to meters", stepToV2},
 };
