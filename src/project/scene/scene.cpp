@@ -521,13 +521,15 @@ void Project::Scene::deserialize(const std::string &data)
   int version = doc.value("version", 1);
   if(version < Migration::FILE_VERSION && ctx.project)
   {
-    // Pre-meter scene: lengths were stored in visual units, models rendered at their
-    // vertex scale. Convert so the scene keeps the exact size it had before.
-    float visualUnits = conf.renderScale.value;
-    Migration::migrateV1SceneConf(conf, visualUnits);
-    Migration::migrateV1(root, ctx.project->getAssets(), visualUnits, true);
-    Utils::Logger::log("Migrated scene '" + conf.name.value + "' to meters (v"
-      + std::to_string(version) + " -> v" + std::to_string(Migration::FILE_VERSION) + ")");
+    Migration::Context migCtx{
+      .assets = ctx.project->getAssets(),
+      .docType = Migration::DocType::SCENE,
+      .root = root,
+      .conf = &conf,
+    };
+    int newVersion = Migration::run(version, migCtx);
+    Utils::Logger::log("Migrated scene '" + conf.name.value + "' (v"
+      + std::to_string(version) + " -> v" + std::to_string(newVersion) + ")");
   }
 }
 

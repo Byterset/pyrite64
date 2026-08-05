@@ -29,6 +29,7 @@ void Project::Prefab::deserialize(const std::string &str)
   // Migration runs once all prefabs are loaded (AssetManager), a nested instance can only
   // be converted when the prefab it references is available.
   fileVersion = doc.value("version", 1);
+  memVersion = fileVersion;
 }
 
 void Project::Prefab::save(const std::string &path)

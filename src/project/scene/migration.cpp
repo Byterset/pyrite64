@@ -4,14 +4,32 @@
 */
 #include "migration.h"
 
+#include <algorithm>
+#include <filesystem>
+
 #include "object.h"
 #include "prefab.h"
 #include "scene.h"
+#include "sceneManager.h"
+#include "../project.h"
 #include "../assetManager.h"
+#include "../../utils/fs.h"
+#include "../../utils/json.h"
+#include "../../utils/logger.h"
+
+namespace fs = std::filesystem;
 
 namespace
 {
   using namespace Project;
+
+  // ---------------------------------------------------------------------------------------
+  // v2: visual units -> meters
+  //
+  // Pre-v2 files stored every length in "visual units" (`visualUnitsPerMeter` of them per
+  // meter) and rendered models at the size their vertices were quantized to (the asset's
+  // `baseScale`). Meters are the unit now, and the vertex scale is divided out at render time.
+  // ---------------------------------------------------------------------------------------
 
   template<typename T>
   void patchProp(Property<T> &prop, float factor, const Migration::V1Context &ctx)
@@ -30,9 +48,9 @@ namespace
   }
 
   /**
-   * Vertex scale of the 3D model an object shows, as it was configured in v1.
-   * Model wins over an animated model, which wins over a collision mesh, so the visual
-   * size is what is preserved exactly when an object mixes assets of differing scales.
+   * Vertex scale of the 3D model an object shows, as it was configured before v2.
+   * Model wins over an animated model, which wins over a collision mesh, so the visual size is
+   * what is preserved exactly when an object mixes assets of differing scales.
    */
   float findLegacyBaseScale(Object &obj, Object &srcObj, AssetManager &assets)
   {
@@ -66,64 +84,156 @@ namespace
     return best;
   }
 
-  void migrateObject(Object &obj, AssetManager &assets, Migration::V1Context ctx)
+  /**
+   * @param obj object to convert
+   * @param ancestorScale product of the scale factors already applied at or above this object's
+   *        parent. The runtime has no transform hierarchy: a child's local position is scaled by
+   *        its ancestors' world scale, so rescaling a parent shrinks every descendant's offset
+   *        by the same amount and the offsets have to compensate for it.
+   */
+  void migrateObjectToV2(Object &obj, AssetManager &assets, Migration::V1Context ctx,
+                         float ancestorScale)
   {
     if(PropScope::stack.size() > PropScope::MAX_DEPTH)return;
 
     auto *srcObj = &obj;
-    bool isInstance = obj.isPrefabInstance();
-    if(isInstance) {
+    if(obj.isPrefabInstance()) {
       auto prefab = assets.getPrefabByUUID(obj.uuidPrefab.value);
       if(prefab)srcObj = &prefab->obj;
     }
+    // A definition was actually resolved. If the prefab is missing, `obj` is treated as a plain
+    // object so its own children still get converted.
+    const bool hasDefinition = srcObj != &obj;
 
     // Mirrors Build::writeObject: this node's overrides stay active for its whole subtree.
     PropScope::PrefabLayer objLayer{obj.propOverrides};
     if(ctx.patchValues)ctx.patchableLayers = PropScope::stack.size();
 
+    // Showing a model folds the model's vertex scale into the object scale, since the runtime
+    // no longer renders vertex units. The factor belongs to the whole chain down to the mesh,
+    // not to each model-bearing object: `Build::writeObject` multiplies an object's scale by
+    // all of its ancestors', so only the part they have not already contributed is applied
+    // here. A model under an already-converted parent therefore keeps its scale.
     float baseScale = findLegacyBaseScale(obj, *srcObj, assets);
-    ctx.relativeDiv = baseScale > 0.0f ? baseScale : ctx.visualUnitsPerMeter;
-
-    // Positions become meters. Showing a model additionally folds the model's vertex
-    // scale into the object scale, since the runtime no longer renders vertex units.
-    patchProp(obj.pos, 1.0f / ctx.visualUnitsPerMeter, ctx);
-    if(baseScale > 0.0f) {
-      patchProp(obj.scale, baseScale / ctx.visualUnitsPerMeter, ctx);
+    float ownScale = 1.0f;
+    if(baseScale > 0.0f && ancestorScale > 0.0f) {
+      ownScale = (baseScale / ctx.visualUnitsPerMeter) / ancestorScale;
     }
 
-    auto migrateComps = [&](Object &source) {
+    // Component lengths the runtime multiplies by the object's world scale have to account for
+    // every factor applied at this object and above it.
+    ctx.relativeDiv = ctx.visualUnitsPerMeter * ancestorScale * ownScale;
+
+    patchProp(obj.pos, 1.0f / (ctx.visualUnitsPerMeter * ancestorScale), ctx);
+    if(ownScale != 1.0f) {
+      patchProp(obj.scale, ownScale, ctx);
+    }
+
+    auto migrateComps = [&](Object &source, bool patchValues) {
+      Migration::V1Context compCtx = ctx;
+      compCtx.patchValues = patchValues;
       for(auto &entry : source.components) {
         const auto &info = Component::TABLE[entry.id];
         if(!info.funcMigrateV1)continue;
         PropScope::Path compPath(entry.uuid);
-        info.funcMigrateV1(entry, ctx);
+        info.funcMigrateV1(entry, compCtx);
       }
     };
-    migrateComps(*srcObj);
-    if(srcObj != &obj)migrateComps(obj);
+    // The definition's own values belong to the prefab file and are converted when that file is
+    // migrated, only the override slots the enclosing instances hold for them are patched here.
+    migrateComps(*srcObj, hasDefinition ? false : ctx.patchValues);
+    if(hasDefinition)migrateComps(obj, ctx.patchValues);
 
-    // Descending into a prefab definition: its values belong to the prefab file, only the
-    // override slots the enclosing instances hold for them are patched here.
+    float childAncestorScale = ancestorScale * ownScale;
+
     Migration::V1Context childCtx = ctx;
-    if(isInstance)childCtx.patchValues = false;
+    if(hasDefinition)childCtx.patchValues = false;
 
     for(const auto &child : srcObj->children) {
       PropScope::Path childPath(child->uuid);
-      migrateObject(*child, assets, childCtx);
+      migrateObjectToV2(*child, assets, childCtx, childAncestorScale);
     }
 
-    // Children added directly to an instance are ordinary scene objects and resolve
-    // against their own overrides only.
-    if(isInstance && srcObj != &obj && !obj.children.empty()) {
+    // Children added directly to an instance are ordinary objects of the file being migrated and
+    // resolve against their own overrides only.
+    if(hasDefinition && !obj.children.empty()) {
       PropScope::ResetScope freshScope;
       Migration::V1Context ownCtx = ctx;
       ownCtx.patchValues = true;
       ownCtx.patchableLayers = 0;
       for(const auto &child : obj.children) {
-        migrateObject(*child, assets, ownCtx);
+        migrateObjectToV2(*child, assets, ownCtx, childAncestorScale);
       }
     }
   }
+
+  void stepToV2(Migration::Context &ctx)
+  {
+    float visualUnits = Migration::DEFAULT_VISUAL_UNITS_PER_METER;
+    if(ctx.conf && ctx.conf->renderScale.value > 0.0f) {
+      visualUnits = ctx.conf->renderScale.value;
+    }
+
+    // Fog distances are view-space lengths the runtime now scales itself.
+    if(ctx.conf) {
+      float toMeters = 1.0f / visualUnits;
+      for(auto *layers : {&ctx.conf->layers3D, &ctx.conf->layersPtx, &ctx.conf->layers2D}) {
+        for(auto &layer : *layers) {
+          layer.fogMin.value *= toMeters;
+          layer.fogMax.value *= toMeters;
+        }
+      }
+    }
+
+    Migration::V1Context v1{};
+    v1.visualUnitsPerMeter = visualUnits;
+    v1.relativeDiv = visualUnits;
+
+    PropScope::ResetScope freshScope;
+    if(ctx.docType == Migration::DocType::SCENE) {
+      // the scene root only groups the real objects
+      for(const auto &child : ctx.root.children) {
+        migrateObjectToV2(*child, ctx.assets, v1, 1.0f);
+      }
+    } else {
+      migrateObjectToV2(ctx.root, ctx.assets, v1, 1.0f);
+    }
+  }
+
+  // ---------------------------------------------------------------------------------------
+
+  int readDocVersion(const fs::path &path)
+  {
+    auto doc = nlohmann::json::parse(Utils::FS::loadTextFile(path.string()), nullptr, false);
+    if(!doc.is_object())return Migration::FILE_VERSION; // unreadable, leave it alone
+    return doc.value("version", 1);
+  }
+
+  void collectSummaries(Migration::ScanResult &scan)
+  {
+    int oldest = Migration::FILE_VERSION;
+    for(const auto &doc : scan.docs)oldest = std::min(oldest, doc.version);
+
+    scan.summaries.clear();
+    for(const auto &step : Migration::STEPS) {
+      if(step.toVersion > oldest)scan.summaries.push_back(step.summary);
+    }
+  }
+}
+
+const std::vector<Project::Migration::Step> Project::Migration::STEPS = {
+  {2, "Positions, sizes and distances are converted from visual units to meters", stepToV2},
+};
+
+int Project::Migration::run(int fromVersion, Context &ctx)
+{
+  int version = fromVersion;
+  for(const auto &step : STEPS) {
+    if(step.toVersion <= version)continue;
+    step.run(ctx);
+    version = step.toVersion;
+  }
+  return std::max(version, fromVersion);
 }
 
 void Project::Migration::V1Context::scaleAbsolute(Property<float> &prop) const {
@@ -142,34 +252,89 @@ void Project::Migration::V1Context::scaleRelative(Property<glm::vec3> &prop) con
   patchProp(prop, 1.0f / relativeDiv, *this);
 }
 
-void Project::Migration::migrateV1(Object &obj, AssetManager &assets,
-                                   float visualUnitsPerMeter, bool rootIsContainer)
+size_t Project::Migration::ScanResult::countOf(DocType type) const
 {
-  if(visualUnitsPerMeter <= 0.0f)visualUnitsPerMeter = DEFAULT_VISUAL_UNITS_PER_METER;
-
-  V1Context ctx{};
-  ctx.visualUnitsPerMeter = visualUnitsPerMeter;
-  ctx.relativeDiv = visualUnitsPerMeter;
-
-  PropScope::ResetScope freshScope;
-  if(rootIsContainer) {
-    for(const auto &child : obj.children) {
-      migrateObject(*child, assets, ctx);
-    }
-  } else {
-    migrateObject(obj, assets, ctx);
-  }
+  return std::count_if(docs.begin(), docs.end(),
+    [type](const PendingDoc &d) { return d.type == type; });
 }
 
-void Project::Migration::migrateV1SceneConf(SceneConf &conf, float visualUnitsPerMeter)
+Project::Migration::ScanResult Project::Migration::scanProject(Project &project)
 {
-  if(visualUnitsPerMeter <= 0.0f)visualUnitsPerMeter = DEFAULT_VISUAL_UNITS_PER_METER;
-  float toMeters = 1.0f / visualUnitsPerMeter;
+  ScanResult scan{};
 
-  for(auto *layers : {&conf.layers3D, &conf.layersPtx, &conf.layers2D}) {
-    for(auto &layer : *layers) {
-      layer.fogMin.value *= toMeters;
-      layer.fogMax.value *= toMeters;
+  auto scenesPath = fs::path{project.getPath()} / "data" / "scenes";
+  if(fs::exists(scenesPath)) {
+    for(const auto &dir : fs::directory_iterator{scenesPath}) {
+      if(!dir.is_directory())continue;
+      auto scenePath = dir.path() / "scene.json";
+      if(!fs::exists(scenePath))continue;
+
+      int version = readDocVersion(scenePath);
+      if(version >= FILE_VERSION)continue;
+
+      int id = 0;
+      try { id = std::stoi(dir.path().filename().string()); } catch(...) { continue; }
+
+      scan.docs.push_back({
+        .type = DocType::SCENE,
+        .name = "Scene " + std::to_string(id),
+        .path = scenePath.string(),
+        .version = version,
+        .sceneId = id,
+      });
+    }
+  }
+
+  for(const auto &entry : project.getAssets().getTypeEntries(FileType::PREFAB)) {
+    int version = entry.prefab ? entry.prefab->fileVersion : readDocVersion(entry.path);
+    if(version >= FILE_VERSION)continue;
+
+    scan.docs.push_back({
+      .type = DocType::PREFAB,
+      .name = entry.name,
+      .path = entry.path,
+      .version = version,
+    });
+  }
+
+  // Prefabs first: a scene resolves its instances against them.
+  std::stable_sort(scan.docs.begin(), scan.docs.end(),
+    [](const PendingDoc &a, const PendingDoc &b) { return a.type > b.type; });
+
+  collectSummaries(scan);
+  return scan;
+}
+
+void Project::Migration::apply(Project &project, const ScanResult &scan)
+{
+  auto &assets = project.getAssets();
+
+  for(const auto &doc : scan.docs)
+  {
+    if(doc.type == DocType::PREFAB)
+    {
+      auto *entry = assets.getByPath(doc.path);
+      if(!entry || !entry->prefab)continue;
+
+      // AssetManager::migratePrefabs() already brought the loaded copy up to date, only need to write here.
+      Context ctx{.assets = assets, .docType = DocType::PREFAB, .root = entry->prefab->obj};
+      entry->prefab->memVersion = run(entry->prefab->memVersion, ctx);
+      entry->prefab->fileVersion = entry->prefab->memVersion;
+      entry->prefab->save(doc.path);
+      Utils::Logger::log("Migrated prefab '" + doc.name + "'");
+    }
+    else
+    {
+      // Loading a scene migrates it in memory (Scene::deserialize), saving persists it.
+      // The open scene is saved through its own instance so unsaved edits survive.
+      auto *loaded = project.getScenes().getLoadedScene();
+      if(loaded && loaded->getId() == doc.sceneId) {
+        loaded->save();
+      } else {
+        Scene scene{doc.sceneId, project.getPath()};
+        scene.save();
+      }
+      Utils::Logger::log("Migrated " + doc.name);
     }
   }
 }

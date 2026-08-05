@@ -176,6 +176,8 @@ add_executable(pyrite64 src/main.cpp
         src/project/scene/scene.cpp
         src/project/scene/migration.h
         src/project/scene/migration.cpp
+        src/editor/pages/parts/migrationOverlay.h
+        src/editor/pages/parts/migrationOverlay.cpp
         src/editor/pages/parts/sceneInspector.cpp
         src/build/projectBuilder.h
         src/build/projectBuilder.cpp

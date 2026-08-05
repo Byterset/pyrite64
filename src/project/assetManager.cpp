@@ -441,18 +441,19 @@ void Project::AssetManager::reload() {
 
 void Project::AssetManager::migratePrefabs()
 {
-  // Runs once every prefab and model is loaded: converting a prefab that instances
-  // another one needs that prefab's structure and the vertex scales of its models.
+  // Runs once every prefab and model is loaded: converting a prefab that instances another one
+  // needs that prefab's structure and the vertex scales of its models.
+  // In-memory only, so the editor can work with an outdated project without rewriting files without confirmation. 
+  // Persisting is Migration::apply()
   for (auto &entry : entries[(int)FileType::PREFAB]) {
-    if (!entry.prefab || entry.prefab->fileVersion >= Migration::FILE_VERSION)continue;
+    if (!entry.prefab || entry.prefab->memVersion >= Migration::FILE_VERSION)continue;
 
-    Migration::migrateV1(entry.prefab->obj, *this,
-      Migration::DEFAULT_VISUAL_UNITS_PER_METER, false);
-    entry.prefab->fileVersion = Migration::FILE_VERSION;
-
-    // persist right away, an unsaved prefab would be re-migrated on the next load
-    entry.prefab->save(entry.path);
-    Utils::Logger::log("Migrated prefab '" + entry.name + "' to meters");
+    Migration::Context ctx{
+      .assets = *this,
+      .docType = Migration::DocType::PREFAB,
+      .root = entry.prefab->obj,
+    };
+    entry.prefab->memVersion = Migration::run(entry.prefab->memVersion, ctx);
   }
 }
 

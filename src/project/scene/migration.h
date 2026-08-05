@@ -4,73 +4,131 @@
 */
 #pragma once
 #include <cstdint>
+#include <string>
+#include <vector>
 
 #include "../../utils/prop.h"
 
 namespace Project
 {
   class Object;
+  class Project;
   class AssetManager;
   struct SceneConf;
 }
 
 /**
- * Migration of scene/prefab files that were authored before the engine and editor
- * switched to meters.
+ * Versioned upgrade of scene and prefab files.
  *
- * Version 1 stored every length in "visual units" (`visualUnitsPerMeter` of them per
- * meter) and rendered models at the size their vertices were quantized to (the asset's
- * `baseScale`). Version 2 stores meters everywhere and divides the vertex scale back
- * out at render time, so the conversion below keeps the rendered result identical.
+ * Every file carries a "version" field. A file older than FILE_VERSION is brought up to date by
+ * running each step in STEPS whose target version is newer than the file's, in order, so a
+ * project can skip any number of releases and still upgrade in one go.
+ *
+ * Adding a migration:
+ *   1. write a `void stepToVn(Context&)` in migration.cpp
+ *   2. add `{n, "what changes, in user terms", stepToVn}` to STEPS
+ *   3. bump FILE_VERSION
+ * Scanning, chaining, the confirmation dialog and saving are generic and need no changes.
  */
 namespace Project::Migration
 {
-  // Current scene/prefab file version.
+  /// Version written to newly saved files. Bump when appending a step.
   constexpr int FILE_VERSION = 2;
 
-  // Assumed visual-units-per-meter for files that carry no scene config (prefabs).
+  /// Assumed visual-units-per-meter for pre-v2 files.
   constexpr float DEFAULT_VISUAL_UNITS_PER_METER = 100.0f;
 
+  enum class DocType { SCENE, PREFAB };
+
+  /// The document a step operates on.
+  struct Context
+  {
+    AssetManager &assets;
+    DocType docType{DocType::SCENE};
+    /// Scene: the container whose children are the real objects. Prefab: the object itself.
+    Object &root;
+    /// Scene config, null for prefabs.
+    SceneConf *conf{nullptr};
+  };
+
+  struct Step
+  {
+    int toVersion{};
+    /// One line shown to the user before the migration runs.
+    const char *summary{};
+    void (*run)(Context &ctx){};
+  };
+
+  /// All known steps, ordered by target version.
+  extern const std::vector<Step> STEPS;
+
   /**
-   * Conversion state for one object while migrating a v1 file.
+   * Runs every step newer than `fromVersion` on the given document.
+   * @return the version the document is at afterwards
+   */
+  int run(int fromVersion, Context &ctx);
+
+  /// A file that is behind FILE_VERSION.
+  struct PendingDoc
+  {
+    DocType type{DocType::SCENE};
+    std::string name{};
+    std::string path{};
+    int version{1};
+    int sceneId{0}; // scenes only
+  };
+
+  struct ScanResult
+  {
+    std::vector<PendingDoc> docs{};
+    /// Summaries of every step that will run, deduplicated across all documents.
+    std::vector<const char*> summaries{};
+
+    bool empty() const { return docs.empty(); }
+    size_t countOf(DocType type) const;
+  };
+
+  /**
+   * Lists every scene and prefab of the project that is behind FILE_VERSION.
+   * Reads only file versions, so it is cheap enough to call before any scene load or build.
+   *
+   * Always covers the whole project rather than a single scene: objects resolve against prefabs
+   * and prefabs against each other, and migrating everything at once is what keeps a loaded
+   * scene from sitting on converted-but-unsaved data.
+   */
+  ScanResult scanProject(Project &project);
+
+  /**
+   * Migrates and re-saves every document in `scan`.
+   * Rewrites project files in place, so only call after the user agreed.
+   */
+  void apply(Project &project, const ScanResult &scan);
+
+  // ---- helpers used by the pre-meter (v2) step, see Component::funcMigrateV1 ----
+
+  /**
+   * Conversion state for one object while migrating a pre-meter file.
    * Patches a property's own value plus any prefab-instance override of it.
    */
   struct V1Context
   {
-    // visual units per meter of the scene the file belongs to
+    // visual units per meter of the file being migrated
     float visualUnitsPerMeter{DEFAULT_VISUAL_UNITS_PER_METER};
-    // divisor for lengths the runtime multiplies by the object scale. Objects showing a
-    // model absorb the model's vertex scale into their object scale, so their component
-    // lengths convert by that instead.
+    // divisor for lengths the runtime multiplies by the object's world scale
     float relativeDiv{DEFAULT_VISUAL_UNITS_PER_METER};
-    // false while walking a prefab definition reached through an instance: those values
-    // belong to the prefab file and are migrated when it is loaded, only overrides
-    // stored on the enclosing instances are patched here.
+    // false while walking a prefab definition reached through an instance: those values belong
+    // to the prefab file and are migrated when it is loaded, only overrides stored on the
+    // enclosing instances are patched here.
     bool patchValues{true};
     // number of leading PropScope layers that belong to migratable (non-definition) maps
     size_t patchableLayers{0};
 
-    /// Lengths that are used as-is by the runtime (camera planes, light size).
+    /// Lengths the runtime uses as-is (camera planes, light size).
     void scaleAbsolute(Property<float> &prop) const;
     void scaleAbsolute(Property<glm::vec3> &prop) const;
 
-    /// Lengths the runtime multiplies by the object scale (collider/culling extents).
+    /// Lengths the runtime multiplies by the object's world scale (collider/culling extents).
     void scaleRelative(Property<float> &prop) const;
     void scaleRelative(Property<glm::vec3> &prop) const;
   };
-
-  /**
-   * Converts an object tree, its components and prefab-instance overrides from
-   * v1 visual units to meters. Call on the root of a freshly deserialized v1 file.
-   *
-   * @param obj root object to convert
-   * @param assets asset manager, used to resolve model vertex scales and prefabs
-   * @param visualUnitsPerMeter the file's v1 conversion factor
-   * @param rootIsContainer true for a scene, whose root only groups the real objects.
-   *                        False for a prefab, whose root is an object itself.
-   */
-  void migrateV1(Object &obj, AssetManager &assets, float visualUnitsPerMeter, bool rootIsContainer);
-
-  /// Converts the length-valued fields of a scene config (fog distances) to meters.
-  void migrateV1SceneConf(SceneConf &conf, float visualUnitsPerMeter);
 }
