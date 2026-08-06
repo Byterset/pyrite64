@@ -272,13 +272,16 @@ namespace
   }
 }
 
+namespace Project::Migration
+{
+
 // Add a new step here and bump FILE_VERSION to make it run on all files with older versions.
-const std::vector<Project::Migration::Step> Project::Migration::STEPS = {
+const std::vector<Step> STEPS = {
   {2, "Positions, sizes and distances are converted from visual units to meters,"
       " 3D models are rebuilt at automatic vertex precision", stepToV2, projectStepToV2},
 };
 
-int Project::Migration::run(int fromVersion, Context &ctx)
+int run(int fromVersion, Context &ctx)
 {
   int version = fromVersion;
   for(const auto &step : STEPS) {
@@ -289,29 +292,29 @@ int Project::Migration::run(int fromVersion, Context &ctx)
   return std::max(version, fromVersion);
 }
 
-void Project::Migration::V1Context::scaleAbsolute(Property<float> &prop) const {
+void V1Context::scaleAbsolute(Property<float> &prop) const {
   patchProp(prop, 1.0f / visualUnitsPerMeter, *this);
 }
 
-void Project::Migration::V1Context::scaleAbsolute(Property<glm::vec3> &prop) const {
+void V1Context::scaleAbsolute(Property<glm::vec3> &prop) const {
   patchProp(prop, 1.0f / visualUnitsPerMeter, *this);
 }
 
-void Project::Migration::V1Context::scaleRelative(Property<float> &prop) const {
+void V1Context::scaleRelative(Property<float> &prop) const {
   patchProp(prop, 1.0f / relativeDiv, *this);
 }
 
-void Project::Migration::V1Context::scaleRelative(Property<glm::vec3> &prop) const {
+void V1Context::scaleRelative(Property<glm::vec3> &prop) const {
   patchProp(prop, 1.0f / relativeDiv, *this);
 }
 
-size_t Project::Migration::ScanResult::countOf(DocType type) const
+size_t ScanResult::countOf(DocType type) const
 {
   return std::count_if(docs.begin(), docs.end(),
     [type](const PendingDoc &d) { return d.type == type; });
 }
 
-Project::Migration::ScanResult Project::Migration::scanProject(Project &project)
+ScanResult scanProject(Project &project)
 {
   ScanResult scan{};
 
@@ -358,7 +361,7 @@ Project::Migration::ScanResult Project::Migration::scanProject(Project &project)
   return scan;
 }
 
-void Project::Migration::apply(Project &project, const ScanResult &scan)
+void apply(Project &project, const ScanResult &scan)
 {
   auto &assets = project.getAssets();
 
@@ -398,4 +401,6 @@ void Project::Migration::apply(Project &project, const ScanResult &scan)
   for(const auto &step : STEPS) {
     if(step.toVersion > oldest && step.runProject)step.runProject(project);
   }
+}
+
 }
