@@ -175,7 +175,7 @@ namespace P64::Comp
     if (data->flags & FLAG_CULLING) {
       auto frustum = t3d_viewport_get()->viewFrustum;
       // map the world-space frustum into the model's vertex space // @TODO: handle non-uniform scale
-      t3d_frustum_scale(&frustum, obj.scale.x * data->vertexScale * Renderer::getRenderScale());
+      t3d_frustum_scale(&frustum, obj.scale.x * (data->vertexScale * Renderer::getRenderScale()));
 
       const T3DBvh *bvh = t3d_model_bvh_get(data->model); assert(bvh);
       t3d_model_bvh_query_frustum(bvh, &frustum);
