@@ -26,10 +26,7 @@ void Project::Prefab::deserialize(const std::string &str)
   if(!doc.is_object())return;
   Utils::JSON::readProp(doc, uuid);
   obj.deserialize(nullptr, doc["obj"]);
-  // Migration runs once all prefabs are loaded (AssetManager), a nested instance can only
-  // be converted when the prefab it references is available.
   fileVersion = doc.value("version", 1);
-  memVersion = fileVersion;
 }
 
 void Project::Prefab::save(const std::string &path)

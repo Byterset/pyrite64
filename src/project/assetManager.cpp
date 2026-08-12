@@ -11,7 +11,6 @@
 #include <unordered_set>
 
 #include "SHA256.h"
-#include "scene/migration.h"
 #include "../build/autoScale.h"
 #include "../utils/codeParser.h"
 #include "../utils/fs.h"
@@ -434,26 +433,6 @@ void Project::AssetManager::reload() {
         reloadEntry(entry, entry.path);
       }
     }
-  }
-
-  migratePrefabs();
-}
-
-void Project::AssetManager::migratePrefabs()
-{
-  // Runs once every prefab and model is loaded: converting a prefab that instances another one
-  // needs that prefab's structure and the vertex scales of its models.
-  // In-memory only, so the editor can work with an outdated project without rewriting files without confirmation. 
-  // Persisting is Migration::apply()
-  for (auto &entry : entries[(int)FileType::PREFAB]) {
-    if (!entry.prefab || entry.prefab->memVersion >= Migration::FILE_VERSION)continue;
-
-    Migration::Context ctx{
-      .assets = *this,
-      .docType = Migration::DocType::PREFAB,
-      .root = entry.prefab->obj,
-    };
-    entry.prefab->memVersion = Migration::run(entry.prefab->memVersion, ctx);
   }
 }
 

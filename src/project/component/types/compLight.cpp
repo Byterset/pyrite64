@@ -3,7 +3,6 @@
 * @license MIT
 */
 #include "../components.h"
-#include "../../scene/migration.h"
 #include "../../../context.h"
 #include "../../../editor/imgui/helper.h"
 #include "../../../utils/json.h"
@@ -139,9 +138,4 @@ namespace Project::Component::Light
     }
     Utils::Mesh::addSprite(*vp.getSprites(), pos, obj.uuid, data.type.resolve(obj.propOverrides), col);
   }
-  void migrateV1(Entry &entry, const Migration::V1Context &ctx) {
-    auto &data = *static_cast<Data*>(entry.data.get());
-    ctx.scaleAbsolute(data.size);
-  }
-
 }

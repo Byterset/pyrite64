@@ -3,7 +3,6 @@
 * @license MIT
 */
 #include "../components.h"
-#include "../../scene/migration.h"
 #include "../../../context.h"
 #include "../../../editor/imgui/helper.h"
 #include "../../../utils/json.h"
@@ -305,11 +304,4 @@ namespace Project::Component::Camera
     auto spriteCol = isSelected ? Utils::Colors::kSelectionTint : glm::u8vec4{0xFF};
     Utils::Mesh::addSprite(*vp.getSprites(), pos, obj.uuid, 3, spriteCol);
   }
-  void migrateV1(Entry &entry, const Migration::V1Context &ctx) {
-    auto &data = *static_cast<Data*>(entry.data.get());
-    ctx.scaleAbsolute(data.near);
-    ctx.scaleAbsolute(data.far);
-    ctx.scaleAbsolute(data.orthoSize);
-  }
-
 }

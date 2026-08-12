@@ -26,16 +26,26 @@ namespace
     pendingConfirm = {};
     pendingCancel = {};
   }
-}
 
-void Editor::MigrationOverlay::open(const Project::Migration::ScanResult &scan, const char *title,
-                                    std::function<void()> onConfirm, std::function<void()> onCancel)
-{
-  pendingScan = scan;
-  pendingTitle = title;
-  pendingConfirm = std::move(onConfirm);
-  pendingCancel = std::move(onCancel);
-  requestOpen = true;
+  /// A new document kind renders with the generic icon until it is given one here.
+  const char* docIcon(DocType type)
+  {
+    switch(type) {
+      case DocType::SCENE:  return ICON_MDI_MOVIE_OPEN_OUTLINE;
+      case DocType::PREFAB: return ICON_MDI_CUBE_OUTLINE;
+      default:              return ICON_MDI_FILE_OUTLINE;
+    }
+  }
+
+  void open(const Project::Migration::ScanResult &scan, const char *title,
+            std::function<void()> onConfirm, std::function<void()> onCancel)
+  {
+    pendingScan = scan;
+    pendingTitle = title;
+    pendingConfirm = std::move(onConfirm);
+    pendingCancel = std::move(onCancel);
+    requestOpen = true;
+  }
 }
 
 void Editor::MigrationOverlay::guard(const Project::Migration::ScanResult &scan, const char *title,
@@ -73,13 +83,10 @@ void Editor::MigrationOverlay::draw()
   ImGui::PopFont();
   ImGui::Dummy({0, 6_px});
 
-  size_t sceneCount = pendingScan.countOf(DocType::SCENE);
-  size_t prefabCount = pendingScan.countOf(DocType::PREFAB);
-
   ImGui::TextWrapped(
     "This project was made with an older version of Pyrite64. "
-    "%zu scene(s) and %zu prefab(s) have to be updated before they can be used.",
-    sceneCount, prefabCount
+    "%s have to be updated before they can be used.",
+    Project::Migration::describe(pendingScan).c_str()
   );
 
   if(!pendingScan.summaries.empty())
@@ -97,9 +104,7 @@ void Editor::MigrationOverlay::draw()
   if(ImGui::BeginChild("##migFiles", {0, 120_px}, ImGuiChildFlags_Borders))
   {
     for(const auto &doc : pendingScan.docs) {
-      ImGui::Text("%s %s",
-        doc.type == DocType::PREFAB ? ICON_MDI_CUBE_OUTLINE : ICON_MDI_MOVIE_OPEN_OUTLINE,
-        doc.name.c_str());
+      ImGui::Text("%s %s", docIcon(doc.type), doc.name.c_str());
     }
   }
   ImGui::EndChild();
@@ -121,7 +126,7 @@ void Editor::MigrationOverlay::draw()
   ImGui::SameLine();
   if(ImGui::Button(ICON_MDI_CLOSE " Cancel", {150_px, 30_px}))cancelled = true;
   ImGui::SameLine();
-  ImGui::TextDisabled("Cancelling keeps project as-is.");
+  ImGui::TextDisabled("Cancelling closes the project unchanged.");
 
   if(confirmed || cancelled)
   {

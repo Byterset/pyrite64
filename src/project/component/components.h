@@ -23,7 +23,6 @@ struct SDL_GPUGraphicsPipeline;
 struct SDL_GPURenderPass;
 
 namespace Project { class Object; }
-namespace Project::Migration { struct V1Context; }
 
 namespace Project::Component
 {
@@ -46,8 +45,6 @@ namespace Project::Component
   typedef Utils::AABB(*FuncCompGetAABB)(Object&, Entry &entry);
   // UUID of the 3D model asset a component references, 0 if it references none
   typedef uint64_t(*FuncCompGetModelUUID)(const Entry &entry);
-  // converts pre-meter (v1) scene data of a component, see Project::Migration
-  typedef void(*FuncCompMigrateV1)(Entry &entry, const Migration::V1Context &ctx);
 
   struct CompInfo
   {
@@ -67,7 +64,6 @@ namespace Project::Component
     FuncCompBuild funcBuild{};
     FuncCompGetAABB funcGetAABB{};
     FuncCompGetModelUUID funcGetModelUUID{};
-    FuncCompMigrateV1 funcMigrateV1{};
   };
 
   #define MAKE_COMP(name) \
@@ -83,7 +79,6 @@ namespace Project::Component
       void build(Object&, Entry &entry, Build::SceneCtx &ctx); \
       Utils::AABB getAABB(Object &obj, Entry &entry); \
       uint64_t getModelUUID(const Entry &entry); \
-      void migrateV1(Entry &entry, const Migration::V1Context &ctx); \
     }
 
   MAKE_COMP(Code)
@@ -187,8 +182,7 @@ namespace Project::Component
       .funcSerialize = Light::serialize,
       .funcDeserialize = Light::deserialize,
       .funcBuild = Light::build,
-      .funcGetAABB = nullptr,
-      .funcMigrateV1 = Light::migrateV1
+      .funcGetAABB = nullptr
     },
     CompInfo{
       .id = 3,
@@ -202,8 +196,7 @@ namespace Project::Component
       .funcSerialize = Camera::serialize,
       .funcDeserialize = Camera::deserialize,
       .funcBuild = Camera::build,
-      .funcGetAABB = nullptr,
-      .funcMigrateV1 = Camera::migrateV1
+      .funcGetAABB = nullptr
     },
     CompInfo{
       .id = 4,
@@ -230,8 +223,7 @@ namespace Project::Component
       .funcSerialize = CollBody::serialize,
       .funcDeserialize = CollBody::deserialize,
       .funcBuild = CollBody::build,
-      .funcGetAABB = nullptr,
-      .funcMigrateV1 = CollBody::migrateV1
+      .funcGetAABB = nullptr
     },
     CompInfo{
       .id = 6,
@@ -272,8 +264,7 @@ namespace Project::Component
       .funcSerialize = Culling::serialize,
       .funcDeserialize = Culling::deserialize,
       .funcBuild = Culling::build,
-      .funcGetAABB = nullptr,
-      .funcMigrateV1 = Culling::migrateV1
+      .funcGetAABB = nullptr
     },
     CompInfo{
       .id = 9,

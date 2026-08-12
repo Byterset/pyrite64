@@ -104,18 +104,24 @@ namespace Editor::Actions
        try {
          ctx.project = new Project::Project(path);
          // Custom node definitions (<project>/nodes/*.js) are loaded by the Project ctor.
-         if(ctx.project && !ctx.project->getScenes().getEntries().empty()) {
-           // The scene is only loaded once everything it resolves against is up to date.
-           // Declining leaves the project open without a scene so the user can back it up first.
+         if(ctx.project) {
+           // The one place a project is checked for outdated files: everything past this point
+           // (editing, building) assumes the current format. Declining closes the project again
+           // so nothing ever reads half-converted data, and the user can back it up first.
            int sceneId = ctx.project->conf.sceneIdLastOpened;
            MigrationOverlay::guard(
              Project::Migration::scanProject(*ctx.project),
              "Open Project",
-             [sceneId]() { ctx.project->getScenes().loadScene(sceneId); },
+             [sceneId]() {
+               if(ctx.project && !ctx.project->getScenes().getEntries().empty()) {
+                 ctx.project->getScenes().loadScene(sceneId);
+               }
+             },
              []() {
+               ctx.wantsProjectClose = true;
                Editor::Noti::add(Editor::Noti::Type::ERROR,
-                 "No scene was opened because the project still uses an older format.\n"
-                 "Re-open the project to update it.");
+                 "The project still uses an older format and was left unchanged.\n"
+                 "Open it again to update it.");
              });
          }
          if(ctx.project && ctx.project->wasSavedWithNewerVersion()) {
@@ -214,14 +220,7 @@ namespace Editor::Actions
       if (ctx.isBuildOrRunning())return false;
       if (!ctx.project)return false;
 
-      // The build reads every scene and prefab so all of them have to be up to date first. 
-      // Asking here (rather than inside the build) lets the user abort before anything is written.
-      MigrationOverlay::guard(
-        Project::Migration::scanProject(*ctx.project),
-        "Build Project",
-        [arg]() { startBuild(arg); },
-        []() { Editor::Noti::add(Editor::Noti::Type::ERROR, "Build cancelled, project was not updated"); });
-
+      startBuild(arg);
       return true;
     });
 

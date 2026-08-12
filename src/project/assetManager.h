@@ -116,8 +116,6 @@ namespace Project
       std::shared_ptr<Renderer::Texture> fallbackTex{};
 
       void reloadEntry(AssetManagerEntry &entry, const std::string &path);
-      // Converts and re-saves prefabs stored before the switch to meters.
-      void migratePrefabs();
       void resetDirtyTracking();
       void clearDirtyTracking(uint64_t uuid);
     public:

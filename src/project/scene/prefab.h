@@ -22,10 +22,9 @@ namespace Project
     public:
       PROP_U32(uuid);
       Object obj{};
-      // Version of the file on disk. Only advances once the migrated prefab is written back.
+      // Format version this prefab is at, see Project::Migration. Only advances when a migration
+      // converts the loaded copy and writes it back.
       int fileVersion{};
-      // Version this in-memory copy is at. Editor migrates on load so it can work with outdated files, saving them needs user confirmation.
-      int memVersion{};
 
       std::string serialize(const Object &obj) const;
       std::string serialize() const { return serialize(obj); }

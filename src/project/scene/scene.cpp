@@ -474,8 +474,10 @@ void Project::Scene::deserialize(const std::string &data)
     Utils::JSON::readProp(docConf, conf.audioFreq, 32000);
     Utils::JSON::readProp(docConf, conf.physicsTickRate, 50);
     Utils::JSON::readProp(docConf, conf.gravity, glm::vec3{0.0f, -9.81f, 0.0f});
+    // "visualUnitsPerMeter" is what this setting was called before scenes were stored in meters,
+    // read as a fallback so an outdated scene still loads with its real value.
     Utils::JSON::readProp(docConf, conf.renderScale,
-      docConf.value("visualUnitsPerMeter", Migration::DEFAULT_VISUAL_UNITS_PER_METER));
+      docConf.value("visualUnitsPerMeter", 100.0f));
     Utils::JSON::readProp(docConf, conf.velocitySolverIterations, 7);
     Utils::JSON::readProp(docConf, conf.positionSolverIterations, 6);
     Utils::JSON::readProp(docConf, conf.interpolatePhysicsTransforms, true);
@@ -517,20 +519,6 @@ void Project::Scene::deserialize(const std::string &data)
   if(!doc.contains("graph"))return;
   auto docGraph = doc["graph"];
   root.deserialize(this, docGraph);
-
-  int version = doc.value("version", 1);
-  if(version < Migration::FILE_VERSION && ctx.project)
-  {
-    Migration::Context migCtx{
-      .assets = ctx.project->getAssets(),
-      .docType = Migration::DocType::SCENE,
-      .root = root,
-      .conf = &conf,
-    };
-    int newVersion = Migration::run(version, migCtx);
-    Utils::Logger::log("Migrated scene '" + conf.name.value + "' (v"
-      + std::to_string(version) + " -> v" + std::to_string(newVersion) + ")");
-  }
 }
 
 uint32_t Project::Scene::assignRuntimeIds()

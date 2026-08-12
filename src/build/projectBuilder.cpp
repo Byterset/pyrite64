@@ -13,6 +13,7 @@
 #include "../utils/string.h"
 #include "../utils/textureFormats.h"
 #include "romMetaBuilder.h"
+#include "../project/scene/migration.h"
 #include "../editor/imgui/notification.h"
 
 namespace fs = std::filesystem;
@@ -63,6 +64,20 @@ bool Build::buildProject(const std::string &configPath)
 {
   Project::Project project{configPath};
   auto path = project.getPath();
+
+  // To build, all relevant project documents have to be at the current format.
+  // Converting them rewrites project files, which only happens with the user's consent when the project is opened in the editor.
+  // CLI Build fails with message prompting the user to open and migrate first.
+  auto pending = Project::Migration::scanProject(project);
+  if(!pending.empty())
+  {
+    auto msg = "Project contains " + Project::Migration::describe(pending) + " in an older format.\n"
+      "Open the project in the Pyrite64 editor once to update them, then build again.";
+    Utils::Logger::log(msg, Utils::Logger::LEVEL_ERROR);
+    Editor::Noti::add(Editor::Noti::Type::ERROR, msg);
+    return false;
+  }
+
   Utils::Logger::log("Building project...");
 
   if(project.conf.pathN64Inst.empty())

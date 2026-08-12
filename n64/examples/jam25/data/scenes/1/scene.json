@@ -283,6 +283,8 @@
               "near": 0.14999999105930328,
               "orthoSize": 3.0,
               "projection": 0,
+              "targetMode": 0,
+              "targetObjUUID": 0,
               "visMask": 255,
               "vpOffset": [
                 0,
@@ -322,6 +324,7 @@
                 0.0,
                 1.0
               ],
+              "depth": false,
               "format": 5,
               "size": [
                 64,
@@ -2687,9 +2690,9 @@
         "enabled": true,
         "name": "Platform",
         "pos": [
-          1.100000023841858,
+          1.125,
           0.5,
-          2.700000047683716
+          2.75
         ],
         "propOverrides": {},
         "proportionalScale": false,

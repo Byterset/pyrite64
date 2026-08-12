@@ -11,7 +11,6 @@
 #include "../../actions.h"
 #include "../../../context.h"
 #include "../../thumbnailCache.h"
-#include "migrationOverlay.h"
 #include <algorithm>
 #include <filesystem>
 #include <unordered_set>
@@ -715,16 +714,9 @@ void Editor::AssetsBrowser::draw() {
 
   static int ctxSceneId = -1;
   auto openScene = [&](int sceneId) {
-    // An outdated scene is only opened once the user agreed to have it updated,
-    // declining leaves the current scene loaded.
-    MigrationOverlay::guard(
-      Project::Migration::scanProject(*ctx.project),
-      "Open Scene",
-      [sceneId]() {
-        ctx.project->getScenes().loadScene(sceneId);
-        ctx.project->conf.sceneIdLastOpened = sceneId;
-        ctx.project->saveConfig();
-      });
+    ctx.project->getScenes().loadScene(sceneId);
+    ctx.project->conf.sceneIdLastOpened = sceneId;
+    ctx.project->saveConfig();
   };
 
   if(tab.showScenes)
