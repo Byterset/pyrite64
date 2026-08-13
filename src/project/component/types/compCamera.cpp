@@ -277,10 +277,10 @@ namespace Project::Component::Camera
     // little triangle marker on top of the upper edge of the far plane
     glm::vec3 lineDist = ftr - ftl;
     glm::vec3 triCenter = ftl + (lineDist * 0.5f);
-    triCenter += up * 10.0f;
-    glm::vec3 triLeft = triCenter - (right * 30.0f);
-    glm::vec3 triRight = triCenter + (right * 30.0f);
-    triCenter += up * 30.0f;
+    triCenter += up * 0.1f;
+    glm::vec3 triLeft = triCenter - (right * 0.3f);
+    glm::vec3 triRight = triCenter + (right * 0.3f);
+    triCenter += up * 0.3f;
     Utils::Mesh::addLine(*vp.getLines(), triCenter, triLeft, col);
     Utils::Mesh::addLine(*vp.getLines(), triCenter, triRight, col);
     Utils::Mesh::addLine(*vp.getLines(), triLeft, triRight, col);
