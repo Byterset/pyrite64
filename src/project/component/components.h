@@ -43,6 +43,8 @@ namespace Project::Component
   typedef std::shared_ptr<void>(*FuncCompDeserial)(nlohmann::json &doc);
   typedef void(*FuncCompBuild)(Object&, Entry &entry, Build::SceneCtx &ctx);
   typedef Utils::AABB(*FuncCompGetAABB)(Object&, Entry &entry);
+  // UUID of the 3D model asset a component references, 0 if it references none
+  typedef uint64_t(*FuncCompGetModelUUID)(const Entry &entry);
 
   struct CompInfo
   {
@@ -61,6 +63,7 @@ namespace Project::Component
     FuncCompDeserial funcDeserialize{};
     FuncCompBuild funcBuild{};
     FuncCompGetAABB funcGetAABB{};
+    FuncCompGetModelUUID funcGetModelUUID{};
   };
 
   #define MAKE_COMP(name) \
@@ -75,6 +78,7 @@ namespace Project::Component
       std::shared_ptr<void> deserialize(nlohmann::json &doc); \
       void build(Object&, Entry &entry, Build::SceneCtx &ctx); \
       Utils::AABB getAABB(Object &obj, Entry &entry); \
+      uint64_t getModelUUID(const Entry &entry); \
     }
 
   MAKE_COMP(Code)
@@ -91,6 +95,12 @@ namespace Project::Component
   MAKE_COMP(AnimModel)
   MAKE_COMP(CharBody)
   MAKE_COMP(Surface)
+
+  /**
+   * Model matrix mapping a model's quantized vertex units to world meters.
+   * @param vertexScale meters per vertex unit of the model, see Assets::Model3D
+   */
+  glm::mat4 makeModelMatrix(Object &obj, float vertexScale);
 
   namespace Camera
   {
@@ -157,7 +167,8 @@ namespace Project::Component
       .funcSerialize = Model::serialize,
       .funcDeserialize = Model::deserialize,
       .funcBuild = Model::build,
-      .funcGetAABB = Model::getAABB
+      .funcGetAABB = Model::getAABB,
+      .funcGetModelUUID = Model::getModelUUID
     },
     CompInfo{
       .id = 2,
@@ -198,7 +209,8 @@ namespace Project::Component
       .funcSerialize = CollMesh::serialize,
       .funcDeserialize = CollMesh::deserialize,
       .funcBuild = CollMesh::build,
-      .funcGetAABB = CollMesh::getAABB
+      .funcGetAABB = CollMesh::getAABB,
+      .funcGetModelUUID = CollMesh::getModelUUID
     },
     CompInfo{
       .id = 5,
@@ -279,7 +291,8 @@ namespace Project::Component
       .funcSerialize = AnimModel::serialize,
       .funcDeserialize = AnimModel::deserialize,
       .funcBuild = AnimModel::build,
-      .funcGetAABB = AnimModel::getAABB
+      .funcGetAABB = AnimModel::getAABB,
+      .funcGetModelUUID = AnimModel::getModelUUID
     },
     CompInfo{
       .id = 11,
