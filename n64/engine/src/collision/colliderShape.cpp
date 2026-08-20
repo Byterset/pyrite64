@@ -16,32 +16,40 @@ void Collider::markGeometryChanged() {
   if(rigidBody_) rigidBody_->markCompoundPropertiesDirty();
 }
 
-void Collider::setHalfExtend(const fm_vec3_t &newHalfExtend) {
-  const float x = fabsf(newHalfExtend.x);
-  const float y = fabsf(newHalfExtend.y);
-  const float z = fabsf(newHalfExtend.z);
+void Collider::refreshWorldShape() {
+  const fm_vec3_t scale = owner_ ? owner_->scale : fm_vec3_t{{1.0f, 1.0f, 1.0f}};
+  const float x = fabsf(localHalfExtend_.x * scale.x);
+  const float y = fabsf(localHalfExtend_.y * scale.y);
+  const float z = fabsf(localHalfExtend_.z * scale.z);
   const float radius = fmaxf(x, z);
 
   switch(type_) {
-    case ShapeType::Sphere:   setSphereShape(fmaxf(x, fmaxf(y, z))); break;
-    case ShapeType::Box:      setBoxShape(fm_vec3_t{{x, y, z}}); break;
-    case ShapeType::Capsule:  setCapsuleShape(radius, y); break;
-    case ShapeType::Cylinder: setCylinderShape(radius, y); break;
-    case ShapeType::Cone:     setConeShape(radius, y); break;
-    case ShapeType::Pyramid:  setPyramidShape(x, z, y); break;
+    case ShapeType::Sphere:
+      sphere_.radius = fmaxf(x, fmaxf(y, z));
+    break;
+    case ShapeType::Box:
+      box_.halfSize = fm_vec3_t{{x, y, z}};
+    break;
+    case ShapeType::Capsule:
+      capsule_.radius = radius;
+      capsule_.innerHalfHeight = y;
+    break;
+    case ShapeType::Cylinder:
+      cylinder_.radius = radius;
+      cylinder_.halfHeight = y;
+    break;
+    case ShapeType::Cone:
+      cone_.radius = radius;
+      cone_.halfHeight = y;
+    break;
+    case ShapeType::Pyramid:
+      pyramid_.baseHalfWidthX = x;
+      pyramid_.baseHalfWidthZ = z;
+      pyramid_.halfHeight = y;
+    break;
   }
-}
 
-fm_vec3_t Collider::halfExtend() const {
-  switch(type_) {
-    case ShapeType::Sphere:   return fm_vec3_t{{sphere_.radius, sphere_.radius, sphere_.radius}};
-    case ShapeType::Box:      return box_.halfSize;
-    case ShapeType::Capsule:  return fm_vec3_t{{capsule_.radius, capsule_.innerHalfHeight, capsule_.radius}};
-    case ShapeType::Cylinder: return fm_vec3_t{{cylinder_.radius, cylinder_.halfHeight, cylinder_.radius}};
-    case ShapeType::Cone:     return fm_vec3_t{{cone_.radius, cone_.halfHeight, cone_.radius}};
-    case ShapeType::Pyramid:  return fm_vec3_t{{pyramid_.baseHalfWidthX, pyramid_.halfHeight, pyramid_.baseHalfWidthZ}};
-  }
-  __builtin_unreachable();
+  markGeometryChanged();
 }
 
 fm_vec3_t Collider::support(const fm_vec3_t &dir) const {
@@ -125,7 +133,9 @@ void Collider::syncOwnerTransform() {
 }
 
 bool Collider::syncFromRigidBody(const fm_vec3_t& rbPosition, const fm_quat_t& rbRotation) {
-  if(hasCachedOwnerTransform_ && !geometryDirty_) {
+  const bool scaleChanged = owner_ && owner_->scale != lastOwnerScale_;
+
+  if(hasCachedOwnerTransform_ && !geometryDirty_ && !scaleChanged) {
     const float posDeltaSq = fm_vec3_distance2(&rbPosition, &lastOwnerPosition_);
     const float rotSim = fabsf(quatDot(rbRotation, lastOwnerRotation_));
     if(posDeltaSq <= FM_EPSILON * FM_EPSILON && rotSim >= 1.0f - FM_EPSILON) {
@@ -133,10 +143,10 @@ bool Collider::syncFromRigidBody(const fm_vec3_t& rbPosition, const fm_quat_t& r
     }
   }
 
-  geometryDirty_ = false;
   lastOwnerPosition_ = rbPosition;
   lastOwnerRotation_ = rbRotation;
   lastOwnerScale_ = owner_ ? owner_->scale : fm_vec3_t{{1,1,1}};
+  if(scaleChanged) refreshWorldShape();
   rotationMatrix_ = quatToMatrix3(lastOwnerRotation_);
   inverseRotationMatrix_ = quatToMatrix3(quatConjugate(lastOwnerRotation_));
   hasCachedOwnerTransform_ = true;
@@ -158,8 +168,11 @@ bool Collider::syncWorldState() {
   // a resized or moved shape needs a new AABB too, even if the object itself didn't move
   if(!transformChanged && !geometryDirty_) return false;
 
-  geometryDirty_ = false;
+  const bool scaleChanged = owner_->scale != lastOwnerScale_;
+
   if(transformChanged) syncOwnerTransform();
+  // the shape is object-scaled, so a scaled object needs it rebuilt
+  if(scaleChanged) refreshWorldShape();
   worldCenter_ = lastOwnerPosition_ + matrix3Vec3Mul(rotationMatrix_, parentOffset_ * lastOwnerScale_);
 
   const AABB local = boundingBox(&lastOwnerRotation_);

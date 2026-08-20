@@ -39,16 +39,14 @@ namespace P64::Comp
 
     new(data) CollBody();
 
-    data->collider.setShapeType(static_cast<P64::Coll::ShapeType>(initData->type));
+    data->collider.setOwner(&obj);
     data->collider.setFriction(initData->friction);
     data->collider.setBounce(initData->bounce);
-    data->collider.setOwner(&obj);
     data->collider.setParentOffset(initData->offset);
     data->collider.setTrigger(initData->isTrigger);
     data->collider.setCollisionMask(initData->maskRead, initData->maskWrite);
-
-    data->halfExtend_ = initData->halfExtend;
-    data->applyObjectScale(obj.scale);
+    data->collider.setShapeType(static_cast<P64::Coll::ShapeType>(initData->type));
+    data->collider.setHalfExtend(initData->halfExtend);
 
     if (obj.isEnabled()) {
       coll.addCollider(&data->collider);
@@ -65,10 +63,4 @@ namespace P64::Comp
     }
   }
 
-  void CollBody::update(Object &obj, CollBody* data, [[maybe_unused]] float deltaTime)
-  {
-    // The size only needs to be updated if the object got scaled, every other resize goes through setHalfExtend() and is applied right away.
-    if(data->appliedScale_ == obj.scale) return;
-    data->applyObjectScale(obj.scale);
-  }
 }

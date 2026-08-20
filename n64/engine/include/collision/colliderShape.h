@@ -23,111 +23,81 @@ namespace P64::Coll {
   struct RigidBody;
 
   struct Collider {
-    // Dimensions of colliders themselves are always in world scale (the object scale is already baked in) and
-    // read-only. To change the size of a collider use one of the setters. Together with
-    // setParentOffset() they keep the world AABB (and with it the broadphase) plus the mass
-    // properties of an attached rigid body in sync, and wake up whatever the change may touch.
-    // Note that a collider created by the 'CollBody' component gets its
-    // size rebuilt from the component whenever the object scale changes, see
-    // 'Comp::CollBody::setHalfExtend()' to resize those permanently.
+    // Everything that can be set is in the owner object's local space, exactly like the values in
+    // the editor. The object scale is applied on top of it and stays applied when the object
+    // is scaled later on. The world-scale result is derived and read-only.
 
-    /// Changes the shape type, this resets all dimensions back to zero.
-    void setShapeType(ShapeType newType) {
-      type_ = newType;
-      switch(type_) {
-        case ShapeType::Sphere:   sphere_ = {}; break;
-        case ShapeType::Box:      box_ = {}; break;
-        case ShapeType::Capsule:  capsule_ = {}; break;
-        case ShapeType::Cylinder: cylinder_ = {}; break;
-        case ShapeType::Cone:     cone_ = {}; break;
-        case ShapeType::Pyramid:  pyramid_ = {}; break;
-      }
-      markGeometryChanged();
-    }
+    /// Changes the shape type, the size is kept and folded into the new shape.
+    void setShapeType(ShapeType newType) { setShape(newType, localHalfExtend_); }
     ShapeType shapeType() const { return type_; }
 
-    const SphereShape &sphereShape() const { return sphere_; }
-    const BoxShape &boxShape() const { return box_; }
-    const CapsuleShape &capsuleShape() const { return capsule_; }
-    const CylinderShape &cylinderShape() const { return cylinder_; }
-    const ConeShape &coneShape() const { return cone_; }
-    const PyramidShape &pyramidShape() const { return pyramid_; }
-
-    /// Makes this a sphere collider of the given size.
-    void setSphereShape(float radius) {
-      if(type_ == ShapeType::Sphere && sphere_.radius == radius) return;
-      type_ = ShapeType::Sphere;
-      sphere_.radius = radius;
-      markGeometryChanged();
-    }
-
-    /// Makes this a box collider of the given size.
-    void setBoxShape(const fm_vec3_t &halfSize) {
-      if(type_ == ShapeType::Box && box_.halfSize == halfSize) return;
-      type_ = ShapeType::Box;
-      box_.halfSize = halfSize;
-      markGeometryChanged();
-    }
-
-    /// Makes this a capsule collider of the given size ('innerHalfHeight' excludes the round caps).
-    void setCapsuleShape(float radius, float innerHalfHeight) {
-      if(type_ == ShapeType::Capsule && capsule_.radius == radius && capsule_.innerHalfHeight == innerHalfHeight) return;
-      type_ = ShapeType::Capsule;
-      capsule_.radius = radius;
-      capsule_.innerHalfHeight = innerHalfHeight;
-      markGeometryChanged();
-    }
-
-    /// Makes this a cylinder collider of the given size.
-    void setCylinderShape(float radius, float halfHeight) {
-      if(type_ == ShapeType::Cylinder && cylinder_.radius == radius && cylinder_.halfHeight == halfHeight) return;
-      type_ = ShapeType::Cylinder;
-      cylinder_.radius = radius;
-      cylinder_.halfHeight = halfHeight;
-      markGeometryChanged();
-    }
-
-    /// Makes this a cone collider of the given size.
-    void setConeShape(float radius, float halfHeight) {
-      if(type_ == ShapeType::Cone && cone_.radius == radius && cone_.halfHeight == halfHeight) return;
-      type_ = ShapeType::Cone;
-      cone_.radius = radius;
-      cone_.halfHeight = halfHeight;
-      markGeometryChanged();
-    }
-
-    /// Makes this a pyramid collider of the given size.
-    void setPyramidShape(float baseHalfWidthX, float baseHalfWidthZ, float halfHeight) {
-      if(type_ == ShapeType::Pyramid && pyramid_.baseHalfWidthX == baseHalfWidthX && pyramid_.baseHalfWidthZ == baseHalfWidthZ && pyramid_.halfHeight == halfHeight) return;
-      type_ = ShapeType::Pyramid;
-      pyramid_.baseHalfWidthX = baseHalfWidthX;
-      pyramid_.baseHalfWidthZ = baseHalfWidthZ;
-      pyramid_.halfHeight = halfHeight;
-      markGeometryChanged();
-    }
-
-    /// Resizes the current shape from a half-extend box, keeping the shape type the same.
+    /// Resizes the current shape from a half-extend box, keeping the shape type.
     /// Axes a shape has no use for are folded in, e.g. a cylinder takes its radius from
     /// max(x, z) and its half height from y. Negative values are mirrored.
-    void setHalfExtend(const fm_vec3_t &newHalfExtend);
+    void setHalfExtend(const fm_vec3_t &newHalfExtend) { setShape(type_, newHalfExtend); }
+    /// Size of the collider in the owner's local space, as set by any of the setters.
+    const fm_vec3_t &halfExtend() const { return localHalfExtend_; }
 
-    /// Size of the current shape as a half-extend box.
-    fm_vec3_t halfExtend() const;
-
-    void setOwner(P64::Object *newOwner) {
-      owner_ = newOwner;
-      hasCachedOwnerTransform_ = false;
+    /// @brief Makes this a sphere collider of the given size.
+    /// @param radius The radius of the sphere
+    void setSphereShape(float radius) {
+      setShape(ShapeType::Sphere, fm_vec3_t{{radius, radius, radius}});
     }
-    P64::Object *ownerObject() const { return owner_; }
 
-    /// Moves the shape's center relative to the owner's origin. In the owner's local space,
-    /// the object scale is applied on top of it.
+    /// @brief Makes this a box collider of the given size.
+    /// @param halfSize The half size vector of the box
+    void setBoxShape(const fm_vec3_t &halfSize) {
+      setShape(ShapeType::Box, halfSize);
+    }
+
+    /// @brief Makes this a capsule collider of the given size ('innerHalfHeight' excludes the round caps).
+    /// @param radius The radius of the capsule
+    /// @param innerHalfHeight The half height of the capsule's cylindrical part
+    void setCapsuleShape(float radius, float innerHalfHeight) {
+      setShape(ShapeType::Capsule, fm_vec3_t{{radius, innerHalfHeight, radius}});
+    }
+
+    /// @brief Makes this a cylinder collider of the given size.
+    /// @param radius The radius of the cylinder
+    /// @param halfHeight The half height of the cylinder
+    void setCylinderShape(float radius, float halfHeight) {
+      setShape(ShapeType::Cylinder, fm_vec3_t{{radius, halfHeight, radius}});
+    }
+    /// @brief Makes this a cone collider of the given size.
+    /// @param radius The radius of the cone's base
+    /// @param halfHeight The half height of the cone
+    void setConeShape(float radius, float halfHeight) {
+      setShape(ShapeType::Cone, fm_vec3_t{{radius, halfHeight, radius}});
+    }
+    /// @brief Makes this a pyramid collider of the given size.
+    /// @param baseHalfWidthX Half the width of the base along the X axis
+    /// @param baseHalfWidthZ Half the width of the base along the Z axis
+    /// @param halfHeight Half the height of the pyramid along the Y axis
+    void setPyramidShape(float baseHalfWidthX, float baseHalfWidthZ, float halfHeight) {
+      setShape(ShapeType::Pyramid, fm_vec3_t{{baseHalfWidthX, halfHeight, baseHalfWidthZ}});
+    }
+
+    /// @brief Moves the shape's center relative to the owner's origin, in the owner's local space.
     void setParentOffset(const fm_vec3_t &newParentOffset) {
       if(parentOffset_ == newParentOffset) return;
       parentOffset_ = newParentOffset;
       markGeometryChanged();
     }
     const fm_vec3_t &parentOffset() const { return parentOffset_; }
+
+    // Object-scaled dimensions the collision detection runs on, derived from the setters above.
+    const SphereShape &worldSphereShape() const { return sphere_; }
+    const BoxShape &worldBoxShape() const { return box_; }
+    const CapsuleShape &worldCapsuleShape() const { return capsule_; }
+    const CylinderShape &worldCylinderShape() const { return cylinder_; }
+    const ConeShape &worldConeShape() const { return cone_; }
+    const PyramidShape &worldPyramidShape() const { return pyramid_; }
+
+    void setOwner(P64::Object *newOwner) {
+      owner_ = newOwner;
+      hasCachedOwnerTransform_ = false;
+    }
+    P64::Object *ownerObject() const { return owner_; }
 
     void setBounce(float newBounce) { bounce_ = newBounce; }
     float bounce() const { return bounce_; }
@@ -166,10 +136,33 @@ namespace P64::Coll {
 
   private:
     friend class CollisionScene;
+    
+    /// @brief Applies a new shape type and/or local size, and derives the world-scale shape from it.
+    /// @param newType The new shape type
+    /// @param newLocalHalfExtend The new local half extend encoded in a vector, axes unused by the shape are folded in
+    void setShape(ShapeType newType, const fm_vec3_t &newLocalHalfExtend) {
+      if(type_ == newType && localHalfExtend_ == newLocalHalfExtend) return;
+      type_ = newType;
+      localHalfExtend_ = newLocalHalfExtend;
+      refreshWorldShape();
+    }
 
-    /// Flags the shape's size or local placement as changed. On the next collision step the
-    /// world AABB (and the mass properties of an attached rigid body) are rebuilt and sleeping
-    /// bodies the change may touch are woken. All shape setters call this.
+
+    /// @brief Whether the geometry of the collider changed since this was last called, resets the flag.
+    /// Used by the collision scene to wake up what the geometry change may affect.
+    /// @return true if the geometry changed since the last call, false otherwise
+    bool consumeGeometryChanged() {
+      const bool changed = geometryDirty_;
+      geometryDirty_ = false;
+      return changed;
+    }
+
+    /// @brief Rebuilds the object-scaled shape from the local half extend, called whenever either changes.
+    void refreshWorldShape();
+
+    /// @brief Flags the size or local placement as changed. On the next collision step the world AABB
+    /// (and the mass properties of an attached rigid body) are rebuilt and sleeping bodies the
+    /// change may touch are woken. Called by refreshWorldShape() and the offset setter.
     void markGeometryChanged();
 
     union {
@@ -188,6 +181,8 @@ namespace P64::Coll {
     Matrix3x3 inverseRotationMatrix_{Matrix3x3::identity()};
     AABB worldAabb_{};
     fm_vec3_t worldCenter_{};
+    // authored size in the owner's local space, the shape union above is this * the object scale
+    fm_vec3_t localHalfExtend_{};
     fm_vec3_t parentOffset_{};
     fm_vec3_t lastOwnerPosition_{};
     fm_quat_t lastOwnerRotation_{QUAT_IDENTITY};
@@ -201,11 +196,14 @@ namespace P64::Coll {
     uint8_t writeMask_{0x00};
     bool hasCachedOwnerTransform_{false};
     bool isTrigger_{false};
-    // set by the shape setters, forces a world AABB rebuild even if the transform didn't change
+    // forces a world AABB rebuild even if the transform didn't change, consumed by the collision scene
     bool geometryDirty_{false};
   };
 
-  /// GJK-compatible support wrapper
+  /// @brief GJK-compatible support wrapper
+  /// @param data The collider data
+  /// @param direction The direction to query
+  /// @param output The resulting support point
   void colliderGjkSupport(const void *data, const fm_vec3_t &direction, fm_vec3_t &output);
 
 } // namespace P64::Coll

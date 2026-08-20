@@ -2180,18 +2180,18 @@ namespace P64::Coll {
     ticksWakePrep = get_ticks() - stageStart;
 
     stageStart = get_ticks();
-    // Refresh collider world state
+
+    // Refresh collider world state and move AABB tree nodes if needed. Wake any rigidbodies who are affected by changes
     for(Collider *collider : colliders_) {
       if(!collider) continue;
 
       const fm_vec3_t previousCenter = collider->worldCenter_;
-      const bool geometryChanged = collider->geometryDirty_;
 
       RigidBody *rb = collider->rigidBody_;
       const bool changed = rb ? collider->syncFromRigidBody(rb->position_, rb->rotation_)
                               : collider->syncWorldState();
 
-      if(geometryChanged) wakeChangedCollider(collider);
+      if(collider->consumeGeometryChanged()) wakeChangedCollider(collider);
 
       if(!changed || collider->aabbTreeNodeId_ == NULL_NODE) continue;
 

@@ -22,33 +22,35 @@ Pair it with a {doc}`Rigid-Body <rigidBody>` for full physics simulation.
 | **Friction** | Surface friction, `0` to `1`. |
 | **Bounce** | Restitution / bounciness, `0` to `1`. |
 
-## Resizing at runtime
+## Changing a collider at runtime
 
-The size set here is the *unscaled* half extend, the object's scale is applied on top of it.
-Change it from a script through the component, which re-applies the object scale and refreshes
-the collider's AABB:
+Every value on this page is set on the collider itself, the component only creates it and
+registers it with the collision scene:
 
 ```cpp
-auto collBody = obj.getComponent<Comp::CollBody>();
+auto &coll = obj.getComponent<Comp::CollBody>()->collider;
 
-auto halfExtend = collBody->getHalfExtend();
-halfExtend.y += 0.5f; // e.g. the half height of a cylinder/capsule/cone
-collBody->setHalfExtend(halfExtend);
+auto halfExtend = coll.halfExtend();
+halfExtend.y += 0.5f;                        // e.g. the half height of a cylinder/capsule/cone
+coll.setHalfExtend(halfExtend);
+
+coll.setCylinderShape(0.5f, 2.0f);           // size and shape type in one go
+coll.setShapeType(Coll::ShapeType::Capsule); // keeps the size, folds it into the new shape
+coll.setParentOffset({0.0f, 1.0f, 0.0f});    // moves the shape's center
 ```
 
-This function can be used regardless of what shape the collider has.
-Shapes that don't use all three axes fold them in, e.g. a cylinder takes its radius from
-`max(x, z)` and its half height from `y`. A sphere will determine its
-radius by the maximum component of the `halfExtend`, etc.
+Sizes and offsets are in the object's local space, exactly like the values in the editor: the
+object scale is applied on top of them and stays applied when the object is scaled later on.
+The object-scaled result the collision detection runs on is read-only and named `world...`,
+e.g. {cpp:struct}`P64::Coll::Collider`'s `worldCylinderShape()` or `worldAabb()`.
 
-To set the final (already scaled) size directly, or to change the shape type, use the setters on
-{cpp:struct}`P64::Coll::Collider` itself, e.g. `setCylinderShape()`. Note that those get
-overwritten by the component as soon as the object is scaled, `setHalfExtend()` is the permanent
-version. **Offset** has its own setter, `setParentOffset()`, and is not cached by the component.
+`setHalfExtend()` works for every shape. Shapes that don't use all three axes fold them in, e.g.
+a cylinder takes its radius from `max(x, z)` and its half height from `y`, and a sphere takes its
+radius from the largest component.
 
-All of them keep the AABB and the mass properties of an attached {doc}`Rigid-Body <rigidBody>`
-in sync and wake up sleeping bodies the change may touch, writing to a shape directly is not
-possible for that reason.
+All setters keep the AABB (and with it the broadphase) plus the mass properties of an attached
+{doc}`Rigid-Body <rigidBody>` in sync, and wake up sleeping bodies the change may touch. That is
+why the dimensions cannot be written directly.
 
 ## See also
 
