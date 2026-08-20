@@ -164,6 +164,31 @@ The viewport fly and zoom speeds are stored in meters now. Their preference keys
 existing settings fall back to the new defaults. Re-adjust them under *Preferences* if you had
 them customized.
 
+### Resizing colliders in C++
+
+Collider shapes are read-only now, they are resized through setters that also refresh the world
+AABB for accurate collision detection (and the mass properties of an attached rigid body).
+
+```cpp
+// Before, would have been overwritten by the component on next update:
+auto &coll = obj.getComponent<Comp::CollBody>()->collider;
+coll.cylinderShape().halfHeight = 2.0f;
+
+// Now, permanent (the component keeps applying the object scale on top of it):
+auto collBody = obj.getComponent<Comp::CollBody>();
+auto halfExtend = collBody->getHalfExtend();
+halfExtend.y = 2.0f;
+collBody->setHalfExtend(halfExtend);
+
+// or directly on the collider, in final world size:
+coll.setCylinderShape(coll.cylinderShape().radius, 2.0f);
+```
+
+Note that `set{SHAPE}Shape()` will also change the shape type if the collider was not of this shape before.
+
+`Comp::CollBody::orgScale` became the private `halfExtend_`, use `getHalfExtend()` /
+`setHalfExtend()` instead.
+
 ## v0.7.0
 
 This version completely reworked the material system as well as the collision/physics system.<br>
