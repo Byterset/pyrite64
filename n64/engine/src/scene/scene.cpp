@@ -315,6 +315,7 @@ void P64::Scene::draw([[maybe_unused]] float deltaTime)
     camMain = cam;
 
     lighting.apply();
+    DrawLayer::applyForCamera(0);
     t3d_matrix_push_pos(1);
 
     for(int i=1; i<conf.layerSetup.layerCount3D; ++i) 
@@ -322,6 +323,7 @@ void P64::Scene::draw([[maybe_unused]] float deltaTime)
       DrawLayer::use3D(i);
         cam->applyTargetImages();
         cam->reApplyScissor();
+        DrawLayer::applyForCamera(i);
         t3d_matrix_push_pos(1);
       DrawLayer::useDefault();
     }
