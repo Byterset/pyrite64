@@ -88,15 +88,34 @@ jobs:
         run: |
           ./scripts/build_appimage.sh
 
-      - name: Run unit tests
-        run: ctest --test-dir build --output-on-failure
-
       - name: Upload build artifact
         uses: actions/upload-artifact@v6
         with:
           name: pyrite64-linux
           path: |
             Pyrite64-x86_64.AppImage
+
+      - name: Upload test artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: pyrite64-tests-linux
+          path: build/pyrite64_tests
+          retention-days: 1
+
+  test-linux:
+    needs: build-linux
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Download test artifact
+        uses: actions/download-artifact@v6
+        with:
+          name: pyrite64-tests-linux
+
+      - name: Run unit tests
+        run: |
+          chmod +x pyrite64_tests
+          ./pyrite64_tests
 
   build-macos:
     # Apple Silicon runner; CMAKE_OSX_ARCHITECTURES builds a universal
