@@ -16,6 +16,7 @@
 #include "cli.h"
 #include "build/projectBuilder.h"
 #include "editor/actions.h"
+#include "editor/script/scriptHost.h"
 #include "editor/window.h"
 #include "editor/imgui/theme.h"
 #include "editor/pages/launcher.h"
@@ -43,6 +44,7 @@
 
 #include "editor/undoRedo.h"
 #include "editor/actions.h"
+#include "editor/script/scriptHost.h"
 
 Context ctx{};
 constinit SDL_GPUSampler *texSamplerRepeat{nullptr};
@@ -472,6 +474,7 @@ int main(int argc, char** argv)
         // Remember this project's open windows before tearing it down (covers app exit too).
         if(ctx.editorScene) ctx.editorScene->onProjectClosing();
         Editor::UndoRedo::getHistory().clear();
+        Editor::ScriptHost::stop();
         delete ctx.project;
         ctx.project = nullptr;
         ctx.wantsProjectClose = false;
