@@ -54,12 +54,6 @@ namespace T3DM
   thread_local Config config{};
 }
 
-void ImDrawCallback_ImplSDLGPU3_SetSamplerRepeat(const ImDrawList* parent_list, const ImDrawCmd* cmd) {
-  auto*           state   = static_cast<ImGui_ImplSDLGPU3_RenderState*>(ImGui::GetPlatformIO().Renderer_RenderState);
-  //SDL_GPUSampler* sampler = cmd->UserCallbackData ? static_cast<SDL_GPUSampler*>(cmd->UserCallbackData) : state->SamplerDefault;
-  state->SamplerCurrent   = texSamplerRepeat;//sampler;
-}
-
 void cli(argparse::ArgumentParser &prog);
 
 bool hasUnsavedChanges()
