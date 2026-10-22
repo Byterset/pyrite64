@@ -4,6 +4,7 @@
 */
 #include "scriptHost.h"
 #include "../../utils/logger.h"
+#include "../actions.h"
 #include "quickjs.h"
 
 namespace
@@ -18,6 +19,35 @@ namespace
     if(str)JS_FreeCString(jsCtx, str);
     return res;
   }
+
+  const JSCFunctionListEntry EditorAPI[] = {
+    JS_CFUNC_DEF("build", 1, (
+      [](JSContext *c, JSValueConst thisVal, int argc, JSValueConst *argv) -> JSValue {
+        bool doRun = argc > 0 ? JS_ToBool(jsCtx, argv[0]) : false;
+        bool res = Editor::Actions::call(Editor::Actions::Type::PROJECT_BUILD, doRun ? "run" : "");
+        return JS_NewBool(c, res);
+      }
+    )),
+    JS_CFUNC_DEF("close", 0, (
+      [](JSContext *c, JSValueConst thisVal, int argc, JSValueConst *argv) -> JSValue {
+        return JS_NewBool(c, Editor::Actions::call(Editor::Actions::Type::PROJECT_CLOSE));
+      }
+    )),
+    JS_CFUNC_DEF("clean", 0, (
+      [](JSContext *c, JSValueConst thisVal, int argc, JSValueConst *argv) -> JSValue {
+        return JS_NewBool(c, Editor::Actions::call(Editor::Actions::Type::PROJECT_CLEAN));
+      }
+    )),
+  };
+
+  const JSCFunctionListEntry ConsoleAPI[] = {
+    JS_CFUNC_DEF("clear", 0, (
+      [](JSContext *c, JSValueConst thisVal, int argc, JSValueConst *argv) -> JSValue {
+        Utils::Logger::clear();
+        return JS_UNDEFINED;
+      }
+    )),
+  };
 }
 
 namespace Editor::ScriptHost
@@ -39,6 +69,19 @@ namespace Editor::ScriptHost
       rt = nullptr;
       return false;
     }
+
+    JSValue global = JS_GetGlobalObject(jsCtx);
+    
+    auto addObj = [&](const char* name, const JSCFunctionListEntry *entries, int len){
+      JSValue api = JS_NewObject(jsCtx);
+      JS_SetPropertyFunctionList(jsCtx, api, entries, len);
+      JS_SetPropertyStr(jsCtx, global, name, api);
+    };
+
+    addObj("editor", EditorAPI, std::size(EditorAPI));
+    addObj("console", ConsoleAPI, std::size(ConsoleAPI));
+
+    JS_FreeValue(jsCtx, global);
 
     Utils::Logger::log("Editor scripts: context started");
     return true;
