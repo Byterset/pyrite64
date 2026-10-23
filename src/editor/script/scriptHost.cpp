@@ -7,6 +7,7 @@
 #include "../actions.h"
 #include "../../project/scene/object.h"
 #include "../../project/scene/scene.h"
+#include "../pages/editorScene.h"
 #include "../../context.h"
 #include "quickjs.h"
 #include <algorithm>
@@ -35,7 +36,7 @@ namespace
     std::vector<JSCFunctionListEntry> entries{};
   };
 
-  const std::array<APIObjDef, 2> APIs{
+  const std::array<APIObjDef, 3> APIs{
     APIObjDef
     {
       .name = "editor",
@@ -45,8 +46,16 @@ namespace
           bool res = Act::call(Act::Type::PROJECT_BUILD, doRun ? "run" : "");
           return JS_NewBool(c, res);
         }),
+        JS_LAMBDA("save", 0, {
+          if(ctx.project) {
+            ctx.project->save();
+            ctx.editorScene->save();
+          }
+          return JS_UNDEFINED;
+        }),
         JS_LAMBDA("close", 0, { return JS_NewBool(c, Act::call(Act::Type::PROJECT_CLOSE)); }),
         JS_LAMBDA("clean", 0, { return JS_NewBool(c, Act::call(Act::Type::PROJECT_CLEAN)); }),
+        JS_LAMBDA("reloadAssets", 0, { return JS_NewBool(c, Act::call(Act::Type::ASSETS_RELOAD)); }),
       }
     },{
       .name = "console",
@@ -54,7 +63,27 @@ namespace
         JS_LAMBDA("clear", 0, {
           Utils::Logger::clear();
           return JS_UNDEFINED;
+        }),
+        JS_LAMBDA("log", 1, {
+          auto str = argc > 0 ? toString(argv[0]) : std::string{};
+          Utils::Logger::log(str);
+          return JS_UNDEFINED;
         })
+      }
+    },{
+      .name = "scene",
+      .entries = {
+        JS_LAMBDA("load", 1, {
+          if(!ctx.project)return JS_FALSE;
+          int id = 0;
+          if(argc > 0 && JS_ToInt32(c, &id, argv[0]) != 0) {
+            return JS_EXCEPTION;
+          }
+          if(id <= 0)return JS_FALSE;
+          
+          ctx.project->getScenes().loadScene(id);
+          return JS_TRUE;
+        }),
       }
     }
   };
