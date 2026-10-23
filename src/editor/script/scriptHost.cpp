@@ -5,83 +5,94 @@
 #include "scriptHost.h"
 #include "../../utils/logger.h"
 #include "../actions.h"
+#include "../../project/scene/object.h"
+#include "../../project/scene/scene.h"
+#include "../../context.h"
 #include "quickjs.h"
+#include <algorithm>
 
 namespace
 {
-  JSRuntime *rt{nullptr};
-  JSContext *jsCtx{nullptr};
+  namespace Act = Editor::Actions;
+
+  Editor::ScriptHost::Context js{};
 
   std::string toString(JSValueConst val)
   {
-    const char* str = JS_ToCString(jsCtx, val);
+    const char* str = JS_ToCString(js.ctx, val);
     std::string res = str ? str : "";
-    if(str)JS_FreeCString(jsCtx, str);
+    if(str)JS_FreeCString(js.ctx, str);
     return res;
   }
 
-  const JSCFunctionListEntry EditorAPI[] = {
-    JS_CFUNC_DEF("build", 1, (
-      [](JSContext *c, JSValueConst thisVal, int argc, JSValueConst *argv) -> JSValue {
-        bool doRun = argc > 0 ? JS_ToBool(jsCtx, argv[0]) : false;
-        bool res = Editor::Actions::call(Editor::Actions::Type::PROJECT_BUILD, doRun ? "run" : "");
-        return JS_NewBool(c, res);
-      }
-    )),
-    JS_CFUNC_DEF("close", 0, (
-      [](JSContext *c, JSValueConst thisVal, int argc, JSValueConst *argv) -> JSValue {
-        return JS_NewBool(c, Editor::Actions::call(Editor::Actions::Type::PROJECT_CLOSE));
-      }
-    )),
-    JS_CFUNC_DEF("clean", 0, (
-      [](JSContext *c, JSValueConst thisVal, int argc, JSValueConst *argv) -> JSValue {
-        return JS_NewBool(c, Editor::Actions::call(Editor::Actions::Type::PROJECT_CLEAN));
-      }
-    )),
+  #define JS_LAMBDA(name, args, fn) JS_CFUNC_DEF(name, args, (\
+    [](JSContext *c, JSValueConst thisVal, int argc, JSValueConst *argv) -> JSValue fn \
+    )) \
+
+  struct APIObjDef
+  {
+    const char* name;
+    std::vector<JSCFunctionListEntry> entries{};
   };
 
-  const JSCFunctionListEntry ConsoleAPI[] = {
-    JS_CFUNC_DEF("clear", 0, (
-      [](JSContext *c, JSValueConst thisVal, int argc, JSValueConst *argv) -> JSValue {
-        Utils::Logger::clear();
-        return JS_UNDEFINED;
+  const std::array<APIObjDef, 2> APIs{
+    APIObjDef
+    {
+      .name = "editor",
+      .entries = {
+        JS_LAMBDA("build", 1, {
+          bool doRun = argc > 0 ? JS_ToBool(js.ctx, argv[0]) : false;
+          bool res = Act::call(Act::Type::PROJECT_BUILD, doRun ? "run" : "");
+          return JS_NewBool(c, res);
+        }),
+        JS_LAMBDA("close", 0, { return JS_NewBool(c, Act::call(Act::Type::PROJECT_CLOSE)); }),
+        JS_LAMBDA("clean", 0, { return JS_NewBool(c, Act::call(Act::Type::PROJECT_CLEAN)); }),
       }
-    )),
+    },{
+      .name = "console",
+      .entries = {
+        JS_LAMBDA("clear", 0, {
+          Utils::Logger::clear();
+          return JS_UNDEFINED;
+        })
+      }
+    }
   };
 }
 
 namespace Editor::ScriptHost
 {
+  const Context& getContext() {
+    return js;
+  }
+
   bool start(Project::Project &project)
   {
     stop();
 
-    rt = JS_NewRuntime();
-    if(!rt) {
+    js.rt = JS_NewRuntime();
+    if(!js.rt) {
       Utils::Logger::log("Failed to create editor script runtime", Utils::Logger::LEVEL_ERROR);
       return false;
     }
 
-    jsCtx = JS_NewContext(rt);
-    if(!jsCtx) {
+    js.ctx = JS_NewContext(js.rt);
+    if(!js.ctx) {
       Utils::Logger::log("Failed to create editor script context", Utils::Logger::LEVEL_ERROR);
-      JS_FreeRuntime(rt);
-      rt = nullptr;
+      JS_FreeRuntime(js.rt);
+      js.rt = nullptr;
       return false;
     }
 
-    JSValue global = JS_GetGlobalObject(jsCtx);
+    JSValue global = JS_GetGlobalObject(js.ctx);
     
-    auto addObj = [&](const char* name, const JSCFunctionListEntry *entries, int len){
-      JSValue api = JS_NewObject(jsCtx);
-      JS_SetPropertyFunctionList(jsCtx, api, entries, len);
-      JS_SetPropertyStr(jsCtx, global, name, api);
-    };
+    for(auto &def : APIs) {
+      JSValue api = JS_NewObject(js.ctx);
+      JS_SetPropertyFunctionList(js.ctx, api, def.entries.data(), def.entries.size());
+      JS_SetPropertyStr(js.ctx, global, def.name, api);
+    }
 
-    addObj("editor", EditorAPI, std::size(EditorAPI));
-    addObj("console", ConsoleAPI, std::size(ConsoleAPI));
-
-    JS_FreeValue(jsCtx, global);
+    JS_FreeValue(js.ctx, global);
 
     Utils::Logger::log("Editor scripts: context started");
     return true;
@@ -89,47 +100,47 @@ namespace Editor::ScriptHost
 
   void stop()
   {
-    if(!rt)return;
+    if(!js.rt)return;
 
-    JS_FreeContext(jsCtx);
-    JS_FreeRuntime(rt);
-    jsCtx = nullptr;
-    rt = nullptr;
+    JS_FreeContext(js.ctx);
+    JS_FreeRuntime(js.rt);
+    js.ctx = nullptr;
+    js.rt = nullptr;
     Utils::Logger::log("Editor scripts: context stopped");
   }
 
   bool isRunning() {
-    return jsCtx != nullptr;
+    return js.ctx != nullptr;
   }
 
   EvalResult eval(const std::string &code)
   {
-    if(!jsCtx)return {"No project loaded!", false};
+    if(!js.ctx)return {"No project loaded!", false};
 
-    JSValue val = JS_Eval(jsCtx, code.c_str(), code.size(), "<shell>", JS_EVAL_TYPE_GLOBAL);
+    JSValue val = JS_Eval(js.ctx, code.c_str(), code.size(), "<shell>", JS_EVAL_TYPE_GLOBAL);
 
     if(JS_IsException(val)) {
-      JSValue ex = JS_GetException(jsCtx);
+      JSValue ex = JS_GetException(js.ctx);
       std::string text = toString(ex);
-      JSValue stack = JS_GetPropertyStr(jsCtx, ex, "stack");
+      JSValue stack = JS_GetPropertyStr(js.ctx, ex, "stack");
 
       if(JS_IsString(stack)) {
         text += "\n" + toString(stack);
       }
-      JS_FreeValue(jsCtx, stack);
-      JS_FreeValue(jsCtx, ex);
+      JS_FreeValue(js.ctx, stack);
+      JS_FreeValue(js.ctx, ex);
       return {text, false};
     }
 
     EvalResult res{.success = true};
-    if(JS_IsObject(val) && !JS_IsFunction(jsCtx, val)) {
-      JSValue json = JS_JSONStringify(jsCtx, val, JS_UNDEFINED, JS_UNDEFINED);
+    if(JS_IsObject(val) && !JS_IsFunction(js.ctx, val)) {
+      JSValue json = JS_JSONStringify(js.ctx, val, JS_UNDEFINED, JS_UNDEFINED);
       res.text = JS_IsException(json) ? toString(val) : toString(json);
-      JS_FreeValue(jsCtx, json);
+      JS_FreeValue(js.ctx, json);
     } else {
       res.text = toString(val);
     }
-    JS_FreeValue(jsCtx, val);
+    JS_FreeValue(js.ctx, val);
     return res;
   }
 }

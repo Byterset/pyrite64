@@ -5,6 +5,9 @@
 #pragma once
 #include <string>
 
+struct JSRuntime;
+struct JSContext;
+
 namespace Project { class Project; }
 
 namespace Editor::ScriptHost
@@ -13,6 +16,12 @@ namespace Editor::ScriptHost
   {
     std::string text{};
     bool success{};
+  };
+
+  struct Context
+  {
+    JSRuntime* rt{};
+    JSContext* ctx{};
   };
 
   bool start(Project::Project &project);
@@ -25,4 +34,6 @@ namespace Editor::ScriptHost
    * Result is JSON as a string, or some raw text for exceptions.
    */
   EvalResult eval(const std::string &code);
+
+  const Context& getContext();
 }
