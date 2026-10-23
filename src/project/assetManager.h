@@ -42,6 +42,7 @@ namespace Project
     PREFAB,
     NODE_GRAPH,
     MUSIC_XM,
+    EDITOR_SCRIPT,
 
     _SIZE
   };

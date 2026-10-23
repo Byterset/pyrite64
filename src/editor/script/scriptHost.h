@@ -33,7 +33,12 @@ namespace Editor::ScriptHost
    * Evaluates code in the global editor scope.
    * Result is JSON as a string, or some raw text for exceptions.
    */
-  EvalResult eval(const std::string &code);
+  EvalResult eval(const std::string &code, const std::string &fileName = "<shell>");
+
+  /**
+   * Runs code from a file, otherwise save as eval()
+   */
+  EvalResult runFile(const std::string &path);
 
   const Context& getContext();
 }

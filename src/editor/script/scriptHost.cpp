@@ -4,6 +4,7 @@
 */
 #include "scriptHost.h"
 #include "../../utils/logger.h"
+#include "../../utils/fs.h"
 #include "../actions.h"
 #include "../../project/scene/object.h"
 #include "../../project/scene/scene.h"
@@ -142,11 +143,11 @@ namespace Editor::ScriptHost
     return js.ctx != nullptr;
   }
 
-  EvalResult eval(const std::string &code)
+  EvalResult eval(const std::string &code, const std::string &fileName)
   {
     if(!js.ctx)return {"No project loaded!", false};
 
-    JSValue val = JS_Eval(js.ctx, code.c_str(), code.size(), "<shell>", JS_EVAL_TYPE_GLOBAL);
+    JSValue val = JS_Eval(js.ctx, code.c_str(), code.size(), fileName.c_str(), JS_EVAL_TYPE_GLOBAL);
 
     if(JS_IsException(val)) {
       JSValue ex = JS_GetException(js.ctx);
@@ -171,5 +172,11 @@ namespace Editor::ScriptHost
     }
     JS_FreeValue(js.ctx, val);
     return res;
+  }
+
+  EvalResult runFile(const std::string &path)
+  {
+    if(!fs::exists(path))return {"Script not found: " + path, false};
+    return eval(Utils::FS::loadTextFile(path), fs::path{path}.filename().string());
   }
 }

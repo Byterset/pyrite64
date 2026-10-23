@@ -3,6 +3,8 @@
 * @license MIT
 */
 #include "assetInspector.h"
+#include "../../script/scriptHost.h"
+#include "../../../utils/logger.h"
 #include "imgui.h"
 #include "../editorScene.h"
 #include "misc/cpp/imgui_stdlib.h"
@@ -122,12 +124,19 @@ void Editor::AssetInspector::draw() {
   bool hasAssetConf = true;
   if (asset->type == FileType::CODE_OBJ
     || asset->type == FileType::CODE_GLOBAL
-    || asset->type == FileType::PREFAB)
+    || asset->type == FileType::PREFAB
+    || asset->type == FileType::EDITOR_SCRIPT)
   {
     hasAssetConf = false;
   }
 
   ImGui::Text("File: %s", asset->name.c_str());
+
+  if (asset->type == FileType::EDITOR_SCRIPT && ImGui::Button(ICON_MDI_PLAY " Run")) {
+    Utils::Logger::log("Running script: " + asset->name);
+    auto res = ScriptHost::runFile(asset->path);
+    if(!res.success)Utils::Logger::log(res.text, Utils::Logger::LEVEL_ERROR);
+  }
   if (hasAssetConf && ImGui::CollapsingHeader("Settings", ImGuiTreeNodeFlags_DefaultOpen))
   {
     auto confBefore = asset->conf.serialize();

@@ -85,6 +85,10 @@ namespace
     return pathAbs;
   }
 
+  fs::path getEditorScriptPath(Project::Project *project) {
+    return fs::path{project->getPath()} / "scripts";
+  }
+
   std::string changeExt(const std::string &path, const std::string &newExt)
   {
     auto p = fs::path(path);
@@ -148,6 +152,9 @@ namespace
     } else if (ext == ".p64graph") {
       type = Project::FileType::NODE_GRAPH;
       outPath = changeExt(outPath, ".pg");
+    } else if (ext == ".js" && getProjectRelPath(path.string(), projectBase).starts_with("scripts/")) {
+      type = Project::FileType::EDITOR_SCRIPT;
+      outPath.clear(); // editor only
     }
 
     if (type == Project::FileType::UNKNOWN) {
@@ -155,7 +162,7 @@ namespace
     }
 
     auto romPath = outPath;
-    romPath.replace(0, std::string{"filesystem/"}.length(), "rom:/");
+    if(!romPath.empty())romPath.replace(0, std::string{"filesystem/"}.length(), "rom:/");
 
     entry = Project::AssetManagerEntry{
       .name = path.filename().string(),
@@ -436,6 +443,17 @@ void Project::AssetManager::reload() {
     }
   }
 
+  auto editorScriptPath = getEditorScriptPath(project);
+  if (fs::exists(editorScriptPath)) {
+    for (const auto &entry : fs::recursive_directory_iterator{editorScriptPath}) {
+      if (!entry.is_regular_file())continue;
+      AssetManagerEntry scriptEntry{};
+      if (!buildAssetEntry(project, entry.path(), scriptEntry))continue;
+      watchFiles[entry.path().string()] = Utils::FS::getFileAge(entry.path());
+      entries[(int)scriptEntry.type].push_back(scriptEntry);
+    }
+  }
+
   // sort by name
   for (auto &typed : entries) {
     std::sort(typed.begin(), typed.end(), [](const AssetManagerEntry &a, const AssetManagerEntry &b) {
@@ -529,6 +547,23 @@ bool Project::AssetManager::pollWatch()
         addedCode.push_back(pathStr);
       } else {
         modifiedCode.push_back(pathStr);
+      }
+    }
+  }
+
+  auto editorScriptPath = getEditorScriptPath(project);
+  if (fs::exists(editorScriptPath)) {
+    for (const auto &entry : fs::recursive_directory_iterator{editorScriptPath}) {
+      if (!entry.is_regular_file() || entry.path().extension().string() != ".js")continue;
+      auto pathStr = entry.path().string();
+      uint64_t age = Utils::FS::getFileAge(entry.path());
+
+      currentFiles[pathStr] = age;
+      auto it = watchFiles.find(pathStr);
+      if (it == watchFiles.end()) {
+        addedAssets.push_back(pathStr);
+      } else if (it->second != age) {
+        modifiedAssets.push_back(pathStr);
       }
     }
   }

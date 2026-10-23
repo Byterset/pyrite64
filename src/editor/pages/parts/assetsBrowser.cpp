@@ -210,7 +210,7 @@ void Editor::AssetsBrowser::draw() {
     },
     TabDef{
       .name = ICON_MDI_SCRIPT_OUTLINE "  Scripts",
-      .fileTypes = {FileType::CODE_OBJ, FileType::CODE_GLOBAL, FileType::NODE_GRAPH}
+      .fileTypes = {FileType::CODE_OBJ, FileType::CODE_GLOBAL, FileType::NODE_GRAPH, FileType::EDITOR_SCRIPT}
     },
     TabDef{
       .name = ICON_MDI_PACKAGE_VARIANT_CLOSED "  Prefabs",
@@ -639,6 +639,8 @@ void Editor::AssetsBrowser::draw() {
         iconTxt = ICON_MDI_LANGUAGE_CPP;
       } else if (asset.type == FileType::NODE_GRAPH) {
         iconTxt = ICON_MDI_GRAPH_OUTLINE;
+      } else if (asset.type == FileType::EDITOR_SCRIPT) {
+        iconTxt = ICON_MDI_LANGUAGE_JAVASCRIPT;
       }
     }
 
