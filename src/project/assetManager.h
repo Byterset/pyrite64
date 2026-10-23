@@ -82,6 +82,7 @@ namespace Project
     std::string outPath{};
     std::string romPath{};
     FileType type{};
+    uint64_t fileAge{0};
     std::shared_ptr<Renderer::Texture> texture{nullptr};
     Assets::Model3D model{};
     std::shared_ptr<Renderer::N64Mesh> mesh3D{};

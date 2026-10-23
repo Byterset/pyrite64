@@ -401,11 +401,13 @@ void Project::AssetManager::reload() {
   for (const auto &entry : fs::recursive_directory_iterator{assetPath}) {
     if (entry.is_regular_file()) {
       auto path = entry.path();
-      watchFiles[path.string()] = Utils::FS::getFileAge(path);
+      uint64_t age = Utils::FS::getFileAge(path);
+      watchFiles[path.string()] = age;
       AssetManagerEntry assetEntry{};
       if (!buildAssetEntry(project, path, assetEntry)) {
         continue;
       }
+      assetEntry.fileAge = age;
 
       if (assetEntry.type == FileType::IMAGE) {
         if (ctx.window) {
@@ -449,7 +451,8 @@ void Project::AssetManager::reload() {
       if (!entry.is_regular_file())continue;
       AssetManagerEntry scriptEntry{};
       if (!buildAssetEntry(project, entry.path(), scriptEntry))continue;
-      watchFiles[entry.path().string()] = Utils::FS::getFileAge(entry.path());
+      scriptEntry.fileAge = Utils::FS::getFileAge(entry.path());
+      watchFiles[entry.path().string()] = scriptEntry.fileAge;
       entries[(int)scriptEntry.type].push_back(scriptEntry);
     }
   }
@@ -621,6 +624,7 @@ bool Project::AssetManager::pollWatch()
     if (!buildAssetEntry(project, fs::path{pathStr}, newEntry)) {
       return;
     }
+    newEntry.fileAge = currentFiles[pathStr];
 
     removeEntryByPath(pathStr);
     entries[static_cast<int>(newEntry.type)].push_back(std::move(newEntry));
