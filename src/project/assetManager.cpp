@@ -890,10 +890,10 @@ uint64_t Project::AssetManager::createNodeGraph(const std::string &name)
 
 Project::AssetManagerEntry *Project::AssetManager::getByPath(const std::string &path)
 {
-  fs::path pathIn{path};
+  fs::path pathIn = fs::path{path}.lexically_normal();
   for (auto &typed : entries) {
     for (auto &entry : typed) {
-      if (fs::path{entry.path} == pathIn) {
+      if (fs::path{entry.path}.lexically_normal() == pathIn) {
         return &entry;
       }
     }
