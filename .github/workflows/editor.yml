@@ -26,6 +26,10 @@ jobs:
           submodules: recursive
           lfs: true
 
+      - name: Read version
+        shell: bash
+        run: bash scripts/ci_version.sh >> "$GITHUB_ENV"
+
       - name: Setup MSYS2 (UCRT64)
         uses: msys2/setup-msys2@v2.30.0
         with:
@@ -48,7 +52,7 @@ jobs:
       - name: Upload build artifact
         uses: actions/upload-artifact@v6
         with:
-          name: pyrite64-windows
+          name: pyrite64-windows_${{ env.P64_VERSION }}
           include-hidden-files: true
           path: |
             pyrite64.exe
@@ -65,6 +69,10 @@ jobs:
         with:
           submodules: recursive
           lfs: true
+
+      - name: Read version
+        shell: bash
+        run: bash scripts/ci_version.sh >> "$GITHUB_ENV"
 
       - name: Install dependencies
         run: |
@@ -85,7 +93,7 @@ jobs:
       - name: Upload build artifact
         uses: actions/upload-artifact@v6
         with:
-          name: pyrite64-linux
+          name: pyrite64-linux_${{ env.P64_VERSION }}
           path: |
             Pyrite64-x86_64.AppImage
 
@@ -123,6 +131,10 @@ jobs:
           submodules: recursive
           lfs: true
 
+      - name: Read version
+        shell: bash
+        run: bash scripts/ci_version.sh >> "$GITHUB_ENV"
+
       # Ensures a CMake >= 3.28 (C++23) and Ninja
       - name: Setup CMake + Ninja
         uses: lukka/get-cmake@latest
@@ -138,7 +150,7 @@ jobs:
       - name: Upload build artifact
         uses: actions/upload-artifact@v6
         with:
-          name: pyrite64-macos
+          name: pyrite64-macos_${{ env.P64_VERSION }}
           include-hidden-files: true
           path: |
             pyrite64
